@@ -52,6 +52,8 @@ pub const Token = union(enum) {
     let,
     @"var",
     @"struct",
+    @"enum",
+    @"union",
     import,
     @"fn",
     @"if",
@@ -62,6 +64,7 @@ pub const Token = union(enum) {
     @"return",
     @"and",
     @"or",
+    @"pub",
 
     dot_dot,
 
@@ -179,6 +182,10 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
                     .@"var"
                 else if (std.mem.eql(u8, word, "struct"))
                     .@"struct"
+                else if (std.mem.eql(u8, word, "enum"))
+                    .@"enum"
+                else if (std.mem.eql(u8, word, "union"))
+                    .@"union"
                 else if (std.mem.eql(u8, word, "import"))
                     .import
                 else if (std.mem.eql(u8, word, "fn"))
@@ -199,6 +206,8 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
                     .@"and"
                 else if (std.mem.eql(u8, word, "or"))
                     .@"or"
+                else if (std.mem.eql(u8, word, "pub"))
+                    .@"pub"
                 else
                     .{ .ident = try alloc.dupe(u8, word) };
 
@@ -207,7 +216,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
             try self.parseNumber(alloc);
         } else {
             const char = self.currentChar();
-            const non_alphanumeric = "+-*/(){};:,=!><&|^";
+            const non_alphanumeric = "+-*/()[]{};:,=!><&|^";
 
             // if char is a valid non-alphanumeric character
             if (std.mem.containsAtLeastScalar(u8, non_alphanumeric, 1, char)) {

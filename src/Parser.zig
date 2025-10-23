@@ -34,6 +34,7 @@ pub const BindingPower = enum {
 
 pub const ParserError = error{
     UnexpectedToken,
+    UnexpectedExpression,
     NoSpaceLeft,
     HandlerDoesNotExist,
     OutOfMemory,
@@ -48,17 +49,17 @@ statement_lookup: StatementLookup,
 type_parser: TypeParser,
 // errors: std.ArrayList(ParserError) = .{},
 
-pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !Self {
-    var self = Self{
+pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
+    const self = try alloc.create(Self);
+    self.* = .{
         .pos = 0,
         .input = input,
         .bp_lookup = .init(alloc),
         .nud_lookup = .init(alloc),
         .led_lookup = .init(alloc),
         .statement_lookup = .init(alloc),
-        .type_parser = undefined,
+        .type_parser = try .init(alloc, self),
     };
-    self.type_parser = try .init(alloc, &self);
 
     try self.led(Lexer.Token.equals, .assignment, parseAssignmentExpression);
     try self.led(Lexer.Token.plus_equals, .assignment, parseAssignmentExpression);
@@ -94,9 +95,14 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !Self {
     try self.nud(Lexer.Token.dash, parsePrefixExpression);
     try self.nud(Lexer.Token.open_paren, parseGroupExpression);
 
+    // Call/member expressions
+    try self.led(Lexer.Token.open_brace, .call, parseStructInstantiationExpression);
+    try self.nud(Lexer.Token.open_bracket, parseArrayInstantiationExpression);
+
     // Statements
     try self.statement(Lexer.Token.let, parseVariableDeclarationStatement);
     try self.statement(Lexer.Token.@"var", parseVariableDeclarationStatement);
+    try self.statement(Lexer.Token.@"struct", parseStructDeclarationStatement);
 
     return self;
 }
@@ -322,7 +328,6 @@ fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) Pars
     var @"type": ast.Type = .inferred;
     if (self.currentTokenKind() == Lexer.Token.colon) {
         _ = self.advance(); // consume colon
-        std.debug.print("!!!!pos token: {}\n", .{self.pos});
         @"type" = try self.type_parser.parseType(alloc, .default);
     }
 
@@ -394,6 +399,90 @@ fn parseGroupExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.E
     return expr;
 }
 
+fn parseStructDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+    try self.expect(self.advance(), Lexer.Token.@"struct", "struct declaration", "struct");
+
+    var @"struct" = ast.Statement{
+        .struct_declaration = .{
+            .name = try self.expect(self.advance(), Lexer.Token.ident, "struct declaration", "struct name"),
+        },
+    };
+
+    try self.expect(self.advance(), Lexer.Token.open_brace, "struct declaration", "{");
+
+    while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
+        // parse member
+        if (self.currentTokenKind() == Lexer.Token.ident) {
+            const member_name = try self.expect(self.advance(), Lexer.Token.ident, "struct declaration", "member name");
+            try self.expect(self.advance(), Lexer.Token.colon, "struct declaration", ":");
+            const member_type = try self.type_parser.parseType(alloc, .default);
+            try self.expect(self.advance(), Lexer.Token.semicolon, "struct declaration", ";");
+
+            try @"struct".struct_declaration.members.append(alloc, .{
+                .name = member_name,
+                .type = member_type,
+            });
+        }
+    }
+
+    try self.expect(self.advance(), Lexer.Token.close_brace, "struct declaration", "}");
+
+    return @"struct";
+}
+
+fn parseStructInstantiationExpression(self: *Self, alloc: std.mem.Allocator, lhs: ast.Expression, _: BindingPower) ParserError!ast.Expression {
+    const struct_name = switch (lhs) {
+        .ident => |ident| ident,
+        else => |other| {
+            utils.print("Parser: Expected struct name in struct instantiation, received {}.", .{other}, .red);
+            return error.UnexpectedExpression;
+        },
+    };
+
+    try self.expect(self.advance(), Lexer.Token.open_brace, "struct instantiation", "{");
+
+    var @"struct" = ast.Expression.StructInstantiation{
+        .name = struct_name,
+        .members = .init(alloc),
+    };
+
+    while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
+        const member_name = try self.expect(self.advance(), Lexer.Token.ident, "struct instantiation", "struct member name");
+        try self.expect(self.advance(), Lexer.Token.colon, "struct instantiation", ":");
+        const member_value = try self.parseExpression(alloc, .default);
+
+        try @"struct".members.put(member_name, member_value);
+
+        if (self.currentTokenKind() != Lexer.Token.close_brace) {
+            try self.expect(self.advance(), Lexer.Token.comma, "struct instantiation", ",");
+        }
+    }
+
+    try self.expect(self.advance(), Lexer.Token.close_brace, "struct instantiation", "}");
+
+    return .{ .struct_instantiation = @"struct" };
+}
+
+fn parseArrayInstantiationExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Expression {
+    var array = ast.Expression.ArrayInstantiation{ .type = undefined };
+
+    try self.expect(self.advance(), Lexer.Token.open_bracket, "array instantiation", "[");
+    try self.expect(self.advance(), Lexer.Token.close_bracket, "array instantiation", "]");
+
+    array.type = try self.type_parser.parseType(alloc, .default);
+
+    try self.expect(self.advance(), Lexer.Token.open_brace, "array instantiation", "{");
+    while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
+        try array.contents.append(alloc, try self.parseExpression(alloc, .logical));
+
+        if (self.currentTokenKind() != Lexer.Token.close_brace)
+            try self.expect(self.advance(), Lexer.Token.comma, "array literal", ",");
+    }
+    try self.expect(self.advance(), Lexer.Token.close_brace, "array instantiation", "}");
+
+    return .{ .array_instantiation = array };
+}
+
 /// A token which has a NUD handler means it expects nothing to its left
 /// Common examples of this type of token are prefix & unary expressions.
 fn nud(self: *Self, kind: Lexer.TokenKind, nud_fn: NudHandler) !void {
@@ -425,10 +514,10 @@ fn unexpectedToken(
     actual: Lexer.Token,
 ) error{ NoSpaceLeft, UnexpectedToken } {
     utils.print(
-        "Unexpected token in {s} '{f}' at {}:{}. Expected '{s}'\n",
+        "Unexpected token '{f}' in {s} at {}:{}. Expected '{s}'\n",
         .{
-            environment,
             actual,
+            environment,
             self.input.source_map.items[self.pos].line,
             self.input.source_map.items[self.pos].col,
             expected_token,

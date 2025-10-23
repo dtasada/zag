@@ -41,36 +41,6 @@ pub const BinaryOperator = enum {
     pub fn fromLexerToken(t: LexerToken) BinaryOperator {
         return std.meta.stringToEnum(BinaryOperator, @tagName(std.meta.activeTag(t))) orelse
             @panic("called BinaryOperator.fromLexerToken on Lexer.Token that is not a binary operator");
-        // return switch (t) {
-        //     .plus => .plus,
-        //     .dash => .dash,
-        //     .asterisk => .asterisk,
-        //     .slash => .slash,
-        //     .percent => .percent,
-        //
-        //     .plus_equals => .plus_equals,
-        //     .minus_equals => .minus_equals,
-        //     .times_equals => .times_equals,
-        //     .slash_equals => .slash_equals,
-        //     .mod_equals => .mod_equals,
-        //     .and_equals => .and_equals,
-        //     .or_equals => .or_equals,
-        //     .xor_equals => .xor_equals,
-        //
-        //     .equals => .equals,
-        //     .equals_equals => .equals_equals,
-        //     .greater => .greater,
-        //     .less => .less,
-        //     .greater_equals => .greater_equals,
-        //     .less_equals => .less_equals,
-        //     .bang_equals => .bang_equals,
-        //
-        //     .ampersand => .ampersand,
-        //     .pipe => .pipe,
-        //     .caret => .caret,
-        //     .logical_and => .logical_and,
-        //     .logical_or => .logical_or,
-        // };
     }
 };
 
@@ -102,6 +72,16 @@ pub const Expression = union(enum) {
         value: *const Expression,
     };
 
+    pub const StructInstantiation = struct {
+        name: []const u8,
+        members: std.StringHashMap(Expression),
+    };
+
+    pub const ArrayInstantiation = struct {
+        type: Type,
+        contents: std.ArrayList(Expression) = .{},
+    };
+
     bad_node,
 
     // literals
@@ -116,6 +96,8 @@ pub const Expression = union(enum) {
     binary: Binary,
     prefix: Prefix,
     assignment: Assignment,
+    struct_instantiation: StructInstantiation,
+    array_instantiation: ArrayInstantiation,
 };
 
 pub const TopLevelNode = union(enum) {
@@ -131,16 +113,28 @@ pub const FunctionDefinition = struct {
 };
 
 pub const Statement = union(enum) {
+    const VariableDeclaration = struct {
+        is_mut: bool,
+        variable_name: []const u8,
+        type: Type,
+        assigned_value: Expression,
+    };
+
+    const StructDeclaration = struct {
+        const Field = struct {
+            name: []const u8,
+            type: Type,
+        };
+
+        name: []const u8,
+        members: std.ArrayList(Field) = .{},
+        methods: std.ArrayList(FunctionDefinition) = .{},
+    };
+
     @"return": Expression,
     expression: Expression,
-    variable_declaration: VariableDeclarationStatement,
-};
-
-const VariableDeclarationStatement = struct {
-    variable_name: []const u8,
-    is_mut: bool,
-    assigned_value: Expression,
-    type: Type,
+    variable_declaration: VariableDeclaration,
+    struct_declaration: StructDeclaration,
 };
 
 const VariableSignature = struct {

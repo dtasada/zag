@@ -53,7 +53,6 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
 }
 
 pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
-    std.debug.print("current token: {f}\n", .{self.parent_parser.currentToken()});
     return .{
         .symbol = try self.parent_parser.expect(
             self.parent_parser.advance(),
@@ -65,29 +64,28 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
 }
 
 pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
-    const underlying_type = try alloc.create(ast.Type);
-    underlying_type.* = try self.parseType(alloc, .default);
+    _ = self.parent_parser.advance(); // consume '['
 
-    _ = self.parent_parser.advance();
     try self.parent_parser.expect(
         self.parent_parser.currentToken(),
         Lexer.Token.close_bracket,
         "array type descriptor",
         "]",
     );
+    _ = self.parent_parser.advance(); // consume ']'
+
+    const underlying_type = try alloc.create(ast.Type);
+    underlying_type.* = try self.parseType(alloc, .default);
 
     return .{ .array = underlying_type };
 }
 
 pub fn parseType(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) ParserError!ast.Type {
-    std.debug.print("!!!!current token: {f}\n", .{self.parent_parser.input.tokens.items[self.parent_parser.pos]});
-    std.debug.print("!!!!pos token: {}\n", .{self.parent_parser.pos});
     // first parse the NUD
     const token_kind = self.parent_parser.currentTokenKind();
     const nud_fn = try self.getHandler(.nud, token_kind);
 
-    const lhs = try alloc.create(ast.Type);
-    lhs.* = try nud_fn(self, alloc);
+    var lhs = try nud_fn(self, alloc);
 
     // while we have a led and (current bp < bp of current token)
     // continue parsing lhs
@@ -101,10 +99,10 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) Parser
 
         const led_fn = try self.getHandler(.led, current_token_kind);
 
-        lhs.* = try led_fn(self, alloc, lhs.*, try self.getHandler(.bp, self.parent_parser.currentTokenKind()));
+        lhs = try led_fn(self, alloc, lhs, current_bp);
     }
 
-    return lhs.*;
+    return lhs;
 }
 
 inline fn getHandler(
