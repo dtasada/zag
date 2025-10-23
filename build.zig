@@ -16,6 +16,9 @@ pub fn build(b: *std.Build) void {
     const clap = b.dependency("clap", .{});
     exe.root_module.addImport("clap", clap.module("clap"));
 
+    const pretty = b.dependency("pretty", .{});
+    exe.root_module.addImport("pretty", pretty.module("pretty"));
+
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -37,7 +40,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+
     exe_check.root_module.addImport("clap", clap.module("clap"));
+    exe_check.root_module.addImport("pretty", pretty.module("pretty"));
 
     const check = b.step("check", "Check if llvm_wrapper compiles");
     check.dependOn(&exe_check.step);

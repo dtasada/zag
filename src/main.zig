@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const pretty = @import("pretty");
 
 const utils = @import("utils.zig");
 const Lexer = @import("Lexer.zig");
@@ -26,9 +27,7 @@ fn build(alloc: std.mem.Allocator) !void {
         return;
     };
 
-    // for (lexer.tokens.items) |t| {
-    //     std.debug.print("t: {f}\n", .{t});
-    // }
+    // for (lexer.tokens.items) |t| std.debug.print("t: {f}\n", .{t});
 
     var parser = Parser.init(&lexer, arena) catch |err| {
         utils.print("Failed to create parser: {}\n", .{err}, .red);
@@ -40,7 +39,7 @@ fn build(alloc: std.mem.Allocator) !void {
         return error.ParserFailed;
     };
 
-    std.debug.print("ast: {}\n", .{ast});
+    try pretty.print(alloc, .{ast}, .{ .max_depth = 100 });
 }
 
 pub fn main() !void {

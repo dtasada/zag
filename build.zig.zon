@@ -8,6 +8,10 @@
             .hash = "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e",
             .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.11.0.tar.gz",
         },
+        .pretty = .{
+            .url = "https://github.com/timfayz/pretty/archive/refs/heads/main.tar.gz",
+            .hash = "pretty-0.10.4-Tm65r5pKAQDdxCFNtL6huo7lHc_HWn6v4VO5WaTufpRQ",
+        },
     },
     .paths = .{
         "build.zig",

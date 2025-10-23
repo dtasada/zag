@@ -76,19 +76,30 @@ pub const BinaryOperator = enum {
 
 pub const Expression = union(enum) {
     pub const Binary = struct {
-        lhs: Expression,
+        lhs: *const Expression,
         op: BinaryOperator,
-        rhs: Expression,
+        rhs: *const Expression,
     };
 
     pub const Member = struct {
-        lhs: Expression,
-        rhs: Expression,
+        lhs: *const Expression,
+        rhs: *const Expression,
     };
 
     pub const Call = struct {
-        callee: Expression,
+        callee: *const Expression,
         args: ArgumentList,
+    };
+
+    pub const Prefix = struct {
+        op: LexerToken,
+        rhs: *const Expression,
+    };
+
+    pub const Assignment = struct {
+        assignee: *const Expression,
+        op: LexerToken,
+        value: *const Expression,
     };
 
     bad_node,
@@ -100,9 +111,11 @@ pub const Expression = union(enum) {
     uint: u64,
     float: f64,
 
-    call: *const Call,
-    member: *const Member,
-    binary: *const Binary,
+    call: Call,
+    member: Member,
+    binary: Binary,
+    prefix: Prefix,
+    assignment: Assignment,
 };
 
 pub const TopLevelNode = union(enum) {
@@ -120,6 +133,14 @@ pub const FunctionDefinition = struct {
 pub const Statement = union(enum) {
     @"return": Expression,
     expression: Expression,
+    variable_declaration: VariableDeclarationStatement,
+};
+
+const VariableDeclarationStatement = struct {
+    variable_name: []const u8,
+    is_mut: bool,
+    assigned_value: Expression,
+    type: Type,
 };
 
 const VariableSignature = struct {
@@ -127,12 +148,8 @@ const VariableSignature = struct {
     type: Type,
 };
 
-const Type = []const u8;
-
-// const Type = struct {
-//     type_atom: TypeAtom,
-// };
-//
-// const TypeAtom = enum {
-//     i32,
-// };
+pub const Type = union(enum) {
+    inferred,
+    symbol: []const u8,
+    array: *const Type,
+};

@@ -2,14 +2,15 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 const Lexer = @import("Lexer.zig");
+const TypeParser = @import("TypeParser.zig");
 
 const ast = @import("ast.zig");
 
 const Self = @This();
 
-const StatementHandler = *const fn (*Self) ParserError!ast.Statement;
-const NudHandler = *const fn (*Self) ParserError!ast.Expression;
-const LedHandler = *const fn (*Self, ast.Expression, BindingPower) ParserError!ast.Expression;
+const StatementHandler = *const fn (*Self, std.mem.Allocator) ParserError!ast.Statement;
+const NudHandler = *const fn (*Self, std.mem.Allocator) ParserError!ast.Expression;
+const LedHandler = *const fn (*Self, std.mem.Allocator, ast.Expression, BindingPower) ParserError!ast.Expression;
 
 const StatementLookup = std.AutoHashMap(Lexer.TokenKind, StatementHandler);
 const NudLookup = std.AutoHashMap(Lexer.TokenKind, NudHandler);
@@ -17,8 +18,8 @@ const LedLookup = std.AutoHashMap(Lexer.TokenKind, LedHandler);
 const BpLookup = std.AutoHashMap(Lexer.TokenKind, BindingPower);
 
 /// Binding power. please keep order of enum
-const BindingPower = enum {
-    default_bp,
+pub const BindingPower = enum {
+    default,
     comma,
     assignment,
     logical,
@@ -31,10 +32,11 @@ const BindingPower = enum {
     primary,
 };
 
-const ParserError = error{
+pub const ParserError = error{
     UnexpectedToken,
     NoSpaceLeft,
     HandlerDoesNotExist,
+    OutOfMemory,
 };
 
 pos: usize,
@@ -43,6 +45,7 @@ bp_lookup: BpLookup,
 nud_lookup: NudLookup,
 led_lookup: LedLookup,
 statement_lookup: StatementLookup,
+type_parser: TypeParser,
 // errors: std.ArrayList(ParserError) = .{},
 
 pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !Self {
@@ -53,7 +56,15 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !Self {
         .nud_lookup = .init(alloc),
         .led_lookup = .init(alloc),
         .statement_lookup = .init(alloc),
+        .type_parser = undefined,
     };
+    self.type_parser = try .init(alloc, &self);
+
+    try self.led(Lexer.Token.equals, .assignment, parseAssignmentExpression);
+    try self.led(Lexer.Token.plus_equals, .assignment, parseAssignmentExpression);
+    try self.led(Lexer.Token.minus_equals, .assignment, parseAssignmentExpression);
+    try self.led(Lexer.Token.times_equals, .assignment, parseAssignmentExpression);
+    try self.led(Lexer.Token.slash_equals, .assignment, parseAssignmentExpression);
 
     // logical
     try self.led(Lexer.Token.@"and", .logical, parseBinaryExpression);
@@ -80,6 +91,12 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !Self {
     try self.nud(Lexer.Token.float, parsePrimaryExpression);
     try self.nud(Lexer.Token.ident, parsePrimaryExpression);
     try self.nud(Lexer.Token.string, parsePrimaryExpression);
+    try self.nud(Lexer.Token.dash, parsePrefixExpression);
+    try self.nud(Lexer.Token.open_paren, parseGroupExpression);
+
+    // Statements
+    try self.statement(Lexer.Token.let, parseVariableDeclarationStatement);
+    try self.statement(Lexer.Token.@"var", parseVariableDeclarationStatement);
 
     return self;
 }
@@ -96,13 +113,13 @@ pub fn getAst(self: *Self, alloc: std.mem.Allocator) !ast.RootNode {
     var root = ast.RootNode{};
 
     while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
-        try root.append(alloc, try self.parseStatement());
+        try root.append(alloc, try self.parseStatement(alloc));
 
     return root;
 }
 
 /// Consumes current token and then increases position.
-inline fn advance(self: *Self) Lexer.Token {
+pub inline fn advance(self: *Self) Lexer.Token {
     const current_token = self.input.tokens.items[self.pos];
     self.pos += 1;
     return current_token;
@@ -113,11 +130,11 @@ inline fn peek(self: *const Self) Lexer.Token {
     return self.input.tokens.items[self.pos + 1];
 }
 
-inline fn currentToken(self: *const Self) Lexer.Token {
+pub inline fn currentToken(self: *const Self) Lexer.Token {
     return self.input.tokens.items[self.pos];
 }
 
-inline fn currentTokenKind(self: *const Self) Lexer.TokenKind {
+pub inline fn currentTokenKind(self: *const Self) Lexer.TokenKind {
     return std.meta.activeTag(self.currentToken());
 }
 
@@ -224,18 +241,19 @@ fn parseParameters(self: *Self, alloc: std.mem.Allocator) !ast.ParameterList {
 //     return block;
 // }
 
-fn parseStatement(self: *Self) ParserError!ast.Statement {
+fn parseStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
     if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
-        return statement_fn(self);
+        return statement_fn(self, alloc);
     }
 
-    const expression = try self.parseExpression(.default_bp);
+    const expression = try self.parseExpression(alloc, .default);
     try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
+    _ = self.advance(); // consume semicolon
 
     return .{ .expression = expression };
 }
 
-fn parsePrimaryExpression(self: *Self) !ast.Expression {
+fn parsePrimaryExpression(self: *Self, _: std.mem.Allocator) !ast.Expression {
     return switch (self.advance()) {
         .int => |int| .{ .uint = int },
         .float => |float| .{ .float = float },
@@ -245,41 +263,135 @@ fn parsePrimaryExpression(self: *Self) !ast.Expression {
     };
 }
 
-fn parseBinaryExpression(self: *Self, lhs: ast.Expression, bp: BindingPower) ParserError!ast.Expression {
+fn parseBinaryExpression(self: *Self, alloc: std.mem.Allocator, lhs: ast.Expression, bp: BindingPower) ParserError!ast.Expression {
     const op = ast.BinaryOperator.fromLexerToken(self.advance());
-    const rhs = try self.parseExpression(bp);
+    const rhs = try self.parseExpression(alloc, bp);
+
+    const new_lhs = try alloc.create(ast.Expression);
+    new_lhs.* = lhs;
+
+    const new_rhs = try alloc.create(ast.Expression);
+    new_rhs.* = rhs;
 
     return .{
-        .binary = &.{
-            .lhs = lhs,
+        .binary = .{
+            .lhs = new_lhs,
+            .op = op,
+            .rhs = new_rhs,
+        },
+    };
+}
+
+fn parseExpression(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) ParserError!ast.Expression {
+    // first parse the NUD
+    const token_kind = self.currentTokenKind();
+    const nud_fn = try self.getHandler(.nud, token_kind);
+
+    const lhs = try alloc.create(ast.Expression);
+    lhs.* = try nud_fn(self, alloc);
+
+    // while we have a led and (current bp < bp of current token)
+    // continue parsing lhs
+    while (true) {
+        const current_token_kind = self.currentTokenKind();
+        const current_bp = self.bp_lookup.get(current_token_kind) orelse break;
+
+        if (@intFromEnum(current_bp) <= @intFromEnum(bp)) {
+            break;
+        }
+
+        // This should be an assertion, since we found a bp
+        const led_fn = try self.getHandler(.led, current_token_kind);
+
+        lhs.* = try led_fn(self, alloc, lhs.*, try self.getHandler(.bp, self.currentTokenKind()));
+    }
+
+    return lhs.*;
+}
+
+fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+    const is_mut = std.meta.activeTag(self.advance()) == Lexer.Token.@"var";
+    const var_name = try self.expect(
+        self.advance(),
+        Lexer.Token.ident,
+        "variable declaration statement",
+        "variable name",
+    );
+
+    // optionally parse type
+    var @"type": ast.Type = .inferred;
+    if (self.currentTokenKind() == Lexer.Token.colon) {
+        _ = self.advance(); // consume colon
+        std.debug.print("!!!!pos token: {}\n", .{self.pos});
+        @"type" = try self.type_parser.parseType(alloc, .default);
+    }
+
+    try self.expect(
+        self.advance(),
+        Lexer.Token.equals,
+        "variable declaration statement",
+        "=",
+    );
+
+    const assigned_value = try self.parseExpression(alloc, .assignment);
+
+    try self.expect(
+        self.currentToken(),
+        Lexer.Token.semicolon,
+        "variable declaration statement",
+        ";",
+    );
+    _ = self.advance(); // consume semicolon
+
+    return .{
+        .variable_declaration = .{
+            .variable_name = var_name,
+            .is_mut = is_mut,
+            .assigned_value = assigned_value,
+            .type = @"type",
+        },
+    };
+}
+
+fn parseAssignmentExpression(self: *Self, alloc: std.mem.Allocator, lhs: ast.Expression, bp: BindingPower) ParserError!ast.Expression {
+    const op = self.advance();
+
+    const rhs = try alloc.create(ast.Expression);
+    rhs.* = try self.parseExpression(alloc, bp);
+
+    const lhs_ptr = try alloc.create(ast.Expression);
+    lhs_ptr.* = lhs;
+
+    return .{
+        .assignment = .{
+            .assignee = lhs_ptr,
+            .op = op,
+            .value = rhs,
+        },
+    };
+}
+
+fn parsePrefixExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Expression {
+    const op = self.advance();
+
+    const rhs = try alloc.create(ast.Expression);
+    rhs.* = try self.parseExpression(alloc, .default);
+
+    return .{
+        .prefix = .{
             .op = op,
             .rhs = rhs,
         },
     };
 }
 
-fn parseExpression(self: *Self, bp: BindingPower) ParserError!ast.Expression {
-    // first parse the NUD
-    var token_kind = self.currentTokenKind();
-    const nud_fn = self.nud_lookup.get(token_kind) orelse
-        return error.HandlerDoesNotExist;
+fn parseGroupExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Expression {
+    _ = self.advance();
+    const expr = try self.parseExpression(alloc, .default);
+    try self.expect(self.currentToken(), Lexer.Token.close_paren, "group expression", ")");
+    _ = self.advance();
 
-    var left = try nud_fn(self);
-
-    // while we have a led and (current bp < bp of current token)
-    // continue parsing lhs
-    if (self.bp_lookup.get(self.currentTokenKind())) |current_bp| {
-        while (@intFromEnum(current_bp) > @intFromEnum(bp)) {
-            token_kind = self.currentTokenKind();
-
-            const led_fn = self.led_lookup.get(token_kind) orelse
-                return error.HandlerDoesNotExist;
-
-            left = try led_fn(self, left, bp);
-        }
-    } else return error.HandlerDoesNotExist;
-
-    return left;
+    return expr;
 }
 
 /// A token which has a NUD handler means it expects nothing to its left
@@ -298,7 +410,7 @@ fn led(self: *Self, kind: Lexer.TokenKind, bp: BindingPower, led_fn: LedHandler)
 }
 
 fn statement(self: *Self, kind: Lexer.TokenKind, statment_fn: StatementHandler) !void {
-    try self.bp_lookup.put(kind, .default_bp);
+    try self.bp_lookup.put(kind, .default);
     try self.statement_lookup.put(kind, statment_fn);
 }
 
@@ -313,7 +425,7 @@ fn unexpectedToken(
     actual: Lexer.Token,
 ) error{ NoSpaceLeft, UnexpectedToken } {
     utils.print(
-        "Unexpected token in {s} '{f}' at {}:{}. Expected {s}\n",
+        "Unexpected token in {s} '{f}' at {}:{}. Expected '{s}'\n",
         .{
             environment,
             actual,
@@ -330,7 +442,7 @@ fn unexpectedToken(
 /// `environment` and `expected_token` are strings for the error message.
 /// example: "function definition" and "function name" respectively yields
 /// "Unexpected token in function definition '<bad_token>' at <line>:<col>. Expected 'function_name'",
-fn expect(
+pub fn expect(
     self: *const Self,
     actual: Lexer.Token,
     comptime expected: Lexer.TokenKind,
@@ -353,4 +465,27 @@ fn expectSilent(
         @field(actual, @tagName(expected))
     else
         return error.UnexpectedToken;
+}
+
+inline fn getHandler(
+    self: *const Self,
+    comptime handler_type: enum { statement, nud, led, bp },
+    token: Lexer.TokenKind,
+) ParserError!switch (handler_type) {
+    .statement => StatementHandler,
+    .nud => NudHandler,
+    .led => LedHandler,
+    .bp => BindingPower,
+} {
+    if (switch (handler_type) {
+        .statement => self.statement_lookup,
+        .nud => self.nud_lookup,
+        .led => self.led_lookup,
+        .bp => self.bp_lookup,
+    }.get(token)) |handler| {
+        return handler;
+    } else {
+        utils.print("Parser: {s} handler for '{}' does not exist.\n", .{ @tagName(handler_type), token }, .red);
+        return error.HandlerDoesNotExist;
+    }
 }

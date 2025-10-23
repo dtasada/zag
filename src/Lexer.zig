@@ -39,6 +39,8 @@ pub const Token = union(enum) {
     // special characters
     open_paren,
     close_paren,
+    open_bracket,
+    close_bracket,
     open_brace,
     close_brace,
     semicolon,
@@ -48,7 +50,7 @@ pub const Token = union(enum) {
 
     // keywords
     let,
-    mut,
+    @"var",
     @"struct",
     import,
     @"fn",
@@ -99,7 +101,7 @@ pub const Token = union(enum) {
         self: *const Token,
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
-        return try switch (self.*) {
+        try switch (self.*) {
             .int => |int| writer.print("int({})", .{int}),
             .float => |float| writer.print("float({})", .{float}),
             .ident => |atom| writer.print("ident({s})", .{atom}),
@@ -173,8 +175,8 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
             const token: Token =
                 if (std.mem.eql(u8, word, "let"))
                     .let
-                else if (std.mem.eql(u8, word, "mut"))
-                    .mut
+                else if (std.mem.eql(u8, word, "var"))
+                    .@"var"
                 else if (std.mem.eql(u8, word, "struct"))
                     .@"struct"
                 else if (std.mem.eql(u8, word, "import"))
@@ -213,6 +215,8 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
                     '+', '-', '*', '/', '%', '=', '!', '>', '<', '&', '|', '^' => try self.parseBinaryOperator(alloc),
                     '(' => try self.appendAndNext(alloc, .open_paren),
                     ')' => try self.appendAndNext(alloc, .close_paren),
+                    '[' => try self.appendAndNext(alloc, .open_bracket),
+                    ']' => try self.appendAndNext(alloc, .close_bracket),
                     '{' => try self.appendAndNext(alloc, .open_brace),
                     '}' => try self.appendAndNext(alloc, .close_brace),
                     ';' => try self.appendAndNext(alloc, .semicolon),
@@ -240,6 +244,15 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
 fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
     const first_token = self.currentChar();
     if (!std.mem.containsAtLeastScalar(u8, "+-*/%=!><&|^", 1, first_token)) unreachable;
+
+    if (std.mem.eql(u8, self.input[self.pos .. self.pos + 2], "//")) {
+        const end_line_pos = std.mem.indexOfScalar(u8, self.input[self.pos..], '\r') orelse
+            std.mem.indexOfScalar(u8, self.input[self.pos..], '\n') orelse
+            self.input.len;
+
+        self.pos += end_line_pos;
+        return;
+    }
 
     self.pos += 1;
     const double_token: Token = switch (self.currentChar()) {
