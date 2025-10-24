@@ -39,9 +39,7 @@ pub fn parseBinaryExpression(self: *Self, alloc: std.mem.Allocator, lhs: *const 
 
 pub fn parseExpression(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) ParserError!ast.Expression {
     // first parse the NUD
-    const token_kind = self.currentTokenKind();
-    const nud_fn = try self.getHandler(.nud, token_kind);
-
+    const nud_fn = try self.getHandler(.nud, self.currentTokenKind());
     var lhs = try nud_fn(self, alloc);
 
     // while we have a led and (current bp < bp of current token)
@@ -173,7 +171,6 @@ pub fn parseIfExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
 
     const capture: ?[]const u8 = switch (self.currentToken()) {
         .pipe => blk: {
-            std.debug.print("getting capture", .{});
             _ = self.advance(); // consume opening pipe
             const capture_name = try self.expect(self.advance(), Lexer.Token.ident, "capture", "capture name");
             try self.expect(self.advance(), Lexer.Token.pipe, "capture", "|"); // consume closing pipe
@@ -184,10 +181,12 @@ pub fn parseIfExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
 
     var body = ast.Block{};
     const position_backup = self.pos; // save position bc we're testing parse statement.
-    if (statement_handlers.parseStatement(self, alloc, .{ .silent = true }) catch null) |body_statement| {
+    if (statement_handlers.parseStatement(self, alloc, .{ .silent = true, .require_semicolon = false }) catch null) |body_statement| {
+        std.debug.print("185\n", .{});
         try body.append(alloc, body_statement);
     } else {
         // if body isn't a statement, it must be a block. reset self.pos back to its original position
+        std.debug.print("188\n", .{});
         self.pos = position_backup;
         body = try self.parseBlock(alloc);
     }

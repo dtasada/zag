@@ -102,10 +102,10 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(Lexer.Token.open_brace, .call, expression_handlers.parseStructInstantiationExpression);
     try self.led(Lexer.Token.open_paren, .call, expression_handlers.parseCallExpression);
     try self.nud(Lexer.Token.open_bracket, expression_handlers.parseArrayInstantiationExpression);
-    try self.nud(Lexer.Token.open_brace, expression_handlers.parseBlockExpression);
-    try self.nud(Lexer.Token.@"if", expression_handlers.parseIfExpression);
 
     // other expressions
+    try self.nud(Lexer.Token.open_brace, expression_handlers.parseBlockExpression);
+    try self.nud(Lexer.Token.@"if", expression_handlers.parseIfExpression);
 
     // Statements
     try self.statement(Lexer.Token.let, statement_handlers.parseVariableDeclarationStatement);
@@ -142,23 +142,12 @@ pub inline fn advance(self: *Self) Lexer.Token {
     return current_token;
 }
 
-/// Doesn't change position and returns next token.
-inline fn peek(self: *const Self) Lexer.Token {
-    return self.input.tokens.items[self.pos + 1];
-}
-
 pub inline fn currentToken(self: *const Self) Lexer.Token {
     return self.input.tokens.items[self.pos];
 }
 
 pub inline fn currentTokenKind(self: *const Self) Lexer.TokenKind {
     return std.meta.activeTag(self.currentToken());
-}
-
-/// Consumes token and returns next one.
-inline fn nextToken(self: *Self) Lexer.Token {
-    self.pos += 1;
-    return self.currentToken();
 }
 
 /// Skips a token (self.pos+=2) and returns token at new position.
@@ -197,13 +186,15 @@ pub fn unexpectedToken(
     expected_token: []const u8,
     actual: Lexer.Token,
 ) error{ NoSpaceLeft, UnexpectedToken } {
+    const pos = std.math.clamp(self.pos, 0, self.input.source_map.items.len - 1);
+
     utils.print(
         "Unexpected token '{f}' in {s} at {}:{}. Expected '{s}'\n",
         .{
             actual,
             environment,
-            self.input.source_map.items[self.pos].line,
-            self.input.source_map.items[self.pos].col,
+            self.input.source_map.items[pos].line,
+            self.input.source_map.items[pos].col,
             expected_token,
         },
         .red,

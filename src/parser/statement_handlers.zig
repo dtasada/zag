@@ -10,19 +10,28 @@ const TypeParser = @import("TypeParser.zig");
 const Self = @import("Parser.zig");
 const ParserError = Self.ParserError;
 
-pub fn parseStatement(self: *Self, alloc: std.mem.Allocator, config: struct { silent: bool = false }) ParserError!ast.Statement {
+pub fn parseStatement(
+    self: *Self,
+    alloc: std.mem.Allocator,
+    config: struct {
+        silent: bool = false,
+        require_semicolon: bool = true,
+    },
+) ParserError!ast.Statement {
     if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
         return statement_fn(self, alloc);
     }
 
     const expression = try expression_handlers.parseExpression(self, alloc, .default);
 
-    if (config.silent)
-        try self.expectSilent(self.currentToken(), Lexer.Token.semicolon)
-    else
-        try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
+    if (config.require_semicolon) {
+        if (config.silent)
+            try self.expectSilent(self.currentToken(), Lexer.Token.semicolon)
+        else
+            try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
 
-    _ = self.advance(); // consume semicolon
+        _ = self.advance(); // consume semicolon
+    }
 
     return .{ .expression = expression };
 }
@@ -53,12 +62,11 @@ pub fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) 
     const assigned_value = try expression_handlers.parseExpression(self, alloc, .assignment);
 
     try self.expect(
-        self.currentToken(),
+        self.advance(),
         Lexer.Token.semicolon,
         "variable declaration statement",
         ";",
     );
-    _ = self.advance(); // consume semicolon
 
     return .{
         .variable_declaration = .{
