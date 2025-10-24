@@ -355,11 +355,7 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator) !void {
 fn appendToken(self: *Self, alloc: std.mem.Allocator, token: Token) !void {
     try self.tokens.append(alloc, token);
 
-    var amount_of_lines: usize = 1;
-    for (0..self.pos) |i| {
-        if (self.input[i] == '\n') amount_of_lines += 1;
-    }
-
-    const col = 1 + self.pos - (std.mem.lastIndexOf(u8, self.input[0..self.pos], "\r\n") orelse 0);
+    const amount_of_lines = std.mem.count(u8, self.input[0..self.pos], "\n");
+    const col = self.pos - (std.mem.lastIndexOfScalar(u8, self.input[0..self.pos], '\n') orelse 0);
     try self.source_map.append(alloc, .{ .line = amount_of_lines, .col = col });
 }

@@ -1,7 +1,7 @@
 const std = @import("std");
-const utils = @import("utils.zig");
+const utils = @import("../utils.zig");
 
-const Lexer = @import("Lexer.zig");
+const Lexer = @import("../Lexer.zig");
 const Parser = @import("Parser.zig");
 
 const BindingPower = Parser.BindingPower;
@@ -48,7 +48,6 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
 
     try self.nud(Lexer.Token.ident, parseSymbolType);
     try self.nud(Lexer.Token.open_bracket, parseArrayType);
-
     return self;
 }
 

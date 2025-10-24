@@ -4,7 +4,7 @@ const pretty = @import("pretty");
 
 const utils = @import("utils.zig");
 const Lexer = @import("Lexer.zig");
-const Parser = @import("Parser.zig");
+const Parser = @import("parser/Parser.zig");
 
 fn build(alloc: std.mem.Allocator) !void {
     utils.print("building...\n", .{}, .white);

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const LexerToken = @import("Lexer.zig").Token;
+const LexerToken = @import("../Lexer.zig").Token;
 
 pub const ParameterList = std.ArrayList(VariableSignature);
 pub const ArgumentList = std.ArrayList(Expression);
@@ -133,17 +133,20 @@ pub const Statement = union(enum) {
         methods: std.ArrayList(FunctionDefinition) = .{},
     };
 
+    const While = IfExpression;
+
     @"return": Expression,
     expression: Expression,
     variable_declaration: VariableDeclaration,
     struct_declaration: StructDeclaration,
     function_definition: FunctionDefinition,
-    block: Block,
     @"if": IfExpression,
+    @"while": While,
 };
 
 const IfExpression = struct {
     condition: *const Expression,
+    capture: ?[]const u8,
     body: Block,
 };
 
