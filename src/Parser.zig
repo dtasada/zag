@@ -100,12 +100,16 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(Lexer.Token.open_brace, .call, parseStructInstantiationExpression);
     try self.led(Lexer.Token.open_paren, .call, parseCallExpression);
     try self.nud(Lexer.Token.open_bracket, parseArrayInstantiationExpression);
+    try self.nud(Lexer.Token.@"if", parseIfExpression);
+
+    // other expressions
 
     // Statements
     try self.statement(Lexer.Token.let, parseVariableDeclarationStatement);
     try self.statement(Lexer.Token.@"var", parseVariableDeclarationStatement);
     try self.statement(Lexer.Token.@"struct", parseStructDeclarationStatement);
     try self.statement(Lexer.Token.@"fn", parseFunctionDefinition);
+    try self.statement(Lexer.Token.@"if", parseIfStatement);
 
     return self;
 }
@@ -221,7 +225,6 @@ fn parseStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Stateme
         return statement_fn(self, alloc);
     }
 
-    std.debug.print("can't parse as statement. {f}\n", .{self.currentToken()});
     const expression = try self.parseExpression(alloc, .default);
     try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
     _ = self.advance(); // consume semicolon
@@ -265,6 +268,7 @@ fn parseExpression(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) Pars
 
     // while we have a led and (current bp < bp of current token)
     // continue parsing lhs
+
     while (self.bp_lookup.get(self.currentTokenKind())) |current_bp| {
         if (@intFromEnum(current_bp) <= @intFromEnum(bp)) break;
 
@@ -472,6 +476,34 @@ fn parseFunctionDefinition(self: *Self, alloc: std.mem.Allocator) ParserError!as
             .body = body,
         },
     };
+}
+
+fn parseIfExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Expression {
+    try self.expect(self.advance(), Lexer.Token.@"if", "if statement", "if");
+
+    try self.expect(self.advance(), Lexer.Token.open_paren, "array instantiation", "(");
+
+    const condition = try alloc.create(ast.Expression);
+    condition.* = try self.parseExpression(alloc, .default);
+
+    try self.expect(self.advance(), Lexer.Token.close_paren, "array instantiation", ")");
+
+    var body = ast.Block{};
+    if (self.parseStatement(alloc) catch null) |body_statement|
+        try body.append(alloc, body_statement)
+    else
+        body = try self.parseBlock(alloc);
+
+    return .{
+        .@"if" = .{
+            .condition = condition,
+            .body = body,
+        },
+    };
+}
+
+fn parseIfStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+    return .{ .expression = try self.parseIfExpression(alloc) };
 }
 
 /// A token which has a NUD handler means it expects nothing to its left

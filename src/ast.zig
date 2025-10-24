@@ -98,6 +98,8 @@ pub const Expression = union(enum) {
     assignment: Assignment,
     struct_instantiation: StructInstantiation,
     array_instantiation: ArrayInstantiation,
+    block: Block,
+    @"if": IfExpression,
 };
 
 pub const TopLevelNode = union(enum) {
@@ -136,6 +138,13 @@ pub const Statement = union(enum) {
     variable_declaration: VariableDeclaration,
     struct_declaration: StructDeclaration,
     function_definition: FunctionDefinition,
+    block: Block,
+    @"if": IfExpression,
+};
+
+const IfExpression = struct {
+    condition: *const Expression,
+    body: Block,
 };
 
 const VariableSignature = struct {
