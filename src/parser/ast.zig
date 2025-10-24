@@ -148,7 +148,7 @@ pub const Statement = union(enum) {
     @"while": While,
 };
 
-const IfExpression = struct {
+pub const IfExpression = struct {
     condition: *const Expression,
     capture: ?[]const u8,
     body: *const Expression,

@@ -182,10 +182,8 @@ pub fn parseIfExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
     const body = try alloc.create(ast.Expression);
     body.* = if (self.currentTokenKind() == .open_brace)
         try parseBlockExpression(self, alloc)
-    else b: {
-        std.debug.print("current token: {f}\n", .{self.currentToken()});
-        break :b try parseExpression(self, alloc, .default);
-    };
+    else
+        try parseExpression(self, alloc, .default);
 
     var @"else": ?*ast.Expression = null;
     if (self.currentTokenKind() == Lexer.Token.@"else") {

@@ -1,11 +1,5 @@
-if (a == b)
-	a + 2
-else if (true)
-	if (b)
-		then
-	else if (c)
-		false else finish;
-
-while (optional) |unwrap| {
-	use(unwrap);
+while (true) {
+	asdasd;
 }
+
+if (thingy) true;
