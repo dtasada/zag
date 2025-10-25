@@ -122,20 +122,38 @@ pub const Statement = union(enum) {
         assigned_value: Expression,
     };
 
-    const StructDeclaration = struct {
-        const Field = struct {
-            name: []const u8,
-            type: Type,
-        };
+    fn CompoundType(@"type": enum { @"struct", @"enum", @"union" }) type {
+        return struct {
+            const Field = switch (@"type") {
+                .@"struct" => struct {
+                    name: []const u8,
+                    type: Type,
+                    default_value: ?Expression = null,
+                },
+                .@"union" => struct {
+                    name: []const u8,
+                    type: ?Type,
+                },
+                .@"enum" => struct {
+                    name: []const u8,
+                    default_value: ?Expression = null,
+                },
+            };
 
-        name: []const u8,
-        members: std.ArrayList(Field) = .{},
-        methods: std.ArrayList(FunctionDefinition) = .{},
-    };
+            name: []const u8,
+            generic_types: ?ParameterList = null, // only for structs and unions
+            members: std.ArrayList(Field) = .{},
+            methods: std.ArrayList(FunctionDefinition) = .{},
+        };
+    }
+
+    pub const StructDeclaration = CompoundType(.@"struct");
+    pub const EnumDeclaration = CompoundType(.@"enum");
+    pub const UnionDeclaration = CompoundType(.@"union");
 
     const While = struct {
         condition: *const Expression,
-        capture: ?[]const u8,
+        capture: ?[]const u8 = null,
         body: *const Expression,
     };
 
@@ -143,6 +161,8 @@ pub const Statement = union(enum) {
     expression: Expression,
     variable_declaration: VariableDeclaration,
     struct_declaration: StructDeclaration,
+    enum_declaration: EnumDeclaration,
+    union_declaration: UnionDeclaration,
     function_definition: FunctionDefinition,
     @"if": IfExpression,
     @"while": While,
@@ -150,9 +170,9 @@ pub const Statement = union(enum) {
 
 pub const IfExpression = struct {
     condition: *const Expression,
-    capture: ?[]const u8,
+    capture: ?[]const u8 = null,
     body: *const Expression,
-    @"else": ?*const Expression,
+    @"else": ?*const Expression = null,
 };
 
 const VariableSignature = struct {

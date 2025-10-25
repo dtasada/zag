@@ -1,5 +1,3 @@
-while (true) {
-	asdasd;
+struct MyUnion(T, N: i32) {
+	body: []T
 }
-
-if (thingy) true;
