@@ -31,12 +31,16 @@ pub const BinaryOperator = enum {
     greater_equals,
     less_equals,
     bang_equals,
+    shift_right_equals,
+    shift_left_equals,
 
     ampersand,
     pipe,
     caret,
     logical_and,
     logical_or,
+    shift_right,
+    shift_left,
 
     pub fn fromLexerToken(t: LexerToken) BinaryOperator {
         return std.meta.stringToEnum(BinaryOperator, @tagName(std.meta.activeTag(t))) orelse

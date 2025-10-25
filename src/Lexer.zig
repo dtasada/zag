@@ -85,6 +85,8 @@ pub const Token = union(enum) {
     and_equals,
     or_equals,
     xor_equals,
+    shift_right_equals,
+    shift_left_equals,
 
     equals,
     equals_equals,
@@ -97,6 +99,8 @@ pub const Token = union(enum) {
     ampersand,
     pipe,
     caret,
+    shift_right,
+    shift_left,
     logical_and,
     logical_or,
 
@@ -257,7 +261,6 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator, start_pos: usize) 
         return;
     }
 
-    self.pos += 1;
     const first_token: Token = switch (first_token_char) {
         '=' => .equals,
         '!' => .bang,
@@ -273,30 +276,59 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator, start_pos: usize) 
         '^' => .caret,
         else => unreachable,
     };
+
+    self.pos += 1;
     const double_token: Token =
         if (self.pos < self.input.len) switch (self.currentChar()) {
             '=' => blk: {
                 self.pos += 1;
-                break :blk switch (first_token_char) {
-                    '=' => .equals_equals,
-                    '!' => .bang_equals,
-                    '>' => .greater_equals,
-                    '<' => .less_equals,
-                    '+' => .plus_equals,
-                    '-' => .minus_equals,
-                    '*' => .times_equals,
-                    '/' => .slash_equals,
-                    '%' => .mod_equals,
-                    '&' => .and_equals,
-                    '|' => .or_equals,
-                    '^' => .xor_equals,
+                break :blk switch (first_token) {
+                    .equals => .equals_equals,
+                    .bang => .bang_equals,
+                    .greater => .greater_equals,
+                    .less => .less_equals,
+                    .plus => .plus_equals,
+                    .dash => .minus_equals,
+                    .asterisk => .times_equals,
+                    .slash => .slash_equals,
+                    .percent => .mod_equals,
+                    .ampersand => .and_equals,
+                    .pipe => .or_equals,
+                    .caret => .xor_equals,
                     else => unreachable,
+                };
+            },
+            '>' => blk: {
+                self.pos += 1;
+                break :blk switch (first_token) {
+                    .greater => .shift_right,
+                    else => first_token,
+                };
+            },
+            '<' => blk: {
+                self.pos += 1;
+                break :blk switch (first_token) {
+                    .less => .shift_left,
+                    else => first_token,
                 };
             },
             else => first_token,
         } else first_token;
 
-    try self.appendToken(alloc, double_token, start_pos);
+    const triple_token: Token =
+        if (self.pos < self.input.len) switch (self.currentChar()) {
+            '=' => blk: {
+                self.pos += 1;
+                break :blk switch (double_token) {
+                    .shift_right => .shift_right_equals,
+                    .shift_left => .shift_left_equals,
+                    else => double_token,
+                };
+            },
+            else => double_token,
+        } else double_token;
+
+    try self.appendToken(alloc, triple_token, start_pos);
 }
 
 inline fn appendAndNext(self: *Self, alloc: std.mem.Allocator, token: Token) !void {

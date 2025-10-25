@@ -73,6 +73,8 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(Lexer.Token.and_equals, .assignment, expression_handlers.parseAssignmentExpression);
     try self.led(Lexer.Token.or_equals, .assignment, expression_handlers.parseAssignmentExpression);
     try self.led(Lexer.Token.xor_equals, .assignment, expression_handlers.parseAssignmentExpression);
+    try self.led(Lexer.Token.shift_right_equals, .assignment, expression_handlers.parseAssignmentExpression);
+    try self.led(Lexer.Token.shift_left_equals, .assignment, expression_handlers.parseAssignmentExpression);
 
     // logical
     try self.led(Lexer.Token.@"and", .logical, expression_handlers.parseBinaryExpression);
@@ -96,6 +98,10 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(Lexer.Token.ampersand, .multiplicative, expression_handlers.parseBinaryExpression);
     try self.led(Lexer.Token.pipe, .additive, expression_handlers.parseBinaryExpression);
     try self.led(Lexer.Token.caret, .additive, expression_handlers.parseBinaryExpression);
+    try self.led(Lexer.Token.pipe, .additive, expression_handlers.parseBinaryExpression);
+    try self.led(Lexer.Token.caret, .additive, expression_handlers.parseBinaryExpression);
+    try self.led(Lexer.Token.shift_left, .multiplicative, expression_handlers.parseBinaryExpression);
+    try self.led(Lexer.Token.shift_right, .multiplicative, expression_handlers.parseBinaryExpression);
 
     // literals & symbols
     try self.nud(Lexer.Token.int, expression_handlers.parsePrimaryExpression);
