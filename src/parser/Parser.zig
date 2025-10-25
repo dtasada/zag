@@ -99,6 +99,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(Lexer.Token.open_paren, expression_handlers.parseGroupExpression);
 
     // Call/member expressions
+    try self.led(Lexer.Token.dot, .member, expression_handlers.parseMemberAccessExpression);
     try self.led(Lexer.Token.open_brace, .call, expression_handlers.parseStructInstantiationExpression);
     try self.led(Lexer.Token.open_paren, .call, expression_handlers.parseCallExpression);
     try self.nud(Lexer.Token.open_bracket, expression_handlers.parseArrayInstantiationExpression);
@@ -132,7 +133,7 @@ pub fn getAst(self: *Self, alloc: std.mem.Allocator) !ast.RootNode {
     var root = ast.RootNode{};
 
     while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
-        try root.append(alloc, try statement_handlers.parseStatement(self, alloc, .{}));
+        try root.append(alloc, try statement_handlers.parseStatement(self, alloc));
 
     return root;
 }
@@ -311,7 +312,7 @@ pub fn parseBlock(self: *Self, alloc: std.mem.Allocator) !ast.Block {
     try self.expect(self.advance(), .open_brace, "block", "{");
 
     while (self.currentTokenKind() != .eof and self.currentTokenKind() != .close_brace)
-        try block.append(alloc, try statement_handlers.parseStatement(self, alloc, .{}));
+        try block.append(alloc, try statement_handlers.parseStatement(self, alloc));
 
     try self.expect(self.advance(), .close_brace, "block", "'}'");
 

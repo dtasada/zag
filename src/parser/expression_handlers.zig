@@ -39,6 +39,7 @@ pub fn parseBinaryExpression(self: *Self, alloc: std.mem.Allocator, lhs: *const 
 
 pub fn parseExpression(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) ParserError!ast.Expression {
     // first parse the NUD
+    std.debug.print("curren token: {f}\n", .{self.currentToken()});
     const nud_fn = try self.getHandler(.nud, self.currentTokenKind());
     var lhs = try nud_fn(self, alloc);
 
@@ -70,6 +71,21 @@ pub fn parseAssignmentExpression(self: *Self, alloc: std.mem.Allocator, lhs: *co
             .assignee = lhs,
             .op = op,
             .value = rhs,
+        },
+    };
+}
+
+pub fn parseMemberAccessExpression(self: *Self, alloc: std.mem.Allocator, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+    _ = self.advance(); // consume dot
+    const member_name = try self.expect(self.advance(), .ident, "member expression", "member name");
+
+    const rhs = try alloc.create(ast.Expression);
+    rhs.* = .{ .ident = member_name };
+
+    return .{
+        .member = .{
+            .lhs = lhs,
+            .rhs = rhs,
         },
     };
 }

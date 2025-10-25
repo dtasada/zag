@@ -210,7 +210,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
             try self.parseNumber(alloc, start_pos);
         } else {
             const char = self.currentChar();
-            const non_alphanumeric = "+-*/()[]{};:,=!><&|^";
+            const non_alphanumeric = "+-*/()[]{};:,=!><&|^.";
 
             // if char is a valid non-alphanumeric character
             if (std.mem.containsAtLeastScalar(u8, non_alphanumeric, 1, char)) {

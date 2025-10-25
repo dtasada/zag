@@ -10,55 +10,15 @@ const TypeParser = @import("TypeParser.zig");
 const Self = @import("Parser.zig");
 const ParserError = Self.ParserError;
 
-fn ifEndsWithBlock(if_expr: ast.IfExpression) bool {
-    if (if_expr.@"else") |else_expr| {
-        return switch (else_expr.*) {
-            .block => true,
-            .@"if" => |inner_if| ifEndsWithBlock(inner_if),
-            else => false,
-        };
-    }
-    return if_expr.body.* == .block;
-}
-
-pub fn parseStatement(
-    self: *Self,
-    alloc: std.mem.Allocator,
-    config: struct {
-        silent: bool = false,
-        require_semicolon: bool = true,
-    },
-) ParserError!ast.Statement {
+pub fn parseStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
     if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
         return statement_fn(self, alloc);
     }
 
     const expression = try expression_handlers.parseExpression(self, alloc, .default);
 
-    var semicolon_required = config.require_semicolon;
-    if (semicolon_required) {
-        switch (expression) {
-            .block => semicolon_required = false,
-            .@"if" => |if_expr| if (ifEndsWithBlock(if_expr)) {
-                semicolon_required = false;
-            },
-            else => {},
-        }
-    }
-
-    if (semicolon_required) {
-        if (config.silent) {
-            try self.expectSilent(self.currentToken(), Lexer.Token.semicolon);
-        } else {
-            try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
-        }
-        _ = self.advance(); // consume semicolon
-    } else {
-        // Semicolon is optional, but if it exists, consume it.
-        if (self.currentTokenKind() == .semicolon) {
-            _ = self.advance();
-        }
-    }
+    try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
+    _ = self.advance(); // consume semicolon
 
     return .{ .expression = expression };
 }
