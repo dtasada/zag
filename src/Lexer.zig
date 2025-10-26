@@ -344,20 +344,55 @@ inline fn appendAndNext(self: *Self, alloc: std.mem.Allocator, token: Token) !vo
 }
 
 fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
-    var passed_decimal = false;
+    var is_float = false;
 
-    while (self.pos < self.input.len and (std.ascii.isDigit(self.currentChar()) or self.currentChar() == '.')) {
-        if (self.currentChar() == '.') {
-            if (passed_decimal) {
-                try self.appendToken(alloc, .{ .bad_token = LexerError.BadNumber }, start_pos);
-                return;
-            }
-            passed_decimal = true;
-        }
+    // Consume integer part
+    while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
         self.pos += 1;
     }
 
+    // Check for decimal part, but look out for '..' range operator
+    if (self.pos < self.input.len and self.currentChar() == '.') {
+        if (self.pos + 1 < self.input.len and self.input[self.pos + 1] == '.') {
+            // It's a range operator `..`, so the number part is done.
+            // We don't consume the dot, we let the operator parser handle it.
+        } else {
+            // It's a decimal point.
+            is_float = true;
+            self.pos += 1; // Consume '.'
+            while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
+                self.pos += 1;
+            }
+        }
+    }
+
+    // Check for exponent part
+    if (self.pos < self.input.len and (self.currentChar() == 'e' or self.currentChar() == 'E')) {
+        is_float = true;
+        self.pos += 1; // consume 'e' or 'E'
+
+        if (self.pos < self.input.len and (self.currentChar() == '+' or self.currentChar() == '-')) {
+            self.pos += 1; // consume sign
+        }
+
+        const exponent_start = self.pos;
+        while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
+            self.pos += 1;
+        }
+        if (self.pos == exponent_start) {
+            // 'e' not followed by digits is an error.
+            // We need to consume the 'e' and any following alphanumeric characters to avoid re-parsing.
+            while (self.pos < self.input.len and std.ascii.isAlphanumeric(self.currentChar())) {
+                self.pos += 1;
+            }
+            try self.appendToken(alloc, Token{ .bad_token = LexerError.BadNumber }, start_pos);
+            return;
+        }
+    }
+
+    // A number followed by another letter is an error (e.g. `123a`).
     if (self.pos < self.input.len and std.ascii.isAlphabetic(self.input[self.pos])) {
+        // Consume the rest of the bad identifier.
         while (self.pos < self.input.len and std.ascii.isAlphanumeric(self.currentChar())) {
             self.pos += 1;
         }
@@ -365,9 +400,11 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
         return;
     }
 
-    if (passed_decimal) {
+    const number_str = self.input[start_pos..self.pos];
+
+    if (is_float) {
         const token = blk: {
-            const num = std.fmt.parseFloat(f64, self.input[start_pos..self.pos]) catch |err| {
+            const num = std.fmt.parseFloat(f64, number_str) catch |err| {
                 utils.print("Couldn't parse float: {}\n", .{err}, .red);
                 break :blk Token{ .bad_token = LexerError.BadNumber };
             };
@@ -376,7 +413,7 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
         try self.appendToken(alloc, token, start_pos);
     } else {
         const token = blk: {
-            const num = std.fmt.parseInt(u64, self.input[start_pos..self.pos], 10) catch |err| {
+            const num = std.fmt.parseInt(u64, number_str, 10) catch |err| {
                 utils.print("Couldn't parse integer: {}", .{err}, .red);
                 break :blk Token{ .bad_token = LexerError.BadNumber };
             };
