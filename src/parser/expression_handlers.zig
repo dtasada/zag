@@ -174,14 +174,14 @@ pub fn parseCallExpression(self: *Self, alloc: std.mem.Allocator, lhs: *const as
 }
 
 pub fn parseIfExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Expression {
-    try self.expect(self.advance(), Lexer.Token.@"if", "if statement", "if");
+    try self.expect(self.advance(), Lexer.Token.@"if", "if expression", "if");
 
-    try self.expect(self.advance(), Lexer.Token.open_paren, "if statement", "(");
+    try self.expect(self.advance(), Lexer.Token.open_paren, "if expression", "(");
 
     const condition = try alloc.create(ast.Expression);
     condition.* = try parseExpression(self, alloc, .default);
 
-    try self.expect(self.advance(), Lexer.Token.close_paren, "if statement", ")");
+    try self.expect(self.advance(), Lexer.Token.close_paren, "if expression", ")");
 
     const capture: ?[]const u8 = switch (self.currentToken()) {
         .pipe => blk: {
@@ -234,6 +234,23 @@ pub fn parseRangeExpression(self: *Self, alloc: std.mem.Allocator, lhs: *const a
         .range = .{
             .start = lhs,
             .end = end,
+        },
+    };
+}
+
+pub fn parseReferenceExpression(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Expression {
+    _ = self.advance(); // consume `7`
+
+    const is_mut = self.currentTokenKind() == Lexer.Token.mut;
+    if (is_mut) _ = self.advance(); // consume `mut`
+
+    const inner = try alloc.create(ast.Expression);
+    inner.* = try parseExpression(self, alloc, .default);
+
+    return .{
+        .reference = .{
+            .inner = inner,
+            .is_mut = is_mut,
         },
     };
 }

@@ -97,10 +97,18 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
 pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
     _ = self.parent_parser.advance(); // consume '&'
 
+    const is_mut = self.parent_parser.currentTokenKind() == Lexer.Token.mut;
+    if (is_mut) _ = self.parent_parser.advance(); // consume `mut`
+
     const inner = try alloc.create(ast.Type);
     inner.* = try parseType(self, alloc, .default);
 
-    return .{ .reference = inner };
+    return .{
+        .reference = .{
+            .inner = inner,
+            .is_mut = is_mut,
+        },
+    };
 }
 
 pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {

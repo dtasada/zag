@@ -120,11 +120,12 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     // other expressions
     try self.nud(Lexer.Token.open_brace, expression_handlers.parseBlockExpression);
     try self.nud(Lexer.Token.@"if", expression_handlers.parseIfExpression);
+    try self.nud(Lexer.Token.ampersand, expression_handlers.parseReferenceExpression);
     try self.led(Lexer.Token.dot_dot, .call, expression_handlers.parseRangeExpression);
 
     // Statements
     try self.statement(Lexer.Token.let, statement_handlers.parseVariableDeclarationStatement);
-    try self.statement(Lexer.Token.@"var", statement_handlers.parseVariableDeclarationStatement);
+    try self.statement(Lexer.Token.mut, statement_handlers.parseVariableDeclarationStatement);
     try self.statement(Lexer.Token.@"struct", statement_handlers.parseStructDeclarationStatement);
     try self.statement(Lexer.Token.@"enum", statement_handlers.parseEnumDeclarationStatement);
     try self.statement(Lexer.Token.@"union", statement_handlers.parseUnionDeclarationStatement);
@@ -132,6 +133,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(Lexer.Token.@"while", statement_handlers.parseWhileStatement);
     try self.statement(Lexer.Token.@"return", statement_handlers.parseReturnStatement);
     try self.statement(Lexer.Token.@"for", statement_handlers.parseForStatement);
+    try self.statement(Lexer.Token.@"if", statement_handlers.parseIfStatement);
 
     return self;
 }

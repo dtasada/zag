@@ -50,7 +50,7 @@ pub const Token = union(enum) {
 
     // keywords
     let,
-    @"var",
+    mut,
     @"struct",
     @"enum",
     @"union",
@@ -177,8 +177,8 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
             const token: Token =
                 if (std.mem.eql(u8, word, "let"))
                     .let
-                else if (std.mem.eql(u8, word, "var"))
-                    .@"var"
+                else if (std.mem.eql(u8, word, "mut"))
+                    .mut
                 else if (std.mem.eql(u8, word, "struct"))
                     .@"struct"
                 else if (std.mem.eql(u8, word, "enum"))

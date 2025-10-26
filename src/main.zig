@@ -40,10 +40,15 @@ fn build(alloc: std.mem.Allocator) !void {
         return error.ParserFailed;
     };
 
+    // try pretty.print(alloc, .{ast}, .{ .max_depth = 100 });
+
     var compiler = try Compiler.init(arena);
     defer compiler.deinit(arena);
 
-    try compiler.emit(ast);
+    compiler.emit(ast) catch |err| {
+        utils.print("Failed to compile program: {}\n", .{err}, .red);
+        return error.CompilerFailed;
+    };
 }
 
 pub fn main() !void {

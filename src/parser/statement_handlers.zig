@@ -24,7 +24,11 @@ pub fn parseStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Sta
 }
 
 pub fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    const is_mut = std.meta.activeTag(self.advance()) == Lexer.Token.@"var";
+    _ = self.advance(); // consume `let`
+
+    const is_mut = self.currentTokenKind() == Lexer.Token.mut;
+    if (is_mut) _ = self.advance(); // consume `mut`
+
     const var_name = try self.expect(
         self.advance(),
         Lexer.Token.ident,
@@ -241,11 +245,11 @@ pub fn parseWhileStatement(self: *Self, alloc: std.mem.Allocator) ParserError!as
         else => null,
     };
 
-    const body = try alloc.create(ast.Expression);
+    const body = try alloc.create(ast.Statement);
     body.* = if (self.currentTokenKind() == .open_brace)
-        try expression_handlers.parseBlockExpression(self, alloc)
+        .{ .block = try self.parseBlock(alloc) }
     else
-        try expression_handlers.parseExpression(self, alloc, .default);
+        try parseStatement(self, alloc);
 
     return .{
         .@"while" = .{
@@ -258,7 +262,11 @@ pub fn parseWhileStatement(self: *Self, alloc: std.mem.Allocator) ParserError!as
 
 pub fn parseReturnStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
     _ = self.advance(); // consume "return" keyword and parse from there.
-    const expression = try expression_handlers.parseExpression(self, alloc, .default);
+
+    var expression: ?ast.Expression = null;
+    if (self.currentTokenKind() != Lexer.Token.semicolon)
+        expression = try expression_handlers.parseExpression(self, alloc, .default);
+
     try self.expect(self.advance(), Lexer.Token.semicolon, "return statement", ";");
     return .{ .@"return" = expression };
 }
@@ -283,6 +291,53 @@ pub fn parseForStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
             .iterator = iterator,
             .capture = capture,
             .body = body,
+        },
+    };
+}
+
+pub fn parseIfStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+    try self.expect(self.advance(), Lexer.Token.@"if", "if expression", "if");
+
+    try self.expect(self.advance(), Lexer.Token.open_paren, "if expression", "(");
+
+    const condition = try alloc.create(ast.Expression);
+    condition.* = try expression_handlers.parseExpression(self, alloc, .default);
+
+    try self.expect(self.advance(), Lexer.Token.close_paren, "if expression", ")");
+
+    const capture: ?[]const u8 = switch (self.currentToken()) {
+        .pipe => blk: {
+            _ = self.advance(); // consume opening pipe
+            const capture_name = try self.expect(self.advance(), Lexer.Token.ident, "capture", "capture name");
+            try self.expect(self.advance(), Lexer.Token.pipe, "capture", "|"); // consume closing pipe
+            break :blk capture_name;
+        },
+        else => null,
+    };
+
+    const body = try alloc.create(ast.Statement);
+    body.* = if (self.currentTokenKind() == .open_brace)
+        .{ .block = try self.parseBlock(alloc) }
+    else
+        try parseStatement(self, alloc);
+
+    var @"else": ?*ast.Statement = null;
+    if (self.currentTokenKind() == Lexer.Token.@"else") {
+        _ = self.advance(); // consume `else`
+
+        @"else" = try alloc.create(ast.Statement);
+        @"else".?.* = if (self.currentTokenKind() == .open_brace)
+            .{ .block = try self.parseBlock(alloc) }
+        else
+            try parseStatement(self, alloc);
+    }
+
+    return .{
+        .@"if" = .{
+            .condition = condition,
+            .capture = capture,
+            .body = body,
+            .@"else" = @"else",
         },
     };
 }

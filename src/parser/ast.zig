@@ -91,6 +91,18 @@ pub const Expression = union(enum) {
         end: *const Expression,
     };
 
+    const Reference = struct {
+        inner: *const Expression,
+        is_mut: bool,
+    };
+
+    const If = struct {
+        condition: *const Expression,
+        capture: ?[]const u8 = null,
+        body: *const Expression,
+        @"else": ?*const Expression = null,
+    };
+
     bad_node,
 
     // literals
@@ -110,6 +122,7 @@ pub const Expression = union(enum) {
     block: Block,
     @"if": If,
     range: Range,
+    reference: Reference,
 };
 
 // pub const TopLevelNode = union(enum) {
@@ -125,7 +138,7 @@ pub const FunctionDefinition = struct {
 };
 
 pub const Statement = union(enum) {
-    const VariableDeclaration = struct {
+    pub const VariableDeclaration = struct {
         is_mut: bool,
         variable_name: []const u8,
         type: Type,
@@ -161,10 +174,10 @@ pub const Statement = union(enum) {
     pub const EnumDeclaration = CompoundType(.@"enum");
     pub const UnionDeclaration = CompoundType(.@"union");
 
-    const While = struct {
+    pub const While = struct {
         condition: *const Expression,
         capture: ?[]const u8 = null,
-        body: *const Expression,
+        body: *const Statement,
     };
 
     pub const For = struct {
@@ -173,23 +186,24 @@ pub const Statement = union(enum) {
         body: *const Expression,
     };
 
-    @"return": Expression,
+    pub const If = struct {
+        condition: *const Expression,
+        capture: ?[]const u8 = null,
+        body: *const Statement,
+        @"else": ?*const Statement = null,
+    };
+
+    @"return": ?Expression,
     expression: Expression,
     variable_declaration: VariableDeclaration,
     struct_declaration: StructDeclaration,
     enum_declaration: EnumDeclaration,
     union_declaration: UnionDeclaration,
     function_definition: FunctionDefinition,
+    block: Block,
     @"if": If,
     @"while": While,
     @"for": For,
-};
-
-pub const If = struct {
-    condition: *const Expression,
-    capture: ?[]const u8 = null,
-    body: *const Expression,
-    @"else": ?*const Expression = null,
 };
 
 const VariableSignature = struct {
@@ -198,19 +212,28 @@ const VariableSignature = struct {
 };
 
 pub const Type = union(enum) {
-    inferred,
-    symbol: []const u8,
-    reference: *const Type,
-    optional: *const Type,
-    array: struct {
+    const Reference = struct {
+        inner: *const Type,
+        is_mut: bool,
+    };
+
+    const Array = struct {
         inner: *const Type,
         /// if size is `null` type is an arraylist, else it's an array.
         /// if size is `_`, type is an array of inferred size.
         /// if size is a valid expression, type is an array of specified size.
         size: ?*const Expression = null,
-    },
-    error_union: struct {
+    };
+
+    const ErrorUnion = struct {
         success: *const Type,
         @"error": ?*const Type = null,
-    },
+    };
+
+    inferred,
+    symbol: []const u8,
+    optional: *const Type,
+    reference: Reference,
+    array: Array,
+    error_union: ErrorUnion,
 };
