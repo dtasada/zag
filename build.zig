@@ -14,10 +14,19 @@ pub fn build(b: *std.Build) void {
     });
 
     const clap = b.dependency("clap", .{});
-    exe.root_module.addImport("clap", clap.module("clap"));
+    const clap_mod = clap.module("clap");
+    exe.root_module.addImport("clap", clap_mod);
 
     const pretty = b.dependency("pretty", .{});
-    exe.root_module.addImport("pretty", pretty.module("pretty"));
+    const pretty_mod = pretty.module("pretty");
+    exe.root_module.addImport("pretty", pretty_mod);
+
+    const llvm_dep = b.dependency("llvm", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const llvm_mod = llvm_dep.module("llvm");
+    exe.root_module.addImport("llvm", llvm_mod);
 
     b.installArtifact(exe);
 
@@ -41,8 +50,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    exe_check.root_module.addImport("clap", clap.module("clap"));
-    exe_check.root_module.addImport("pretty", pretty.module("pretty"));
+    exe_check.root_module.addImport("clap", clap_mod);
+    exe_check.root_module.addImport("pretty", pretty_mod);
+    exe_check.root_module.addImport("llvm", llvm_mod);
 
     const check = b.step("check", "Check if llvm_wrapper compiles");
     check.dependOn(&exe_check.step);

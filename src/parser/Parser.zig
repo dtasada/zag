@@ -287,7 +287,7 @@ pub fn parseParameters(self: *Self, alloc: std.mem.Allocator) !ast.ParameterList
         try self.expect(self.advance(), .colon, "parameter list", ":");
         const param_type = try self.type_parser.parseType(alloc, .default);
 
-        try params.append(alloc, .{ .param_name = param_name, .type = param_type });
+        try params.append(alloc, .{ .name = param_name, .type = param_type });
 
         // look for a comma, else a closing parenthesis
         self.expectSilent(self.currentToken(), .comma) catch {
@@ -350,7 +350,7 @@ pub fn parseGenericParameters(self: *Self, alloc: std.mem.Allocator) ParserError
             param_type = try self.type_parser.parseType(alloc, .default);
         }
 
-        try params.append(alloc, .{ .param_name = param_name, .type = param_type });
+        try params.append(alloc, .{ .name = param_name, .type = param_type });
 
         // look for a comma, else a closing parenthesis
         self.expectSilent(self.currentToken(), .comma) catch {

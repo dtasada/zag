@@ -23,6 +23,8 @@ pub const BinaryOperator = enum {
     and_equals,
     or_equals,
     xor_equals,
+    shift_right_equals,
+    shift_left_equals,
 
     equals,
     equals_equals,
@@ -31,8 +33,6 @@ pub const BinaryOperator = enum {
     greater_equals,
     less_equals,
     bang_equals,
-    shift_right_equals,
-    shift_left_equals,
 
     ampersand,
     pipe,
@@ -193,7 +193,7 @@ pub const If = struct {
 };
 
 const VariableSignature = struct {
-    param_name: []const u8,
+    name: []const u8,
     type: Type,
 };
 

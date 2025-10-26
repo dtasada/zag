@@ -5,6 +5,7 @@ const pretty = @import("pretty");
 const utils = @import("utils.zig");
 const Lexer = @import("Lexer.zig");
 const Parser = @import("parser/Parser.zig");
+const Compiler = @import("Compiler.zig");
 
 fn build(alloc: std.mem.Allocator) !void {
     utils.print("building...\n", .{}, .white);
@@ -39,7 +40,10 @@ fn build(alloc: std.mem.Allocator) !void {
         return error.ParserFailed;
     };
 
-    try pretty.print(alloc, .{ast}, .{ .max_depth = 100 });
+    var compiler = try Compiler.init(arena);
+    defer compiler.deinit(arena);
+
+    try compiler.emit(ast);
 }
 
 pub fn main() !void {
