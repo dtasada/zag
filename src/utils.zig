@@ -14,7 +14,7 @@ pub fn print(
             .white => "",
             .red => "\x1b[0;31m",
             .green => "\x1b[0;34m",
-            .blue => "\x1b[0;34m",
+            .blue => "\x1b[0;32m",
             .yellow => "\x1b[0;33m",
         } ++ fmt ++ "\x1b[0m",
         args,

@@ -153,13 +153,13 @@ pub const Statement = union(enum) {
                     type: Type,
                     default_value: ?Expression = null,
                 },
-                .@"union" => struct {
-                    name: []const u8,
-                    type: ?Type,
-                },
                 .@"enum" => struct {
                     name: []const u8,
                     default_value: ?Expression = null,
+                },
+                .@"union" => struct {
+                    name: []const u8,
+                    type: ?Type,
                 },
             };
 

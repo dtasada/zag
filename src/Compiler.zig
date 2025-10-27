@@ -10,6 +10,7 @@ pub const CompilerError = error{
     UnsupportedType,
     UnsupportedExpression,
     UndeclaredVariable,
+    VariableRedeclaration,
     OutOfMemory,
     AssignmentToImmutableVariable,
 };
@@ -30,13 +31,14 @@ alloc: std.mem.Allocator,
 context: llvm.types.LLVMContextRef,
 builder: llvm.types.LLVMBuilderRef,
 module: llvm.types.LLVMModuleRef,
-variables: std.StringHashMap(Symbol),
+variables: std.ArrayList(std.StringHashMap(Symbol)) = .{},
 
 pub fn init(alloc: std.mem.Allocator) !*Self {
     const self = try alloc.create(Self);
 
     const context = llvm.core.LLVMContextCreate();
-    const module = llvm.core.LLVMModuleCreateWithNameInContext("main", context) orelse return error.FailedToCreateModule;
+    const module = llvm.core.LLVMModuleCreateWithNameInContext("main", context) orelse
+        return error.FailedToCreateModule;
     const builder = llvm.core.LLVMCreateBuilderInContext(context);
 
     self.* = .{
@@ -44,18 +46,36 @@ pub fn init(alloc: std.mem.Allocator) !*Self {
         .context = context,
         .builder = builder,
         .module = module,
-        .variables = .init(alloc),
     };
+
+    try self.variables.append(self.alloc, std.StringHashMap(Symbol).init(alloc)); // global scope
 
     return self;
 }
 
-pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
-    self.variables.deinit();
+pub fn deinit(self: *Self) void {
+    for (self.variables.items) |*scope|
+        scope.deinit();
+
+    self.variables.deinit(self.alloc);
     llvm.core.LLVMDisposeBuilder(self.builder);
     llvm.core.LLVMDisposeModule(self.module);
     llvm.core.LLVMContextDispose(self.context);
-    alloc.destroy(self);
+}
+
+fn findVariable(self: *const Self, name: []const u8) ?Symbol {
+    for (self.variables.items, 0..) |_, i| {
+        const scope_idx = self.variables.items.len - 1 - i;
+        if (self.variables.items[scope_idx].get(name)) |symbol| {
+            return symbol;
+        }
+    }
+    return null;
+}
+
+fn addVariable(self: *Self, name: []const u8, symbol: Symbol) !void {
+    const last_scope_idx = self.variables.items.len - 1;
+    try self.variables.items[last_scope_idx].put(name, symbol);
 }
 
 /// Entry point for the compiler. Prints LLVM IR to stdout
@@ -66,6 +86,21 @@ pub fn emit(self: *Self, root: ast.RootNode) CompilerError!void {
 
     // print IR
     llvm.core.LLVMDumpModule(self.module);
+}
+
+fn createEntryBlockAlloca(self: *Self, @"fn": llvm.types.LLVMValueRef, ty: llvm.types.LLVMTypeRef, name: [*:0]const u8) llvm.types.LLVMValueRef {
+    const builder = llvm.core.LLVMCreateBuilderInContext(self.context);
+    defer llvm.core.LLVMDisposeBuilder(builder);
+
+    const entry_block = llvm.core.LLVMGetEntryBasicBlock(@"fn");
+    const first_instruction = llvm.core.LLVMGetFirstInstruction(entry_block);
+
+    if (first_instruction) |instr| {
+        llvm.core.LLVMPositionBuilderBefore(builder, instr);
+    } else {
+        llvm.core.LLVMPositionBuilderAtEnd(builder, entry_block);
+    }
+    return llvm.core.LLVMBuildAlloca(builder, ty, name);
 }
 
 fn compileStatement(self: *Self, statement: ast.Statement) CompilerError!void {
@@ -93,39 +128,52 @@ fn compileFunctionDefinition(self: *Self, fn_def: ast.FunctionDefinition) Compil
         try param_types.append(self.alloc, try self.compileType(param.type));
     }
 
-    const fn_type = llvm.core.LLVMFunctionType(return_type, param_types.items.ptr, @as(u32, @intCast(param_types.items.len)), 0);
+    const fn_type = llvm.core.LLVMFunctionType(return_type, param_types.items.ptr, cUint(param_types.items.len), 0);
     const fn_val = llvm.core.LLVMAddFunction(self.module, fn_name, fn_type);
 
     const entry = llvm.core.LLVMAppendBasicBlockInContext(self.context, fn_val, "entry");
     llvm.core.LLVMPositionBuilderAtEnd(self.builder, entry);
 
-    self.variables.clearRetainingCapacity();
+    try self.variables.append(self.alloc, std.StringHashMap(Symbol).init(self.alloc));
     for (fn_def.parameters.items, 0..) |param, i| {
-        const param_val = llvm.core.LLVMGetParam(fn_val, @as(u32, @intCast(i)));
+        const param_val = llvm.core.LLVMGetParam(fn_val, cUint(i));
         const param_name = try self.cString(param.name);
         llvm.core.LLVMSetValueName(param_val, param_name);
         const param_type = param_types.items[i];
-        try self.variables.put(param.name, .{ .parameter = .{ .val = param_val, .ty = param_type } });
+        try self.addVariable(param.name, .{ .parameter = .{ .val = param_val, .ty = param_type } });
     }
 
     try self.compileBlock(fn_def.body);
+    var last_scope = self.variables.pop().?;
+    last_scope.deinit();
 }
 
 fn compileBlock(self: *Self, block: ast.Block) CompilerError!void {
+    try self.variables.append(self.alloc, std.StringHashMap(Symbol).init(self.alloc));
     for (block.items) |statement| {
         try self.compileStatement(statement);
     }
+    var last_scope = self.variables.pop().?;
+    last_scope.deinit();
 }
 
 fn compileVariableDeclaration(self: *Self, var_decl: ast.Statement.VariableDeclaration) CompilerError!void {
+    if (self.findVariable(var_decl.variable_name) != null) {
+        return error.VariableRedeclaration;
+    }
+
     const value = try self.compileExpression(var_decl.assigned_value);
     const value_type = llvm.core.LLVMTypeOf(value);
 
     const var_name = try self.cString(var_decl.variable_name);
-    const alloca = llvm.core.LLVMBuildAlloca(self.builder, value_type, var_name);
+
+    const current_block = llvm.core.LLVMGetInsertBlock(self.builder);
+    const current_fn = llvm.core.LLVMGetBasicBlockParent(current_block);
+    const alloca = self.createEntryBlockAlloca(current_fn, value_type, var_name);
+
     _ = llvm.core.LLVMBuildStore(self.builder, value, alloca);
 
-    try self.variables.put(var_decl.variable_name, .{ .local = .{ .ptr = alloca, .ty = value_type, .is_mut = var_decl.is_mut } });
+    try self.addVariable(var_decl.variable_name, .{ .local = .{ .ptr = alloca, .ty = value_type, .is_mut = var_decl.is_mut } });
 }
 
 fn compileReturnStatement(self: *Self, return_expr: ?ast.Expression) CompilerError!void {
@@ -142,7 +190,7 @@ fn compileExpression(self: *Self, expr: ast.Expression) CompilerError!llvm.types
             return llvm.core.LLVMConstInt(i32_type, uint, 0);
         },
         .ident => |ident| {
-            const symbol = self.variables.get(ident) orelse return error.UndeclaredVariable;
+            const symbol = self.findVariable(ident) orelse return error.UndeclaredVariable;
             return switch (symbol) {
                 .parameter => |p| p.val,
                 .local => |l| {
@@ -158,7 +206,7 @@ fn compileExpression(self: *Self, expr: ast.Expression) CompilerError!llvm.types
                 return error.UnsupportedExpression;
             }
             const var_name = ass.assignee.*.ident;
-            const symbol = self.variables.get(var_name) orelse return error.UndeclaredVariable;
+            const symbol = self.findVariable(var_name) orelse return error.UndeclaredVariable;
 
             const l = switch (symbol) {
                 .local => |local| local,
@@ -235,7 +283,7 @@ fn compileForStatement(self: *Self, for_stmt: ast.Statement.For) !void {
 
     // Create the loop counter variable
     const i32_type = llvm.core.LLVMInt32TypeInContext(self.context); // Assuming i32 for now
-    const counter_alloca = llvm.core.LLVMBuildAlloca(self.builder, i32_type, "i");
+    const counter_alloca = self.createEntryBlockAlloca(current_fn, i32_type, "i");
     _ = llvm.core.LLVMBuildStore(self.builder, start_val, counter_alloca);
 
     // Create basic blocks
@@ -255,18 +303,17 @@ fn compileForStatement(self: *Self, for_stmt: ast.Statement.For) !void {
     // --- Loop Body Block ---
     llvm.core.LLVMPositionBuilderAtEnd(self.builder, loop_block);
 
+    // Create a new scope for the loop body
+    try self.variables.append(self.alloc, std.StringHashMap(Symbol).init(self.alloc));
     // Add capture variable to scope
-    const original_symbol = try self.variables.fetchPut(for_stmt.capture, .{ .local = .{ .ptr = counter_alloca, .ty = i32_type, .is_mut = false } });
+    try self.addVariable(for_stmt.capture, .{ .local = .{ .ptr = counter_alloca, .ty = i32_type, .is_mut = false } });
 
     // Compile body
     try self.compileStatement(for_stmt.body.*);
 
-    // Remove capture variable from scope and restore original if any
-    if (original_symbol) |sym| {
-        _ = try self.variables.put(for_stmt.capture, sym.value);
-    } else {
-        _ = self.variables.remove(for_stmt.capture);
-    }
+    // Pop loop body scope
+    var last_scope = self.variables.pop().?;
+    last_scope.deinit();
 
     // Increment counter
     const one = llvm.core.LLVMConstInt(i32_type, 1, 0);
@@ -379,4 +426,8 @@ fn compileType(self: *Self, ast_type: ast.Type) !llvm.types.LLVMTypeRef {
 
 inline fn cString(self: *const Self, s: []const u8) ![*:0]const u8 {
     return try std.mem.concatWithSentinel(self.alloc, u8, &.{s}, 0);
+}
+
+inline fn cUint(int: usize) u32 {
+    return @as(u32, @intCast(int));
 }

@@ -42,13 +42,13 @@ fn build(alloc: std.mem.Allocator) !void {
 
     try pretty.print(alloc, .{ast}, .{ .max_depth = 100 });
 
-    var compiler = try Compiler.init(arena);
-    defer compiler.deinit(arena);
-
-    compiler.emit(ast) catch |err| {
-        utils.print("Failed to compile program: {}\n", .{err}, .red);
-        return error.CompilerFailed;
-    };
+    // var compiler = try Compiler.init(arena);
+    // defer compiler.deinit();
+    //
+    // compiler.emit(ast) catch |err| {
+    //     utils.print("Failed to compile program: {}\n", .{err}, .red);
+    //     return error.CompilerFailed;
+    // };
 }
 
 pub fn main() !void {

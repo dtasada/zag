@@ -278,28 +278,11 @@ pub inline fn getHandler(
 
 /// parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
 pub fn parseParameters(self: *Self, alloc: std.mem.Allocator) !ast.ParameterList {
-    var params = ast.ParameterList{};
+    return try self.parseParametersGeneric(alloc, false);
+}
 
-    try self.expect(self.advance(), .open_paren, "parameter list", "(");
-
-    if (self.currentTokenKind() == Lexer.Token.close_paren) {
-        _ = self.advance();
-    } else while (true) {
-        const param_name = try self.expect(self.advance(), .ident, "parameter list", "parameter name");
-        try self.expect(self.advance(), .colon, "parameter list", ":");
-        const param_type = try self.type_parser.parseType(alloc, .default);
-
-        try params.append(alloc, .{ .name = param_name, .type = param_type });
-
-        // look for a comma, else a closing parenthesis
-        self.expectSilent(self.currentToken(), .comma) catch {
-            try self.expect(self.advance(), .close_paren, "parameter list", ")");
-            break;
-        };
-        _ = self.advance();
-    }
-
-    return params;
+pub fn parseGenericParameters(self: *Self, alloc: std.mem.Allocator) ParserError!ast.ParameterList {
+    return try self.parseParametersGeneric(alloc, true);
 }
 
 pub fn parseArguments(self: *Self, alloc: std.mem.Allocator) ParserError!ast.ArgumentList {
@@ -331,24 +314,29 @@ pub fn parseBlock(self: *Self, alloc: std.mem.Allocator) !ast.Block {
     while (self.currentTokenKind() != .eof and self.currentTokenKind() != .close_brace)
         try block.append(alloc, try statement_handlers.parseStatement(self, alloc));
 
-    try self.expect(self.advance(), .close_brace, "block", "'}'");
+    try self.expect(self.advance(), .close_brace, "block", "}");
 
     return block;
 }
 
-pub fn parseGenericParameters(self: *Self, alloc: std.mem.Allocator) ParserError!ast.ParameterList {
+pub fn parseParametersGeneric(self: *Self, alloc: std.mem.Allocator, type_is_optional: bool) ParserError!ast.ParameterList {
     var params = ast.ParameterList{};
 
-    try self.expect(self.advance(), .open_paren, "generic parameter list", "(");
+    try self.expect(self.advance(), .open_paren, "parameter list", "(");
 
     if (self.currentTokenKind() == Lexer.Token.close_paren) {
         _ = self.advance();
     } else while (true) {
-        const param_name = try self.expect(self.advance(), .ident, "generic parameter list", "parameter name");
-        var param_type: ast.Type = .inferred;
+        const param_name = try self.expect(self.advance(), .ident, "parameter list", "parameter name");
 
-        if (self.currentTokenKind() == Lexer.Token.colon) {
-            _ = self.advance();
+        var param_type: ast.Type = .inferred;
+        if (type_is_optional) {
+            if (self.currentTokenKind() == Lexer.Token.colon) {
+                _ = self.advance();
+                param_type = try self.type_parser.parseType(alloc, .default);
+            }
+        } else {
+            try self.expect(self.advance(), .colon, "parameter list", ":");
             param_type = try self.type_parser.parseType(alloc, .default);
         }
 
@@ -356,7 +344,7 @@ pub fn parseGenericParameters(self: *Self, alloc: std.mem.Allocator) ParserError
 
         // look for a comma, else a closing parenthesis
         self.expectSilent(self.currentToken(), .comma) catch {
-            try self.expect(self.advance(), .close_paren, "generic parameter list", ")");
+            try self.expect(self.advance(), .close_paren, "parameter list", ")");
             break;
         };
         _ = self.advance();

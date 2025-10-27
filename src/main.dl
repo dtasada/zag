@@ -1,5 +1,25 @@
-fn main() i32 {
-    for (0..4) |i| {
-		let a = 0;
+struct MyStruct {
+	x: i32,
+	y: i32,
+
+	fn myMethod() void {
+
+	}
+}
+
+enum MyStruct {
+	A, B,
+
+	fn myMethod() void {
+
+	}
+}
+
+union MyUnion {
+	a: A,
+	b: B,
+
+	fn myMethod() void {
+
 	}
 }
