@@ -206,7 +206,7 @@ pub fn unexpectedToken(
     expected_token: []const u8,
     actual: Lexer.Token,
 ) error{ NoSpaceLeft, UnexpectedToken } {
-    const pos = std.math.clamp(self.pos, 0, self.input.source_map.items.len - 1);
+    const pos = std.math.clamp(self.pos - 1, 0, self.input.source_map.items.len - 1);
 
     utils.print(
         "Unexpected token '{f}' in {s} at {}:{}. Expected '{s}'\n",
