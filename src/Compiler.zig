@@ -282,13 +282,11 @@ fn compileLValue(self: *Self, expr: ast.Expression) !LValue {
         .member => |member_access| {
             const lhs_lval = try self.compileLValue(member_access.lhs.*);
 
-            var struct_ptr = lhs_lval.ptr;
+            const struct_ptr = lhs_lval.ptr;
             var struct_type = lhs_lval.ty;
 
-            if (llvm.core.LLVMGetTypeKind(struct_type) == .LLVMPointerTypeKind) {
+            if (llvm.core.LLVMGetTypeKind(struct_type) == .LLVMPointerTypeKind)
                 struct_type = llvm.core.LLVMGetElementType(lhs_lval.ty);
-                struct_ptr = llvm.core.LLVMBuildLoad2(self.builder, lhs_lval.ty, lhs_lval.ptr, "ptr_val");
-            }
 
             if (llvm.core.LLVMGetTypeKind(struct_type) != .LLVMStructTypeKind)
                 return error.MemberExpressionOnPrimitiveType;
