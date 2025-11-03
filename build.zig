@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
-        .name = "llvm_wrapper",
+        .name = "dmr",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -25,8 +25,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
     const llvm_mod = llvm_dep.module("llvm");
+    const clang_mod = llvm_dep.module("clang");
     exe.root_module.addImport("llvm", llvm_mod);
+    exe.root_module.addImport("clang", clang_mod);
 
     b.installArtifact(exe);
 
@@ -42,7 +45,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const exe_check = b.addExecutable(.{
-        .name = "llvm_wrapper",
+        .name = "dmr",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -53,7 +56,8 @@ pub fn build(b: *std.Build) void {
     exe_check.root_module.addImport("clap", clap_mod);
     exe_check.root_module.addImport("pretty", pretty_mod);
     exe_check.root_module.addImport("llvm", llvm_mod);
+    exe_check.root_module.addImport("clang", clang_mod);
 
-    const check = b.step("check", "Check if llvm_wrapper compiles");
+    const check = b.step("check", "Check if dmr compiles");
     check.dependOn(&exe_check.step);
 }

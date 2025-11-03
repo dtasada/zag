@@ -1,6 +1,6 @@
 .{
-    .fingerprint = 0x8406caf3a7ff3a58,
-    .name = .llvm_wrapper,
+    .fingerprint = 0xdec7bf14a89f25f8,
+    .name = .dmr,
     .version = "0.0.0",
     .minimum_zig_version = "0.15.1",
     .dependencies = .{

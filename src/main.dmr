@@ -1,0 +1,26 @@
+struct MyStruct {
+	x: i32,
+	y: i32,
+
+    fn setX(self: &mut Self, new_x: i32) void {
+        self.x = new_x;
+    }
+
+	fn add(lhs: Self, rhs: Self) Self {
+		return MyStruct {
+			x: lhs.x + rhs.x,
+			y: lhs.y + rhs.y,
+		};
+	}
+}
+
+fn foo() i32 {
+    return 42;
+}
+
+fn main() i32 {
+	let a = MyStruct { x: 1, y: 1 };
+	let b = MyStruct { x: 2, y: 2 };
+    let c = a.add(b);
+    return 0;
+}

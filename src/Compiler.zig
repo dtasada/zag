@@ -1,6 +1,7 @@
 const std = @import("std");
 const llvm = @import("llvm");
 
+const utils = @import("utils.zig");
 const ast = @import("parser/ast.zig");
 
 const Self = @This();
@@ -27,6 +28,7 @@ const Symbol = union(enum) {
     parameter: struct {
         val: llvm.types.LLVMValueRef,
         ty: llvm.types.LLVMTypeRef,
+        is_mut: bool, // Added is_mut field
     },
     local: struct {
         ptr: llvm.types.LLVMValueRef,
@@ -97,14 +99,49 @@ fn addVariable(self: *Self, name: []const u8, symbol: Symbol) !void {
     try self.variables.items[last_scope_idx].put(name, symbol);
 }
 
-/// Entry point for the compiler. Prints LLVM IR to stdout
-pub fn emit(self: *Self, root: ast.RootNode) CompilerError!void {
+/// Entry point for the compiler. Compiles AST into LLVM module.
+pub fn emit(self: *Self, root: ast.RootNode) !void {
     for (root.items) |statement| {
         try self.compileStatement(statement);
     }
 
-    // print IR
-    llvm.core.LLVMDumpModule(self.module);
+    // Initialize LLVM targets
+    llvm.target.LLVMInitializeAllTargetInfos();
+    llvm.target.LLVMInitializeAllTargets();
+    llvm.target.LLVMInitializeAllTargetMCs();
+    llvm.target.LLVMInitializeAllAsmParsers();
+    llvm.target.LLVMInitializeAllAsmPrinters();
+
+    const triple = llvm.target_machine.LLVMGetDefaultTargetTriple();
+    const target = llvm.target_machine.LLVMGetFirstTarget();
+    const target_machine = llvm.target_machine.LLVMCreateTargetMachine(
+        target,
+        triple,
+        "generic",
+        "",
+        .LLVMCodeGenLevelAggressive,
+        .LLVMRelocPIC,
+        .LLVMCodeModelDefault,
+    );
+
+    llvm.target.LLVMSetModuleDataLayout(self.module, llvm.target_machine.LLVMCreateTargetDataLayout(target_machine));
+
+    try std.fs.cwd().makePath(".dmr-out");
+    const object_file = try std.fs.cwd().createFile(".dmr-out/main.o", .{});
+    defer object_file.close();
+
+    var err: [*c]u8 = null;
+    if (llvm.target_machine.LLVMTargetMachineEmitToFile(
+        target_machine,
+        self.module,
+        ".dmr-out/main.o",
+        .LLVMObjectFile,
+        &err,
+    ) != 0) {
+        utils.print("Failed to emit object file: {s}\n", .{err}, .red);
+        llvm.core.LLVMDisposeMessage(err); // Free if not null
+        return error.CompilerFailed;
+    }
 }
 
 fn createEntryBlockAlloca(self: *Self, @"fn": llvm.types.LLVMValueRef, ty: llvm.types.LLVMTypeRef, name: [*:0]const u8) llvm.types.LLVMValueRef {
@@ -139,6 +176,7 @@ fn compileStatement(self: *Self, statement: ast.Statement) CompilerError!void {
 
 fn compileStructDeclaration(self: *Self, struct_decl: ast.Statement.StructDeclaration) !void {
     const struct_name_c = try self.cString(struct_decl.name);
+    defer self.alloc.free(std.mem.span(struct_name_c));
     const struct_type_ref = llvm.core.LLVMStructCreateNamed(self.context, struct_name_c);
 
     const user_type = try self.alloc.create(UserDefinedType);
@@ -178,6 +216,7 @@ fn compileStructDeclaration(self: *Self, struct_decl: ast.Statement.StructDeclar
 
 pub fn compileFunctionDefinition(self: *Self, fn_def: ast.FunctionDefinition) CompilerError!void {
     const fn_name = try self.cString(fn_def.name);
+    defer self.alloc.free(std.mem.span(fn_name));
 
     const return_type = try self.compileType(fn_def.return_type);
 
@@ -203,7 +242,11 @@ pub fn compileFunctionDefinition(self: *Self, fn_def: ast.FunctionDefinition) Co
         const param_name = try self.cString(param.name);
         llvm.core.LLVMSetValueName(param_val, param_name);
         const param_type = param_types.items[cUint(i)];
-        try self.addVariable(param.name, .{ .parameter = .{ .val = param_val, .ty = param_type } });
+        const is_param_mut = switch (param.type) {
+            .reference => |ref| ref.is_mut,
+            else => false,
+        };
+        try self.addVariable(param.name, .{ .parameter = .{ .val = param_val, .ty = param_type, .is_mut = is_param_mut } });
     }
 
     try self.compileBlock(fn_def.body);
@@ -277,16 +320,21 @@ fn compileLValue(self: *Self, expr: ast.Expression) !LValue {
     return switch (expr) {
         .ident => |ident| switch (self.findVariable(ident) orelse return error.UndeclaredVariable) {
             .local => |l| .{ .ptr = l.ptr, .ty = l.ty, .is_mut = l.is_mut },
-            .parameter => |p| .{ .ptr = p.val, .ty = p.ty, .is_mut = false },
+            .parameter => |p| .{ .ptr = p.val, .ty = p.ty, .is_mut = p.is_mut },
         },
         .member => |member_access| {
             const lhs_lval = try self.compileLValue(member_access.lhs.*);
 
             const struct_ptr = lhs_lval.ptr;
-            var struct_type = lhs_lval.ty;
-
-            if (llvm.core.LLVMGetTypeKind(struct_type) == .LLVMPointerTypeKind)
-                struct_type = llvm.core.LLVMGetElementType(lhs_lval.ty);
+            const struct_type: llvm.types.LLVMTypeRef =
+                if (member_access.lhs.* == .ident and std.mem.eql(u8, member_access.lhs.*.ident, "self"))
+                    self.current_self_type orelse return error.UnsupportedExpression
+                else if (llvm.core.LLVMGetTypeKind(lhs_lval.ty) == .LLVMPointerTypeKind)
+                    llvm.core.LLVMGetElementType(lhs_lval.ty)
+                else if (llvm.core.LLVMGetTypeKind(lhs_lval.ty) == .LLVMStructTypeKind)
+                    return error.UnsupportedExpression
+                else
+                    return error.UnsupportedExpression;
 
             if (llvm.core.LLVMGetTypeKind(struct_type) != .LLVMStructTypeKind)
                 return error.MemberExpressionOnPrimitiveType;
@@ -360,8 +408,8 @@ fn compileStructInit(self: *Self, inst: ast.Expression.StructInstantiation, dest
     const user_type = self.types.get(inst.name) orelse return error.UndeclaredType;
     const struct_type = user_type.llvm_type;
 
-    var member_iterator = inst.members.iterator();
-    while (member_iterator.next()) |entry| {
+    var it = inst.members.iterator();
+    while (it.next()) |entry| {
         const field_name = entry.key_ptr.*;
         const field_expr = entry.value_ptr.*;
         const field_index = user_type.fields.get(field_name) orelse return error.UndeclaredField;
@@ -394,40 +442,82 @@ fn compileCallExpression(self: *Self, call_expr: ast.Expression.Call) !llvm.type
             if (member_expr.rhs.* != .ident) return error.UnsupportedExpression;
             const method_name = member_expr.rhs.*.ident;
 
-            var self_arg: llvm.types.LLVMValueRef = undefined;
-            var struct_type: llvm.types.LLVMTypeRef = undefined;
+            // Determine the actual struct type for mangling and lookup.
+            var struct_type_for_lookup: llvm.types.LLVMTypeRef = undefined;
+            const lhs_val_for_type_check = try self.compileExpression(lhs);
+            const lhs_val_type_for_type_check = llvm.core.LLVMTypeOf(lhs_val_for_type_check);
 
-            if (self.compileLValue(lhs) catch null) |lval| {
-                self_arg = lval.ptr;
-                struct_type = lval.ty;
+            if (llvm.core.LLVMGetTypeKind(lhs_val_type_for_type_check) == .LLVMPointerTypeKind) {
+                struct_type_for_lookup = llvm.core.LLVMGetElementType(lhs_val_type_for_type_check);
+            } else if (llvm.core.LLVMGetTypeKind(lhs_val_type_for_type_check) == .LLVMStructTypeKind) {
+                struct_type_for_lookup = lhs_val_type_for_type_check;
             } else {
-                const temp_val = try self.compileExpression(lhs);
-                struct_type = llvm.core.LLVMTypeOf(temp_val);
-                const current_fn = llvm.core.LLVMGetBasicBlockParent(llvm.core.LLVMGetInsertBlock(self.builder));
-                const temp_alloca = self.createEntryBlockAlloca(current_fn, struct_type, "self_temp");
-                _ = llvm.core.LLVMBuildStore(self.builder, temp_val, temp_alloca);
-                self_arg = temp_alloca;
+                return error.UnsupportedExpression; // LHS is not a struct or pointer to struct
             }
 
-            if (llvm.core.LLVMGetTypeKind(struct_type) != .LLVMStructTypeKind) return error.UnsupportedExpression;
-
-            const struct_name_z = llvm.core.LLVMGetStructName(struct_type);
+            const struct_name_z = llvm.core.LLVMGetStructName(struct_type_for_lookup);
             if (struct_name_z[0] == 0) {
-                std.debug.print("compileLValue: Anonymous struct not supported.\n", .{});
+                std.debug.print("compileCallExpression: Anonymous struct not supported.\n", .{});
                 return error.UnsupportedExpression;
             }
             const struct_name = std.mem.span(struct_name_z);
-
             const mangled_name: [*:0]const u8 = try std.fmt.allocPrintSentinel(self.alloc, "__MANGLE_{s}_{s}", .{ struct_name, method_name }, 0);
-
             const func_to_call = llvm.core.LLVMGetNamedFunction(self.module, mangled_name) orelse return error.UndeclaredVariable;
+            const fn_type = llvm.core.LLVMGlobalGetValueType(func_to_call); // This is the function type
+
+            var self_arg: llvm.types.LLVMValueRef = undefined;
+
+            // Get the number of parameters
+            const param_count = llvm.core.LLVMCountParams(func_to_call);
+            if (param_count == 0) return error.UnsupportedExpression; // Or handle no parameters
+
+            // Allocate an array to hold the parameter types
+            const param_types_buffer = try self.alloc.alloc(llvm.types.LLVMTypeRef, param_count);
+            defer self.alloc.free(param_types_buffer);
+
+            // Get the parameter types
+            llvm.core.LLVMGetParamTypes(fn_type, param_types_buffer.ptr);
+
+            const expected_first_param_type = param_types_buffer[0];
+
+            // Compile the LHS expression to get its value.
+            const lhs_val = try self.compileExpression(lhs);
+            const lhs_val_type = llvm.core.LLVMTypeOf(lhs_val);
+
+            if (llvm.core.LLVMGetTypeKind(expected_first_param_type) == .LLVMPointerTypeKind) {
+                // Method expects a pointer (e.g., self: &mut Self)
+                if (llvm.core.LLVMGetTypeKind(lhs_val_type) == .LLVMPointerTypeKind) {
+                    self_arg = lhs_val; // LHS is already a pointer
+                } else if (llvm.core.LLVMGetTypeKind(lhs_val_type) == .LLVMStructTypeKind) {
+                    // LHS is a struct value, but method expects a pointer.
+                    // Allocate space, store the value, and pass the pointer.
+                    const current_fn = llvm.core.LLVMGetBasicBlockParent(llvm.core.LLVMGetInsertBlock(self.builder));
+                    const temp_alloca = self.createEntryBlockAlloca(current_fn, lhs_val_type, "self_temp_ptr");
+                    _ = llvm.core.LLVMBuildStore(self.builder, lhs_val, temp_alloca);
+                    self_arg = temp_alloca;
+                } else {
+                    return error.UnsupportedExpression; // Type mismatch
+                }
+            } else if (llvm.core.LLVMGetTypeKind(expected_first_param_type) == .LLVMStructTypeKind) {
+                // Method expects a struct by value (e.g., lhs: Self)
+                if (llvm.core.LLVMGetTypeKind(lhs_val_type) == .LLVMStructTypeKind) {
+                    self_arg = lhs_val; // LHS is already a struct value
+                } else if (llvm.core.LLVMGetTypeKind(lhs_val_type) == .LLVMPointerTypeKind) {
+                    // LHS is a pointer to a struct, but method expects a struct value.
+                    // Load the value from the pointer.
+                    self_arg = llvm.core.LLVMBuildLoad2(self.builder, llvm.core.LLVMGetElementType(lhs_val_type), lhs_val, "loadtmp_self_val");
+                } else {
+                    return error.UnsupportedExpression; // Type mismatch
+                }
+            } else {
+                return error.UnsupportedExpression; // Unsupported first parameter type
+            }
 
             var final_args = try std.ArrayList(llvm.types.LLVMValueRef).initCapacity(self.alloc, compiled_args.items.len + 1);
             defer final_args.deinit(self.alloc);
             try final_args.append(self.alloc, self_arg);
             try final_args.appendSlice(self.alloc, compiled_args.items);
 
-            const fn_type = llvm.core.LLVMGlobalGetValueType(func_to_call);
             return llvm.core.LLVMBuildCall2(self.builder, fn_type, func_to_call, final_args.items.ptr, @as(u32, @intCast(final_args.items.len)), "calltmp");
         },
         .ident => |ident| {
@@ -672,6 +762,9 @@ fn compileType(self: *Self, ast_type: ast.Type) !llvm.types.LLVMTypeRef {
             if (std.mem.eql(u8, sym, "i16")) return llvm.core.LLVMInt16TypeInContext(self.context);
             if (std.mem.eql(u8, sym, "i32")) return llvm.core.LLVMInt32TypeInContext(self.context);
             if (std.mem.eql(u8, sym, "i64")) return llvm.core.LLVMInt64TypeInContext(self.context);
+            if (std.mem.eql(u8, sym, "f16")) return llvm.core.LLVMHalfTypeInContext(self.context);
+            if (std.mem.eql(u8, sym, "f32")) return llvm.core.LLVMFloatTypeInContext(self.context);
+            if (std.mem.eql(u8, sym, "f64")) return llvm.core.LLVMDoubleTypeInContext(self.context);
 
             if (self.types.get(sym)) |user_type| {
                 return user_type.llvm_type;
@@ -683,7 +776,7 @@ fn compileType(self: *Self, ast_type: ast.Type) !llvm.types.LLVMTypeRef {
     };
 }
 
-inline fn cString(self: *const Self, s: []const u8) ![*:0]const u8 {
+pub inline fn cString(self: *const Self, s: []const u8) ![*:0]const u8 {
     return try std.mem.concatWithSentinel(self.alloc, u8, &.{s}, 0);
 }
 

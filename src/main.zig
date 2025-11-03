@@ -1,6 +1,9 @@
 const std = @import("std");
 const clap = @import("clap");
 const pretty = @import("pretty");
+const clang = @import("clang");
+const llvm = @import("llvm"); // Add this import
+const builtin = @import("builtin");
 
 const utils = @import("utils.zig");
 const Lexer = @import("Lexer.zig");
@@ -11,8 +14,8 @@ fn build(alloc: std.mem.Allocator) !void {
     utils.print("building...\n", .{}, .white);
 
     var buf: [65535]u8 = undefined;
-    const file = std.fs.cwd().readFile("src/main.dl", &buf) catch |err| {
-        utils.print("Failed to read 'src/main.dl': {}\n", .{err}, .red);
+    const file = std.fs.cwd().readFile("src/main.dmr", &buf) catch |err| {
+        utils.print("Failed to read 'src/main.dmr': {}\n", .{err}, .red);
         return error.FailedToReadSource;
     };
 
@@ -45,7 +48,7 @@ fn build(alloc: std.mem.Allocator) !void {
     var compiler = try Compiler.init(arena);
     defer compiler.deinit();
 
-    compiler.emit(ast) catch |err| {
+    compiler.emit(ast) catch |err| { // Call emit to build the module
         utils.print("Failed to compile program: {}\n", .{err}, .red);
         return error.CompilerFailed;
     };
