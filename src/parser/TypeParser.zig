@@ -159,7 +159,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     if (self.parent_parser.currentTokenKind() != Lexer.Token.close_bracket) {
         size = try alloc.create(ast.Expression);
-        size.?.* = try expression_handlers.parseExpression(self.parent_parser, alloc, .default);
+        size.?.* = try expression_handlers.parseExpression(self.parent_parser, .default);
     }
 
     try self.parent_parser.expect(

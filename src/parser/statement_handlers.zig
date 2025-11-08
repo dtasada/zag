@@ -10,20 +10,22 @@ const TypeParser = @import("TypeParser.zig");
 const Self = @import("Parser.zig");
 const ParserError = Self.ParserError;
 
-pub fn parseStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+pub fn parseStatement(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
     if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
-        return statement_fn(self, alloc);
+        return statement_fn(self);
     }
 
-    const expression = try expression_handlers.parseExpression(self, alloc, .default);
+    const expression = try expression_handlers.parseExpression(self, .default);
 
     try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
     _ = self.advance(); // consume semicolon
 
-    return .{ .expression = expression };
+    return self.putStatementPos(.{ .expression = expression }, pos);
 }
 
-pub fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+pub fn parseVariableDeclarationStatement(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
     _ = self.advance(); // consume `let`
 
     const is_mut = self.currentTokenKind() == Lexer.Token.mut;
@@ -40,7 +42,7 @@ pub fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) 
     var @"type": ast.Type = .inferred;
     if (self.currentTokenKind() == Lexer.Token.colon) {
         _ = self.advance(); // consume colon
-        @"type" = try self.type_parser.parseType(alloc, .default);
+        @"type" = try self.type_parser.parseType(self.alloc, .default);
     }
 
     try self.expect(
@@ -50,7 +52,7 @@ pub fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) 
         "=",
     );
 
-    const assigned_value = try expression_handlers.parseExpression(self, alloc, .assignment);
+    const assigned_value = try expression_handlers.parseExpression(self, .assignment);
 
     try self.expect(
         self.advance(),
@@ -59,20 +61,19 @@ pub fn parseVariableDeclarationStatement(self: *Self, alloc: std.mem.Allocator) 
         ";",
     );
 
-    return .{
+    return self.putStatementPos(.{
         .variable_declaration = .{
             .variable_name = var_name,
             .is_mut = is_mut,
             .assigned_value = assigned_value,
             .type = @"type",
         },
-    };
+    }, pos);
 }
 
 /// parses either a struct, enum, or union declaration statement
 pub fn parseCompoundTypeDeclarationStatement(
     self: *Self,
-    alloc: std.mem.Allocator,
     comptime @"type": enum { @"struct", @"enum", @"union" },
 ) ParserError!ast.Statement {
     const context = switch (@"type") {
@@ -80,6 +81,8 @@ pub fn parseCompoundTypeDeclarationStatement(
         .@"enum" => "enum declaration statement",
         .@"union" => "union declaration statement",
     };
+
+    const pos = self.currentPosition();
 
     _ = self.advance(); // consume `struct`, `enum`, or `union` keyword.
 
@@ -91,9 +94,9 @@ pub fn parseCompoundTypeDeclarationStatement(
 
     if (self.currentTokenKind() == Lexer.Token.open_paren)
         switch (@"type") {
-            .@"struct" => compound.struct_declaration.generic_types = try self.parseGenericParameters(alloc),
-            .@"enum" => compound.enum_declaration.generic_types = try self.parseGenericParameters(alloc),
-            .@"union" => compound.union_declaration.generic_types = try self.parseGenericParameters(alloc),
+            .@"struct" => compound.struct_declaration.generic_types = try self.parseGenericParameters(),
+            .@"enum" => compound.enum_declaration.generic_types = try self.parseGenericParameters(),
+            .@"union" => compound.union_declaration.generic_types = try self.parseGenericParameters(),
         };
 
     try self.expect(self.advance(), Lexer.Token.open_brace, context, "{");
@@ -108,7 +111,7 @@ pub fn parseCompoundTypeDeclarationStatement(
                     switch (@"type") {
                         .@"struct", .@"union" => blk: {
                             try self.expect(self.advance(), Lexer.Token.colon, context, ":");
-                            break :blk try self.type_parser.parseType(alloc, .default);
+                            break :blk try self.type_parser.parseType(self.alloc, .default);
                         },
                         .@"enum" => null,
                     };
@@ -117,22 +120,22 @@ pub fn parseCompoundTypeDeclarationStatement(
                     switch (@"type") {
                         .@"struct", .@"enum" => if (self.currentTokenKind() == Lexer.Token.equals) blk: {
                             _ = self.advance();
-                            break :blk try expression_handlers.parseExpression(self, alloc, .default);
+                            break :blk try expression_handlers.parseExpression(self, .default);
                         } else null,
                         .@"union" => null,
                     };
 
                 try switch (@"type") {
-                    .@"struct" => compound.struct_declaration.members.append(alloc, .{
+                    .@"struct" => compound.struct_declaration.members.append(self.alloc, .{
                         .name = member_name,
                         .type = member_type orelse unreachable,
                         .default_value = default_value,
                     }),
-                    .@"enum" => compound.enum_declaration.members.append(alloc, .{
+                    .@"enum" => compound.enum_declaration.members.append(self.alloc, .{
                         .name = member_name,
                         .default_value = default_value,
                     }),
-                    .@"union" => compound.union_declaration.members.append(alloc, .{
+                    .@"union" => compound.union_declaration.members.append(self.alloc, .{
                         .name = member_name,
                         .type = member_type,
                     }),
@@ -142,12 +145,12 @@ pub fn parseCompoundTypeDeclarationStatement(
                 _ = self.advance(); // if there was a comma, consume it
             },
             .@"fn" => {
-                const @"fn" = (try parseFunctionDefinition(self, alloc)).function_definition;
+                const @"fn" = (try parseFunctionDefinition(self)).function_definition;
 
                 try switch (@"type") {
-                    .@"struct" => compound.struct_declaration.methods.append(alloc, @"fn"),
-                    .@"enum" => compound.enum_declaration.methods.append(alloc, @"fn"),
-                    .@"union" => compound.union_declaration.methods.append(alloc, @"fn"),
+                    .@"struct" => compound.struct_declaration.methods.append(self.alloc, @"fn"),
+                    .@"enum" => compound.enum_declaration.methods.append(self.alloc, @"fn"),
+                    .@"union" => compound.union_declaration.methods.append(self.alloc, @"fn"),
                 };
             },
 
@@ -157,86 +160,91 @@ pub fn parseCompoundTypeDeclarationStatement(
 
     try self.expect(self.advance(), Lexer.Token.close_brace, context, "}");
 
-    return compound;
+    return self.putStatementPos(compound, pos);
 }
 
-pub fn parseStructDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    return try parseCompoundTypeDeclarationStatement(self, alloc, .@"struct");
+pub fn parseStructDeclarationStatement(self: *Self) ParserError!ast.Statement {
+    return try parseCompoundTypeDeclarationStatement(self, .@"struct");
 }
 
-pub fn parseEnumDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    return try parseCompoundTypeDeclarationStatement(self, alloc, .@"enum");
+pub fn parseEnumDeclarationStatement(self: *Self) ParserError!ast.Statement {
+    return try parseCompoundTypeDeclarationStatement(self, .@"enum");
 }
 
-pub fn parseUnionDeclarationStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    return try parseCompoundTypeDeclarationStatement(self, alloc, .@"union");
+pub fn parseUnionDeclarationStatement(self: *Self) ParserError!ast.Statement {
+    return try parseCompoundTypeDeclarationStatement(self, .@"union");
 }
 
-pub fn parseFunctionDefinition(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+pub fn parseFunctionDefinition(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
     try self.expect(self.advance(), Lexer.Token.@"fn", "function definition", "fn");
     const function_name = try self.expect(self.advance(), Lexer.Token.ident, "function definition", "function name");
-    const parameters = try self.parseParameters(alloc);
-    const return_type = try self.type_parser.parseType(alloc, .default);
-    const body = try self.parseBlock(alloc);
+    const parameters = try self.parseParameters();
+    const return_type = try self.type_parser.parseType(self.alloc, .default);
+    const body = try self.parseBlock();
 
-    return .{
+    return self.putStatementPos(.{
         .function_definition = .{
             .name = function_name,
             .parameters = parameters,
             .return_type = return_type,
             .body = body,
         },
-    };
+    }, pos);
 }
 
-pub fn parseReturnStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
+pub fn parseReturnStatement(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "return" keyword and parse from there.
 
+    const pos = self.currentPosition();
     var expression: ?ast.Expression = null;
     if (self.currentTokenKind() != Lexer.Token.semicolon)
-        expression = try expression_handlers.parseExpression(self, alloc, .default);
+        expression = try expression_handlers.parseExpression(self, .default);
 
     try self.expect(self.advance(), Lexer.Token.semicolon, "return statement", ";");
-    return .{ .@"return" = expression };
+    return self.putStatementPos(.{
+        .@"return" = expression,
+    }, pos);
 }
 
-pub fn parseForStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    _ = self.advance(); // consume "for "keyeword and parse from there.
+pub fn parseForStatement(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
+    _ = self.advance(); // consume "for" keyeword and parse from there.
 
     try self.expect(self.advance(), Lexer.Token.open_paren, "for statement iterator", "(");
-    const iterator = try alloc.create(ast.Expression);
-    iterator.* = try expression_handlers.parseExpression(self, alloc, .default);
+    const iterator = try self.alloc.create(ast.Expression);
+    iterator.* = try expression_handlers.parseExpression(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_paren, "for statement iterator", ")");
 
     try self.expect(self.advance(), Lexer.Token.pipe, "for statement capture", "|");
     const capture = try self.expect(self.advance(), Lexer.Token.ident, "for statement capture", "for statement capture identifier");
     try self.expect(self.advance(), Lexer.Token.pipe, "for statement capture", "|");
 
-    const body = try alloc.create(ast.Statement);
+    const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentTokenKind() == .open_brace)
-        .{ .block = try self.parseBlock(alloc) }
+        .{ .block = try self.parseBlock() }
     else
-        try parseStatement(self, alloc);
+        try parseStatement(self);
 
-    return .{
+    return self.putStatementPos(.{
         .@"for" = .{
             .iterator = iterator,
             .capture = capture,
             .body = body,
         },
-    };
+    }, pos);
 }
 
-pub fn parseWhileStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    return try parseConditionalStatement(self, alloc, .@"while");
+pub fn parseWhileStatement(self: *Self) ParserError!ast.Statement {
+    return try parseConditionalStatement(self, .@"while");
 }
 
-pub fn parseIfStatement(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Statement {
-    return try parseConditionalStatement(self, alloc, .@"if");
+pub fn parseIfStatement(self: *Self) ParserError!ast.Statement {
+    return try parseConditionalStatement(self, .@"if");
 }
 
 /// parses either `if` statement or `while` statement
-pub fn parseConditionalStatement(self: *Self, alloc: std.mem.Allocator, comptime @"type": enum { @"if", @"while" }) ParserError!ast.Statement {
+pub fn parseConditionalStatement(self: *Self, comptime @"type": enum { @"if", @"while" }) ParserError!ast.Statement {
     const context = switch (@"type") {
         .@"while" => "while statement",
         .@"if" => "if statement",
@@ -246,8 +254,8 @@ pub fn parseConditionalStatement(self: *Self, alloc: std.mem.Allocator, comptime
 
     try self.expect(self.advance(), Lexer.Token.open_paren, context, "(");
 
-    const condition = try alloc.create(ast.Expression);
-    condition.* = try expression_handlers.parseExpression(self, alloc, .default);
+    const condition = try self.alloc.create(ast.Expression);
+    condition.* = try expression_handlers.parseExpression(self, .default);
 
     try self.expect(self.advance(), Lexer.Token.close_paren, context, ")");
 
@@ -261,40 +269,41 @@ pub fn parseConditionalStatement(self: *Self, alloc: std.mem.Allocator, comptime
         else => null,
     };
 
-    const body = try alloc.create(ast.Statement);
+    const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentTokenKind() == .open_brace)
-        .{ .block = try self.parseBlock(alloc) }
+        .{ .block = try self.parseBlock() }
     else
-        try parseStatement(self, alloc);
+        try parseStatement(self);
 
+    const pos = self.currentPosition();
     return switch (@"type") {
         .@"if" => {
             var @"else": ?*ast.Statement = null;
             if (self.currentTokenKind() == Lexer.Token.@"else") {
                 _ = self.advance(); // consume `else`
 
-                @"else" = try alloc.create(ast.Statement);
+                @"else" = try self.alloc.create(ast.Statement);
                 @"else".?.* = if (self.currentTokenKind() == .open_brace)
-                    .{ .block = try self.parseBlock(alloc) }
+                    .{ .block = try self.parseBlock() }
                 else
-                    try parseStatement(self, alloc);
+                    try parseStatement(self);
             }
 
-            return .{
+            return self.putStatementPos(.{
                 .@"if" = .{
                     .condition = condition,
                     .capture = capture,
                     .body = body,
                     .@"else" = @"else",
                 },
-            };
+            }, pos);
         },
-        .@"while" => .{
+        .@"while" => self.putStatementPos(.{
             .@"while" = .{
                 .condition = condition,
                 .capture = capture,
                 .body = body,
             },
-        },
+        }, pos),
     };
 }

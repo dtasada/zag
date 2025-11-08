@@ -5,13 +5,13 @@ const utils = @import("utils.zig");
 const Self = @This();
 
 /// raw string input of source file
-input: []const u8,
+source_code: []const u8,
 
 /// arraylist of tokens. this is the output of the lexer.
 tokens: std.ArrayList(Token) = .{},
 
 /// maps each token by index to its corresponding location in the source code
-source_map: std.ArrayList(struct { line: usize, col: usize }) = .{},
+source_map: std.ArrayList(utils.Position) = .{},
 
 /// current position of character index in `input`
 pos: usize = 0,
@@ -124,22 +124,29 @@ pub const Token = union(enum) {
     }
 };
 
-pub fn init(input: []const u8) Self {
-    return .{ .input = input };
+/// Initializes and runs tokenizer. Populates `tokens`.
+pub fn init(input: []const u8, alloc: std.mem.Allocator) !*Self {
+    const self = try alloc.create(Self);
+    self.* = .{ .source_code = input };
+
+    try self.tokenize(alloc);
+
+    return self;
 }
 
 pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
     self.tokens.deinit(alloc);
     self.source_map.deinit(alloc);
+    alloc.destroy(self);
 }
 
 inline fn currentChar(self: *const Self) u8 {
-    return self.input[self.pos];
+    return self.source_code[self.pos];
 }
 
 /// Returns current character and then increases position
 inline fn advance(self: *Self) u8 {
-    const char = self.input[self.pos];
+    const char = self.source_code[self.pos];
     self.advanceN(1);
     return char;
 }
@@ -171,14 +178,14 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
     try keywords.put("or", .@"or");
     try keywords.put("pub", .@"pub");
 
-    while (self.pos < self.input.len) {
+    while (self.pos < self.source_code.len) {
         const start_pos = self.pos;
 
         if (self.currentChar() == '"') {
             _ = self.advance(); // consume '"'
 
-            if (std.mem.indexOfScalar(u8, self.input[self.pos..], '"')) |string_end| {
-                try self.appendToken(alloc, Token{ .string = self.input[self.pos .. self.pos + string_end] });
+            if (std.mem.indexOfScalar(u8, self.source_code[self.pos..], '"')) |string_end| {
+                try self.appendToken(alloc, Token{ .string = self.source_code[self.pos .. self.pos + string_end] });
                 self.advanceN(string_end + 1); // move forward and also consume closing quote
             } else {
                 try self.appendToken(alloc, .{ .bad_token = error.StringNotClosed });
@@ -191,7 +198,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
             var atom = std.ArrayList(u8){};
             try atom.append(alloc, self.advance());
 
-            while (self.pos < self.input.len and
+            while (self.pos < self.source_code.len and
                 (std.ascii.isAlphanumeric(self.currentChar()) or
                     self.currentChar() == '_'))
                 try atom.append(alloc, self.advance());
@@ -240,10 +247,10 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
     const first_token_char = self.currentChar();
     if (!std.mem.containsAtLeastScalar(u8, "+-*/%=!><&|^.", 1, first_token_char)) unreachable;
 
-    if (self.pos + 2 <= self.input.len and std.mem.eql(u8, self.input[self.pos .. self.pos + 2], "//")) {
-        const end_line_pos = std.mem.indexOfScalar(u8, self.input[self.pos..], '\n') orelse
-            std.mem.indexOfScalar(u8, self.input[self.pos..], '\n') orelse
-            self.input.len - self.pos;
+    if (self.pos + 2 <= self.source_code.len and std.mem.eql(u8, self.source_code[self.pos .. self.pos + 2], "//")) {
+        const end_line_pos = std.mem.indexOfScalar(u8, self.source_code[self.pos..], '\n') orelse
+            std.mem.indexOfScalar(u8, self.source_code[self.pos..], '\n') orelse
+            self.source_code.len - self.pos;
 
         self.advanceN(end_line_pos);
         return;
@@ -268,7 +275,7 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
 
     _ = self.advance();
     const double_token: Token =
-        if (self.pos < self.input.len) switch (self.currentChar()) {
+        if (self.pos < self.source_code.len) switch (self.currentChar()) {
             '=' => blk: {
                 _ = self.advance();
                 break :blk switch (first_token) {
@@ -312,7 +319,7 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
         } else first_token;
 
     const triple_token: Token =
-        if (self.pos < self.input.len) switch (self.currentChar()) {
+        if (self.pos < self.source_code.len) switch (self.currentChar()) {
             '=' => blk: {
                 _ = self.advance();
                 break :blk switch (double_token) {
@@ -336,42 +343,42 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
     var is_float = false;
 
     // Consume integer part
-    while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
+    while (self.pos < self.source_code.len and std.ascii.isDigit(self.currentChar())) {
         _ = self.advance();
     }
 
     // Check for decimal part, but look out for '..' range operator
-    if (self.pos < self.input.len and self.currentChar() == '.') {
-        if (self.pos + 1 < self.input.len and self.input[self.pos + 1] == '.') {
+    if (self.pos < self.source_code.len and self.currentChar() == '.') {
+        if (self.pos + 1 < self.source_code.len and self.source_code[self.pos + 1] == '.') {
             // It's a range operator `..`, so the number part is done.
             // We don't consume the dot, we let the operator parser handle it.
         } else {
             // It's a decimal point.
             is_float = true;
             _ = self.advance(); // Consume '.'
-            while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
+            while (self.pos < self.source_code.len and std.ascii.isDigit(self.currentChar())) {
                 _ = self.advance();
             }
         }
     }
 
     // Check for exponent part
-    if (self.pos < self.input.len and (self.currentChar() == 'e' or self.currentChar() == 'E')) {
+    if (self.pos < self.source_code.len and (self.currentChar() == 'e' or self.currentChar() == 'E')) {
         is_float = true;
         _ = self.advance(); // consume 'e' or 'E'
 
-        if (self.pos < self.input.len and (self.currentChar() == '+' or self.currentChar() == '-')) {
+        if (self.pos < self.source_code.len and (self.currentChar() == '+' or self.currentChar() == '-')) {
             _ = self.advance(); // consume sign
         }
 
         const exponent_start = self.pos;
-        while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
+        while (self.pos < self.source_code.len and std.ascii.isDigit(self.currentChar())) {
             _ = self.advance();
         }
         if (self.pos == exponent_start) {
             // 'e' not followed by digits is an error.
             // We need to consume the 'e' and any following alphanumeric characters to avoid re-parsing.
-            while (self.pos < self.input.len and std.ascii.isAlphanumeric(self.currentChar())) {
+            while (self.pos < self.source_code.len and std.ascii.isAlphanumeric(self.currentChar())) {
                 _ = self.advance();
             }
             try self.appendToken(alloc, Token{ .bad_token = LexerError.BadNumber });
@@ -380,16 +387,16 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
     }
 
     // A number followed by another letter is an error (e.g. `123a`).
-    if (self.pos < self.input.len and std.ascii.isAlphabetic(self.input[self.pos])) {
+    if (self.pos < self.source_code.len and std.ascii.isAlphabetic(self.source_code[self.pos])) {
         // Consume the rest of the bad identifier.
-        while (self.pos < self.input.len and std.ascii.isAlphanumeric(self.currentChar())) {
+        while (self.pos < self.source_code.len and std.ascii.isAlphanumeric(self.currentChar())) {
             _ = self.advance();
         }
         try self.appendToken(alloc, Token{ .bad_token = LexerError.BadNumber });
         return;
     }
 
-    const number_str = self.input[start_pos..self.pos];
+    const number_str = self.source_code[start_pos..self.pos];
 
     if (is_float) {
         const token = blk: {

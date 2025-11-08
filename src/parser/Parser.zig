@@ -11,14 +11,101 @@ const TypeParser = @import("TypeParser.zig");
 
 const Self = @This();
 
-const StatementHandler = *const fn (*Self, std.mem.Allocator) ParserError!ast.Statement;
-const NudHandler = *const fn (*Self, std.mem.Allocator) ParserError!ast.Expression;
-const LedHandler = *const fn (*Self, std.mem.Allocator, *const ast.Expression, BindingPower) ParserError!ast.Expression;
+const StatementHandler = *const fn (*Self) ParserError!ast.Statement;
+const NudHandler = *const fn (*Self) ParserError!ast.Expression;
+const LedHandler = *const fn (*Self, *const ast.Expression, BindingPower) ParserError!ast.Expression;
 
 const StatementLookup = std.AutoHashMap(Lexer.TokenKind, StatementHandler);
 const NudLookup = std.AutoHashMap(Lexer.TokenKind, NudHandler);
 const LedLookup = std.AutoHashMap(Lexer.TokenKind, LedHandler);
 const BpLookup = std.AutoHashMap(Lexer.TokenKind, BindingPower);
+
+fn hashAnAnything(context: anytype, key: anytype, depth: u32) void {
+    if (depth > 100) { // arbitrary recursion limit
+        return;
+    }
+    const Key = @TypeOf(key);
+    switch (@typeInfo(Key)) {
+        .noreturn, .type, .undefined, .null, .void => {},
+        .comptime_int, .comptime_float => @compileError("unable to hash comptime value"),
+
+        .float => switch (@TypeOf(key)) {
+            f32 => { // f32
+                const v: u32 = @bitCast(key);
+                context.update(std.mem.asBytes(&v));
+            },
+            f64 => { // f64
+                const v: u64 = @bitCast(key);
+                context.update(std.mem.asBytes(&v));
+            },
+            else => context.update(std.mem.asBytes(&key)),
+        },
+
+        .int, .bool, .@"enum" => context.update(std.mem.asBytes(&key)),
+
+        .pointer => |info| switch (info.size) {
+            .one => {
+                const v: usize = @intFromPtr(key);
+                context.update(std.mem.asBytes(&v));
+            },
+            .slice => {
+                const len_bytes = std.mem.asBytes(&key.len);
+                context.update(len_bytes);
+                context.update(std.mem.sliceAsBytes(key));
+            },
+            else => {
+                // Ignore other pointers
+            },
+        },
+
+        .array => {
+            for (key) |item| {
+                hashAnAnything(context, item, depth + 1);
+            }
+        },
+
+        .@"struct" => |info| {
+            inline for (info.fields) |field| {
+                if (!field.is_comptime) {
+                    hashAnAnything(context, @field(key, field.name), depth + 1);
+                }
+            }
+        },
+
+        .@"union" => |union_info| {
+            hashAnAnything(context, std.meta.activeTag(key), depth + 1);
+            inline for (union_info.fields) |field| {
+                if (std.mem.eql(u8, field.name, @tagName(std.meta.activeTag(key)))) {
+                    if (field.type != void) {
+                        const payload = @field(key, field.name);
+                        hashAnAnything(context, payload, depth + 1);
+                    }
+                    break;
+                }
+            }
+        },
+
+        .optional => {
+            if (key) |payload| {
+                context.update(&.{1});
+                hashAnAnything(context, payload, depth + 1);
+            } else {
+                context.update(&.{0});
+            }
+        },
+        .@"opaque", .@"fn" => @compileError("unable to hash type " ++ @typeName(Key)),
+        .error_set => {},
+        .frame => @compileError("unable to hash type " ++ @typeName(Key)),
+        .@"anyframe" => @compileError("unable to hash type " ++ @typeName(Key)),
+        .vector => |info| {
+            for (0..info.len) |i| {
+                hashAnAnything(context, key[i], depth + 1);
+            }
+        },
+        .error_union => {},
+        .enum_literal => {},
+    }
+}
 
 /// Binding power. please keep order of enum
 pub const BindingPower = enum {
@@ -41,27 +128,37 @@ pub const ParserError = error{
     NoSpaceLeft,
     HandlerDoesNotExist,
     OutOfMemory,
+    ExpressionNotInMap,
+    StatementNotInMap,
 };
 
 pos: usize,
-input: *const Lexer,
+lexer: *const Lexer,
+source_map: std.AutoHashMap(u64, utils.Position),
+alloc: std.mem.Allocator,
+output: ast.RootNode = .{},
+
+/// pratt parsing helpers
+type_parser: TypeParser,
 bp_lookup: BpLookup,
 nud_lookup: NudLookup,
 led_lookup: LedLookup,
 statement_lookup: StatementLookup,
-type_parser: TypeParser,
 // errors: std.ArrayList(ParserError) = .{},
 
+/// Initializes and runs parser. Populates `output`.
 pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     const self = try alloc.create(Self);
     self.* = .{
         .pos = 0,
-        .input = input,
+        .lexer = input,
         .bp_lookup = .init(alloc),
         .nud_lookup = .init(alloc),
         .led_lookup = .init(alloc),
         .statement_lookup = .init(alloc),
         .type_parser = try .init(alloc, self),
+        .source_map = .init(alloc),
+        .alloc = alloc,
     };
 
     try self.led(Lexer.Token.equals, .assignment, expression_handlers.parseAssignmentExpression);
@@ -135,6 +232,9 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(Lexer.Token.@"for", statement_handlers.parseForStatement);
     try self.statement(Lexer.Token.@"if", statement_handlers.parseIfStatement);
 
+    while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
+        try self.output.append(self.alloc, try statement_handlers.parseStatement(self));
+
     return self;
 }
 
@@ -145,35 +245,24 @@ pub fn deinit(self: *Self) void {
     self.statement_lookup.deinit();
 }
 
-/// Returns root node of the AST
-pub fn getAst(self: *Self, alloc: std.mem.Allocator) !ast.RootNode {
-    var root = ast.RootNode{};
-
-    while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
-        try root.append(alloc, try statement_handlers.parseStatement(self, alloc));
-
-    return root;
+pub inline fn currentPosition(self: *const Self) utils.Position {
+    const pos = std.math.clamp(self.pos, 0, self.lexer.source_map.items.len - 1);
+    return self.lexer.source_map.items[pos];
 }
 
 /// Consumes current token and then increases position.
 pub inline fn advance(self: *Self) Lexer.Token {
-    const current_token = self.input.tokens.items[self.pos];
+    const current_token = self.lexer.tokens.items[self.pos];
     self.pos += 1;
     return current_token;
 }
 
 pub inline fn currentToken(self: *const Self) Lexer.Token {
-    return self.input.tokens.items[self.pos];
+    return self.lexer.tokens.items[self.pos];
 }
 
 pub inline fn currentTokenKind(self: *const Self) Lexer.TokenKind {
     return std.meta.activeTag(self.currentToken());
-}
-
-/// Skips a token (self.pos+=2) and returns token at new position.
-inline fn skipToken(self: *Self) Lexer.Token {
-    self.pos += 2;
-    return self.currentToken();
 }
 
 /// A token which has a NUD handler means it expects nothing to its left
@@ -206,15 +295,14 @@ pub fn unexpectedToken(
     expected_token: []const u8,
     actual: Lexer.Token,
 ) error{ NoSpaceLeft, UnexpectedToken } {
-    const pos = std.math.clamp(self.pos - 1, 0, self.input.source_map.items.len - 1);
+    const pos = std.math.clamp(self.pos - 1, 0, self.lexer.source_map.items.len - 1);
 
     utils.print(
-        "Unexpected token '{f}' in {s} at {}:{}. Expected '{s}'\n",
+        "Unexpected token '{f}' in {s} at {f}. Expected '{s}'\n",
         .{
             actual,
             environment,
-            self.input.source_map.items[pos].line,
-            self.input.source_map.items[pos].col,
+            self.lexer.source_map.items[pos],
             expected_token,
         },
         .red,
@@ -277,15 +365,15 @@ pub inline fn getHandler(
 }
 
 /// parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
-pub fn parseParameters(self: *Self, alloc: std.mem.Allocator) !ast.ParameterList {
-    return try self.parseParametersGeneric(alloc, false);
+pub fn parseParameters(self: *Self) !ast.ParameterList {
+    return try self.parseParametersGeneric(false);
 }
 
-pub fn parseGenericParameters(self: *Self, alloc: std.mem.Allocator) ParserError!ast.ParameterList {
-    return try self.parseParametersGeneric(alloc, true);
+pub fn parseGenericParameters(self: *Self) ParserError!ast.ParameterList {
+    return try self.parseParametersGeneric(true);
 }
 
-pub fn parseArguments(self: *Self, alloc: std.mem.Allocator) ParserError!ast.ArgumentList {
+pub fn parseArguments(self: *Self) ParserError!ast.ArgumentList {
     var args = ast.ArgumentList{};
 
     try self.expect(self.advance(), .open_paren, "argument list", "(");
@@ -293,7 +381,7 @@ pub fn parseArguments(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Arg
     if (self.currentTokenKind() == Lexer.Token.close_paren) {
         _ = self.advance();
     } else while (true) {
-        try args.append(alloc, try expression_handlers.parseExpression(self, alloc, .default));
+        try args.append(self.alloc, try expression_handlers.parseExpression(self, .default));
 
         self.expectSilent(self.currentToken(), .comma) catch {
             try self.expect(self.advance(), .close_paren, "argument list", ")");
@@ -306,20 +394,20 @@ pub fn parseArguments(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Arg
     return args;
 }
 
-pub fn parseBlock(self: *Self, alloc: std.mem.Allocator) !ast.Block {
+pub fn parseBlock(self: *Self) !ast.Block {
     var block = ast.Block{};
 
     try self.expect(self.advance(), .open_brace, "block", "{");
 
     while (self.currentTokenKind() != .eof and self.currentTokenKind() != .close_brace)
-        try block.append(alloc, try statement_handlers.parseStatement(self, alloc));
+        try block.append(self.alloc, try statement_handlers.parseStatement(self));
 
     try self.expect(self.advance(), .close_brace, "block", "}");
 
     return block;
 }
 
-pub fn parseParametersGeneric(self: *Self, alloc: std.mem.Allocator, type_is_optional: bool) ParserError!ast.ParameterList {
+pub fn parseParametersGeneric(self: *Self, type_is_optional: bool) ParserError!ast.ParameterList {
     var params = ast.ParameterList{};
 
     try self.expect(self.advance(), .open_paren, "parameter list", "(");
@@ -333,14 +421,14 @@ pub fn parseParametersGeneric(self: *Self, alloc: std.mem.Allocator, type_is_opt
         if (type_is_optional) {
             if (self.currentTokenKind() == Lexer.Token.colon) {
                 _ = self.advance();
-                param_type = try self.type_parser.parseType(alloc, .default);
+                param_type = try self.type_parser.parseType(self.alloc, .default);
             }
         } else {
             try self.expect(self.advance(), .colon, "parameter list", ":");
-            param_type = try self.type_parser.parseType(alloc, .default);
+            param_type = try self.type_parser.parseType(self.alloc, .default);
         }
 
-        try params.append(alloc, .{ .name = param_name, .type = param_type });
+        try params.append(self.alloc, .{ .name = param_name, .type = param_type });
 
         // look for a comma, else a closing parenthesis
         self.expectSilent(self.currentToken(), .comma) catch {
@@ -351,4 +439,34 @@ pub fn parseParametersGeneric(self: *Self, alloc: std.mem.Allocator, type_is_opt
     }
 
     return params;
+}
+
+/// Puts expression's hash code into `source_map` with `pos` as value and then returns it back.
+pub inline fn putExprPos(self: *Self, expr: ast.Expression, pos: utils.Position) !ast.Expression {
+    var h = std.hash.Wyhash.init(0);
+    hashAnAnything(&h, expr, 0);
+    try self.source_map.put(h.final(), pos);
+    return expr;
+}
+
+/// Gets expression from `source_map` by hash code.
+pub inline fn getExprPos(self: *const Self, expr: anytype) !utils.Position {
+    var h = std.hash.Wyhash.init(0);
+    hashAnAnything(&h, expr, 0);
+    return self.source_map.get(h.final()) orelse error.ExpressionNotInMap;
+}
+
+/// Puts expression's hash code into `source_map` with `pos` as value and then returns it back.
+pub inline fn putStatementPos(self: *Self, stmt: ast.Statement, pos: utils.Position) !ast.Statement {
+    var h = std.hash.Wyhash.init(0);
+    hashAnAnything(&h, stmt, 0);
+    try self.source_map.put(h.final(), pos);
+    return stmt;
+}
+
+/// Gets expression from `source_map` by hash code.
+pub inline fn getStatementPos(self: *const Self, stmt: anytype) !utils.Position {
+    var h = std.hash.Wyhash.init(0);
+    hashAnAnything(&h, stmt, 0);
+    return self.source_map.get(h.final()) orelse error.ExpressionNotInMap;
 }

@@ -4,6 +4,8 @@ const llvm = @import("llvm");
 const utils = @import("utils.zig");
 const ast = @import("parser/ast.zig");
 
+const Parser = @import("parser/Parser.zig");
+
 const Self = @This();
 
 pub const CompilerError = error{
@@ -17,7 +19,7 @@ pub const CompilerError = error{
     OutOfMemory,
     AssignmentToImmutableVariable,
     MemberExpressionOnPrimitiveType,
-};
+} || Parser.ParserError;
 
 const UserDefinedType = struct {
     llvm_type: llvm.types.LLVMTypeRef,
@@ -44,8 +46,9 @@ module: llvm.types.LLVMModuleRef,
 variables: std.ArrayList(std.StringHashMap(Symbol)) = .{},
 types: std.StringHashMap(*UserDefinedType),
 current_self_type: ?llvm.types.LLVMTypeRef = null,
+parser: *const Parser,
 
-pub fn init(alloc: std.mem.Allocator) !*Self {
+pub fn init(alloc: std.mem.Allocator, parser: *const Parser) !*Self {
     const self = try alloc.create(Self);
 
     const context = llvm.core.LLVMContextCreate();
@@ -59,6 +62,7 @@ pub fn init(alloc: std.mem.Allocator) !*Self {
         .builder = builder,
         .module = module,
         .types = std.StringHashMap(*UserDefinedType).init(alloc),
+        .parser = parser,
     };
 
     try self.variables.append(self.alloc, std.StringHashMap(Symbol).init(alloc)); // global scope
@@ -84,26 +88,10 @@ pub fn deinit(self: *Self) void {
     llvm.core.LLVMContextDispose(self.context);
 }
 
-fn findVariable(self: *const Self, name: []const u8) ?Symbol {
-    for (self.variables.items, 0..) |_, i| {
-        const scope_idx = self.variables.items.len - 1 - i;
-        if (self.variables.items[scope_idx].get(name)) |symbol| {
-            return symbol;
-        }
-    }
-    return null;
-}
-
-fn addVariable(self: *Self, name: []const u8, symbol: Symbol) !void {
-    const last_scope_idx = self.variables.items.len - 1;
-    try self.variables.items[last_scope_idx].put(name, symbol);
-}
-
 /// Entry point for the compiler. Compiles AST into LLVM module.
-pub fn emit(self: *Self, root: ast.RootNode) !void {
-    for (root.items) |statement| {
+pub fn emit(self: *Self) !void {
+    for (self.parser.output.items) |statement|
         try self.compileStatement(statement);
-    }
 
     // Initialize LLVM targets
     llvm.target.LLVMInitializeAllTargetInfos();
@@ -113,7 +101,13 @@ pub fn emit(self: *Self, root: ast.RootNode) !void {
     llvm.target.LLVMInitializeAllAsmPrinters();
 
     const triple = llvm.target_machine.LLVMGetDefaultTargetTriple();
-    const target = llvm.target_machine.LLVMGetFirstTarget();
+    var target: llvm.types.LLVMTargetRef = undefined;
+    var err_target: [*c]u8 = null;
+    if (llvm.target_machine.LLVMGetTargetFromTriple(triple, &target, &err_target) != 0) {
+        utils.print("Failed to get target from triple: {s}\n", .{err_target}, .red);
+        return;
+    }
+
     const target_machine = llvm.target_machine.LLVMCreateTargetMachine(
         target,
         triple,
@@ -130,11 +124,16 @@ pub fn emit(self: *Self, root: ast.RootNode) !void {
     const object_file = try std.fs.cwd().createFile(".dmr-out/main.o", .{});
     defer object_file.close();
 
+    const out_path = try std.fs.path.join(self.alloc, &.{ std.fs.cwd().realpathAlloc(self.alloc, ".") catch unreachable, ".dmr-out/main.o" });
+    defer self.alloc.free(out_path);
+
+    const out_path_c = try self.cString(out_path);
+
     var err: [*c]u8 = null;
     if (llvm.target_machine.LLVMTargetMachineEmitToFile(
         target_machine,
         self.module,
-        ".dmr-out/main.o",
+        out_path_c,
         .LLVMObjectFile,
         &err,
     ) != 0) {
@@ -142,6 +141,25 @@ pub fn emit(self: *Self, root: ast.RootNode) !void {
         llvm.core.LLVMDisposeMessage(err); // Free if not null
         return error.CompilerFailed;
     }
+}
+
+// helper functions
+
+/// finds variable in closest possible scope.
+fn findVariable(self: *const Self, name: []const u8) ?Symbol {
+    for (self.variables.items, 0..) |_, i| {
+        const scope_idx = self.variables.items.len - 1 - i;
+        if (self.variables.items[scope_idx].get(name)) |symbol| {
+            return symbol;
+        }
+    }
+
+    return null;
+}
+
+fn addVariable(self: *Self, name: []const u8, symbol: Symbol) !void {
+    const last_scope_idx = self.variables.items.len - 1;
+    try self.variables.items[last_scope_idx].put(name, symbol);
 }
 
 fn createEntryBlockAlloca(self: *Self, @"fn": llvm.types.LLVMValueRef, ty: llvm.types.LLVMTypeRef, name: [*:0]const u8) llvm.types.LLVMValueRef {
@@ -164,13 +182,13 @@ fn compileStatement(self: *Self, statement: ast.Statement) CompilerError!void {
         .function_definition => |fn_def| try self.compileFunctionDefinition(fn_def),
         .struct_declaration => |struct_decl| try self.compileStructDeclaration(struct_decl),
         .@"return" => |return_expr| try self.compileReturnStatement(return_expr),
-        .variable_declaration => |var_decl| try self.compileVariableDeclaration(var_decl),
+        .variable_declaration => |_| try self.compileVariableDeclaration(statement),
         .expression => |expr| _ = try self.compileExpression(expr),
         .@"if" => |if_stmt| try self.compileIfStatement(if_stmt),
         .@"while" => |while_stmt| try self.compileWhileStatement(while_stmt),
         .@"for" => |for_stmt| try self.compileForStatement(for_stmt),
         .block => |block| try self.compileBlock(block),
-        else => {},
+        else => |other| std.debug.panic("panic: unimplemented statement {s}\n", .{@tagName(other)}),
     }
 }
 
@@ -274,8 +292,11 @@ fn compileBlock(self: *Self, block: ast.Block) CompilerError!void {
     last_scope.deinit();
 }
 
-fn compileVariableDeclaration(self: *Self, var_decl: ast.Statement.VariableDeclaration) CompilerError!void {
+fn compileVariableDeclaration(self: *Self, statement: ast.Statement) CompilerError!void {
+    const var_decl = statement.variable_declaration;
+
     if (self.findVariable(var_decl.variable_name) != null) {
+        utils.print("Variable redeclaration at {f}\n", .{try self.parser.getStatementPos(statement)}, .red);
         return error.VariableRedeclaration;
     }
 
@@ -327,7 +348,7 @@ fn compileLValue(self: *Self, expr: ast.Expression) !LValue {
 
             const struct_ptr = lhs_lval.ptr;
             const struct_type: llvm.types.LLVMTypeRef =
-                if (member_access.lhs.* == .ident and std.mem.eql(u8, member_access.lhs.*.ident, "self"))
+                if (member_access.lhs.* == .ident and std.mem.eql(u8, member_access.lhs.ident, "self"))
                     self.current_self_type orelse return error.UnsupportedExpression
                 else if (llvm.core.LLVMGetTypeKind(lhs_lval.ty) == .LLVMPointerTypeKind)
                     llvm.core.LLVMGetElementType(lhs_lval.ty)
@@ -346,7 +367,7 @@ fn compileLValue(self: *Self, expr: ast.Expression) !LValue {
             const user_type = self.types.get(struct_name) orelse return error.UndeclaredType;
 
             if (member_access.rhs.* != .ident) return error.UnsupportedExpression;
-            const field_name = member_access.rhs.*.ident;
+            const field_name = member_access.rhs.ident;
 
             const field_index = user_type.fields.get(field_name) orelse return error.UndeclaredField;
 
@@ -395,7 +416,7 @@ fn compileMemberAccessExpression(self: *Self, member_access: ast.Expression.Memb
     if (member_access.rhs.* != .ident) {
         return error.UnsupportedExpression;
     }
-    const field_name = member_access.rhs.*.ident;
+    const field_name = member_access.rhs.ident;
 
     const field_index = user_type.fields.get(field_name) orelse return error.UndeclaredField;
 
@@ -440,7 +461,7 @@ fn compileCallExpression(self: *Self, call_expr: ast.Expression.Call) !llvm.type
             // Method Call
             const lhs = member_expr.lhs.*;
             if (member_expr.rhs.* != .ident) return error.UnsupportedExpression;
-            const method_name = member_expr.rhs.*.ident;
+            const method_name = member_expr.rhs.ident;
 
             // Determine the actual struct type for mangling and lookup.
             var struct_type_for_lookup: llvm.types.LLVMTypeRef = undefined;
@@ -518,7 +539,7 @@ fn compileCallExpression(self: *Self, call_expr: ast.Expression.Call) !llvm.type
             try final_args.append(self.alloc, self_arg);
             try final_args.appendSlice(self.alloc, compiled_args.items);
 
-            return llvm.core.LLVMBuildCall2(self.builder, fn_type, func_to_call, final_args.items.ptr, @as(u32, @intCast(final_args.items.len)), "calltmp");
+            return llvm.core.LLVMBuildCall2(self.builder, fn_type, func_to_call, final_args.items.ptr, cUint(final_args.items.len), "calltmp");
         },
         .ident => |ident| {
             // Normal function call
@@ -526,7 +547,7 @@ fn compileCallExpression(self: *Self, call_expr: ast.Expression.Call) !llvm.type
             const func_to_call = llvm.core.LLVMGetNamedFunction(self.module, func_name) orelse return error.UndeclaredVariable;
 
             const fn_type = llvm.core.LLVMGlobalGetValueType(func_to_call);
-            return llvm.core.LLVMBuildCall2(self.builder, fn_type, func_to_call, compiled_args.items.ptr, @as(u32, @intCast(compiled_args.items.len)), "calltmp");
+            return llvm.core.LLVMBuildCall2(self.builder, fn_type, func_to_call, compiled_args.items.ptr, cUint(compiled_args.items.len), "calltmp");
         },
         else => return error.UnsupportedExpression,
     }

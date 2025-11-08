@@ -11,8 +11,6 @@ const Parser = @import("parser/Parser.zig");
 const Compiler = @import("Compiler.zig");
 
 fn build(alloc: std.mem.Allocator) !void {
-    utils.print("building...\n", .{}, .white);
-
     var buf: [65535]u8 = undefined;
     const file = std.fs.cwd().readFile("src/main.dmr", &buf) catch |err| {
         utils.print("Failed to read 'src/main.dmr': {}\n", .{err}, .red);
@@ -24,31 +22,26 @@ fn build(alloc: std.mem.Allocator) !void {
     const arena = arena_back.allocator();
     defer arena_back.deinit();
 
-    var lexer = Lexer.init(file);
-    defer lexer.deinit(arena);
-    lexer.tokenize(arena) catch |err| {
-        utils.print("Couldn't get tokens: {}\n", .{err}, .red);
+    var lexer = Lexer.init(file, arena) catch |err| {
+        utils.print("Failed to tokenize source code: {}\n", .{err}, .red);
         return;
     };
+    defer lexer.deinit(arena);
 
     // for (lexer.tokens.items) |t| std.debug.print("t: {f}\n", .{t});
 
-    var parser = Parser.init(&lexer, arena) catch |err| {
+    var parser = Parser.init(lexer, arena) catch |err| {
         utils.print("Failed to create parser: {}\n", .{err}, .red);
         return error.ParserFailed;
     };
     defer parser.deinit();
-    const ast = parser.getAst(arena) catch |err| {
-        utils.print("Failed to parse program: {}\n", .{err}, .red);
-        return error.ParserFailed;
-    };
 
     // try pretty.print(alloc, .{ast}, .{ .max_depth = 100 });
 
-    var compiler = try Compiler.init(arena);
+    var compiler = try Compiler.init(arena, parser);
     defer compiler.deinit();
 
-    compiler.emit(ast) catch |err| { // Call emit to build the module
+    compiler.emit() catch |err| { // Call emit to build the module
         utils.print("Failed to compile program: {}\n", .{err}, .red);
         return error.CompilerFailed;
     };

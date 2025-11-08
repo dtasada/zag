@@ -1,5 +1,14 @@
 const std = @import("std");
 
+pub const Position = struct {
+    line: usize,
+    col: usize,
+
+    pub fn format(self: Position, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{}:{}", .{ self.line, self.col });
+    }
+};
+
 pub fn print(
     comptime fmt: []const u8,
     args: anytype,
