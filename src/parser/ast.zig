@@ -15,18 +15,6 @@ pub const BinaryOperator = enum {
     slash,
     percent,
 
-    plus_equals,
-    minus_equals,
-    times_equals,
-    slash_equals,
-    mod_equals,
-    and_equals,
-    or_equals,
-    xor_equals,
-    shift_right_equals,
-    shift_left_equals,
-
-    equals,
     equals_equals,
     greater,
     less,
@@ -48,12 +36,41 @@ pub const BinaryOperator = enum {
     }
 };
 
+pub const AssignmentOperator = enum {
+    equals,
+    plus_equals,
+    minus_equals,
+    times_equals,
+    slash_equals,
+    mod_equals,
+    and_equals,
+    or_equals,
+    xor_equals,
+    shift_right_equals,
+    shift_left_equals,
+
+    pub fn fromLexerToken(t: LexerToken) AssignmentOperator {
+        return std.meta.stringToEnum(AssignmentOperator, @tagName(std.meta.activeTag(t))) orelse
+            @panic("called AssignmentOperator.fromLexerToken on Lexer.Token that is not an assignment operator");
+    }
+};
+
+pub const PrefixOperator = enum {
+    dash,
+
+    pub fn fromLexerToken(t: LexerToken) PrefixOperator {
+        return std.meta.stringToEnum(PrefixOperator, @tagName(std.meta.activeTag(t))) orelse
+            @panic("called PrefixOperator.fromLexerToken on Lexer.Token that is not a prefix operator");
+    }
+};
+
 pub const Expression = union(enum) {
     bad_node,
 
     // literals
     ident: []const u8,
     string: []const u8,
+    char: u8,
     int: i64,
     uint: u64,
     float: f64,
@@ -87,13 +104,13 @@ pub const Expression = union(enum) {
     };
 
     pub const Prefix = struct {
-        op: LexerToken,
+        op: PrefixOperator,
         rhs: *const Expression,
     };
 
     pub const Assignment = struct {
         assignee: *const Expression,
-        op: LexerToken,
+        op: AssignmentOperator,
         value: *const Expression,
     };
 
@@ -104,7 +121,7 @@ pub const Expression = union(enum) {
 
     pub const ArrayInstantiation = struct {
         type: Type,
-        contents: std.ArrayList(Expression) = .{},
+        contents: std.ArrayList(Expression) = .empty,
     };
 
     const Range = struct {
@@ -127,15 +144,22 @@ pub const Expression = union(enum) {
 
 pub const FunctionDefinition = struct {
     name: []const u8,
-    parameters: ParameterList = .{},
+    parameters: ParameterList = .empty,
     return_type: Type,
     body: Block,
+
+    pub fn getType(self: *const FunctionDefinition) Type.Function {
+        return .{
+            .parameters = self.parameters,
+            .return_type = &self.return_type,
+        };
+    }
 };
 
 pub const Statement = union(enum) {
     @"return": ?Expression,
     expression: Expression,
-    variable_declaration: VariableDeclaration,
+    variable_definition: VariableDefinition,
     struct_declaration: StructDeclaration,
     enum_declaration: EnumDeclaration,
     union_declaration: UnionDeclaration,
@@ -145,7 +169,7 @@ pub const Statement = union(enum) {
     @"while": While,
     @"for": For,
 
-    pub const VariableDeclaration = struct {
+    pub const VariableDefinition = struct {
         is_mut: bool,
         variable_name: []const u8,
         type: Type,
@@ -172,8 +196,8 @@ pub const Statement = union(enum) {
 
             name: []const u8,
             generic_types: ?ParameterList = null, // only for structs and unions
-            members: std.ArrayList(Field) = .{},
-            methods: std.ArrayList(FunctionDefinition) = .{},
+            members: std.ArrayList(Field) = .empty,
+            methods: std.ArrayList(FunctionDefinition) = .empty,
         };
     }
 
@@ -201,7 +225,7 @@ pub const Statement = union(enum) {
     };
 };
 
-const VariableSignature = struct {
+pub const VariableSignature = struct {
     name: []const u8,
     type: Type,
 };
@@ -225,6 +249,11 @@ pub const Type = union(enum) {
         @"error": ?*const Type = null,
     };
 
+    const Function = struct {
+        parameters: ParameterList = .empty,
+        return_type: *const Type,
+    };
+
     inferred,
     self_type,
     symbol: []const u8,
@@ -232,4 +261,5 @@ pub const Type = union(enum) {
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
+    function: Function,
 };

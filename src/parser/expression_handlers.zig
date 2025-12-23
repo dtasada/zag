@@ -19,7 +19,8 @@ pub fn parsePrimaryExpression(self: *Self) !ast.Expression {
         .float => |float| .{ .float = float },
         .ident => |atom| .{ .ident = atom },
         .string => |string| .{ .string = string },
-        else => |other| return self.unexpectedToken("primary expression", "int, float, atom", other),
+        .char => |char| .{ .char = char },
+        else => |other| return self.unexpectedToken("primary expression", "(int | float | ident | string | char)", other),
     };
 
     return self.putExprPos(kind, pos);
@@ -74,7 +75,7 @@ pub fn parseAssignmentExpression(self: *Self, lhs: *const ast.Expression, bp: Bi
     return self.putExprPos(.{
         .assignment = .{
             .assignee = lhs,
-            .op = op,
+            .op = .fromLexerToken(op),
             .value = rhs,
         },
     }, pos);
@@ -105,7 +106,7 @@ pub fn parsePrefixExpression(self: *Self) ParserError!ast.Expression {
 
     return self.putExprPos(.{
         .prefix = .{
-            .op = op,
+            .op = .fromLexerToken(op),
             .rhs = rhs,
         },
     }, pos);

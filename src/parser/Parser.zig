@@ -136,7 +136,7 @@ pos: usize,
 lexer: *const Lexer,
 source_map: std.AutoHashMap(u64, utils.Position),
 alloc: std.mem.Allocator,
-output: ast.RootNode = .{},
+output: ast.RootNode = .empty,
 
 /// pratt parsing helpers
 type_parser: TypeParser,
@@ -144,7 +144,7 @@ bp_lookup: BpLookup,
 nud_lookup: NudLookup,
 led_lookup: LedLookup,
 statement_lookup: StatementLookup,
-// errors: std.ArrayList(ParserError) = .{},
+// errors: std.ArrayList(ParserError) = .empty,
 
 /// Initializes and runs parser. Populates `output`.
 pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {

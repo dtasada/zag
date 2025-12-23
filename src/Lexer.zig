@@ -8,10 +8,10 @@ const Self = @This();
 source_code: []const u8,
 
 /// arraylist of tokens. this is the output of the lexer.
-tokens: std.ArrayList(Token) = .{},
+tokens: std.ArrayList(Token) = .empty,
 
 /// maps each token by index to its corresponding location in the source code
-source_map: std.ArrayList(utils.Position) = .{},
+source_map: std.ArrayList(utils.Position) = .empty,
 
 /// current position of character index in `input`
 pos: usize = 0,
@@ -37,6 +37,7 @@ pub const Token = union(enum) {
     // literals
     ident: []const u8,
     string: []const u8,
+    char: u8,
     int: u64,
     float: f64,
 
@@ -223,6 +224,11 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
                 ':' => try self.appendAndNext(alloc, .colon),
                 ',' => try self.appendAndNext(alloc, .comma),
                 '?' => try self.appendAndNext(alloc, .question),
+                '\'' => {
+                    _ = self.advance();
+                    try self.appendAndNext(alloc, .{ .char = self.advance() });
+                    _ = self.advance();
+                },
                 else => {
                     if (char == '\n') {
                         self.line += 1;

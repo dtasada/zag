@@ -62,7 +62,7 @@ pub fn parseVariableDeclarationStatement(self: *Self) ParserError!ast.Statement 
     );
 
     return self.putStatementPos(.{
-        .variable_declaration = .{
+        .variable_definition = .{
             .variable_name = var_name,
             .is_mut = is_mut,
             .assigned_value = assigned_value,

@@ -22,7 +22,7 @@ fn main() i32 {
 	let a = MyStruct { x: 1, y: 1 };
 	let b = MyStruct { x: 2, y: 2 };
 
-    let c = a.add(b);
+    // let c = a.add(b);
 
     return d;
 }

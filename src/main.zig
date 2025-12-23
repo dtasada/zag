@@ -8,7 +8,7 @@ const builtin = @import("builtin");
 const utils = @import("utils.zig");
 const Lexer = @import("Lexer.zig");
 const Parser = @import("parser/Parser.zig");
-const Compiler = @import("Compiler.zig");
+const Compiler = @import("compiler/Compiler.zig");
 
 const BuildError = error{
     FailedToReadSource,
@@ -19,13 +19,16 @@ const BuildError = error{
     CompilationError,
 };
 
-fn build(alloc: std.mem.Allocator) BuildError!void {
+fn build(alloc: std.mem.Allocator) !void {
+    const file_path = try std.fs.path.join(alloc, &.{ "src", "main.dmr" });
+    defer alloc.free(file_path);
+
     var buf: [65535]u8 = undefined;
-    const file = std.fs.cwd().readFile("src/main.dmr", &buf) catch |err|
+    const file = std.fs.cwd().readFile(file_path, &buf) catch |err|
         return utils.printErr(
             error.FailedToReadSource,
-            "Failed to open file 'src/main.dmr': {}\n",
-            .{err},
+            "Failed to open file '{s}': {}\n",
+            .{ file_path, err },
             .red,
         );
 
@@ -56,7 +59,7 @@ fn build(alloc: std.mem.Allocator) BuildError!void {
 
     // try pretty.print(alloc, .{ast}, .{ .max_depth = 100 });
 
-    var compiler = Compiler.init(arena, parser) catch |err|
+    var compiler = Compiler.init(arena, parser, file_path) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",
