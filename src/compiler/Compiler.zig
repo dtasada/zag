@@ -184,9 +184,10 @@ fn compileWhileStatement(self: *Self, while_statement: ast.Statement.While) Comp
 
 fn compileForStatement(self: *Self, for_statement: ast.Statement.For) CompilerError!void {
     try self.writeBytes("for (");
-    try self.write("int32_t {s} = ", .{for_statement.capture});
     switch (for_statement.iterator.*) {
         .range => |range| {
+            try self.write("{s} ", .{try self.compileType(try self.inferType(range.start.*))});
+            try self.write("{s} = ", .{for_statement.capture});
             try self.compileExpression(range.start);
             try self.write("; {s} < ", .{for_statement.capture});
             try self.compileExpression(range.end);
@@ -234,7 +235,8 @@ fn compileType(self: *Self, t: ast.Type) CompilerError![]const u8 {
 fn inferType(self: *Self, expr: ast.Expression) !ast.Type {
     return switch (expr) {
         .ident => |ident| .{ .symbol = ident },
-        .int, .uint => .{ .symbol = "i32" },
+        .int => |int| .{ .symbol = if (int <= std.math.maxInt(i32)) "i32" else "i64" },
+        .uint => |uint| .{ .symbol = if (uint <= std.math.maxInt(i32)) "i32" else "i64" },
         .float => .{ .symbol = "f32" },
         .char => .{ .symbol = "u8" },
         .struct_instantiation => |struct_inst| .{

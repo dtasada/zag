@@ -57,7 +57,7 @@ fn build(alloc: std.mem.Allocator) !void {
         );
     defer parser.deinit();
 
-    try pretty.print(alloc, .{parser.output}, .{ .max_depth = 100 });
+    // try pretty.print(alloc, .{parser.output}, .{ .max_depth = 100 });
 
     var compiler = Compiler.init(arena, parser, file_path) catch |err|
         return utils.printErr(

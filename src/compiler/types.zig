@@ -11,6 +11,9 @@ pub const primitives: std.static_string_map.StaticStringMap([]const u8) = .initC
     .{ "u32", "uint32_t" },
     .{ "u64", "uint64_t" },
 
+    .{ "f32", "float" },
+    .{ "f64", "double" },
+
     .{ "void", "void" },
     // .{ "string", "char*" },
 });

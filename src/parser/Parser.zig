@@ -217,7 +217,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(Lexer.Token.open_brace, expression_handlers.parseBlockExpression);
     try self.nud(Lexer.Token.@"if", expression_handlers.parseIfExpression);
     try self.nud(Lexer.Token.ampersand, expression_handlers.parseReferenceExpression);
-    try self.led(Lexer.Token.dot_dot, .call, expression_handlers.parseRangeExpression);
+    try self.led(Lexer.Token.dot_dot, .relational, expression_handlers.parseRangeExpression);
 
     // Statements
     try self.statement(Lexer.Token.let, statement_handlers.parseVariableDeclarationStatement);

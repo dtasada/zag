@@ -102,7 +102,7 @@ pub fn parsePrefixExpression(self: *Self) ParserError!ast.Expression {
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
-    rhs.* = try parseExpression(self, .default);
+    rhs.* = try parseExpression(self, .unary);
 
     return self.putExprPos(.{
         .prefix = .{
