@@ -94,3 +94,19 @@ The `build.zig` file defines how the project is built. It uses the Zig build sys
 -   Set up the necessary build and run steps.
 
 This provides a clear overview of the project's external dependencies and how they are integrated.
+
+## Tree-sitter Grammar (`tree-sitter-zag/`)
+
+The project also includes a tree-sitter grammar for the `.zag` language, located in the `tree-sitter-zag/` directory. This grammar is used for syntax highlighting, code navigation, and other tooling features.
+
+The grammar is defined in `tree-sitter-zag/grammar.js`. It is written in JavaScript and uses the tree-sitter DSL to define the language's syntax. The grammar is based on the parser in `src/parser/`, and it is designed to be as close as possible to the parser's behavior.
+
+The grammar is organized into a set of rules that define the language's syntax. The main rule is `source_file`, which is a sequence of statements. The grammar defines rules for all the language's constructs, including:
+
+-   Statements: `let`, `if`, `while`, `for`, `return`, etc.
+-   Expressions: literals, binary operations, function calls, etc.
+-   Types: `int`, `float`, `bool`, structs, enums, etc.
+
+The grammar also includes rules for comments and other "extra" tokens that can appear anywhere in the source code.
+
+The grammar is used to generate a parser that can be used by various tools to understand and process `.zag` source code.
