@@ -2,7 +2,6 @@ const std = @import("std");
 
 const utils = @import("../utils.zig");
 const ast = @import("../parser/ast.zig");
-const types = @import("types.zig");
 
 const Parser = @import("../parser/Parser.zig");
 
@@ -210,43 +209,42 @@ fn compileStructDeclaration(
 ) CompilerError!void {
     // register struct in scope
     try self.registerSymbol(struct_decl.name, .{
-        .@"struct" = b: {
-            var t: Type.Struct = .{
-                .name = struct_decl.name,
-                .members = try .initCapacity(self.alloc, struct_decl.members.items.len),
-                .methods = try .initCapacity(self.alloc, struct_decl.methods.items.len),
-            };
-            for (struct_decl.members.items) |member| {
-                // TODO: struct default values
-                const member_type = try self.alloc.create(Type);
-                member_type.* = try self.getTypeFromAst(.{ .strong = member.type });
-                t.members.appendAssumeCapacity(.{
-                    .name = member.name,
-                    .type = member_type,
-                });
-            }
-
-            for (struct_decl.methods.items) |method| {
-                var params: std.ArrayList(*const Type) = try .initCapacity(
-                    self.alloc,
-                    method.parameters.items.len,
-                );
-                for (method.parameters.items) |p| {
-                    const param_type = try self.alloc.create(Type);
-                    param_type.* = try self.getTypeFromAst(.{ .strong = p.type });
-                    params.appendAssumeCapacity(param_type);
-                }
-
-                const return_type = try self.alloc.create(Type);
-                return_type.* = try self.getTypeFromAst(.{ .strong = method.return_type });
-                t.methods.appendAssumeCapacity(.{
-                    .params = params,
-                    .return_type = return_type,
-                });
-            }
-            break :b t;
+        .@"struct" = .{
+            .name = struct_decl.name,
+            .members = try .initCapacity(self.alloc, struct_decl.members.items.len),
+            .methods = try .initCapacity(self.alloc, struct_decl.methods.items.len),
         },
     }, .type);
+    const t = &self.scopes.getLast().getPtr(struct_decl.name).?.type.type.@"struct";
+    for (struct_decl.members.items) |member| {
+        // TODO: struct default values
+        const member_type = try self.alloc.create(Type);
+        member_type.* = try self.getTypeFromAst(.{ .strong = member.type });
+        t.members.appendAssumeCapacity(.{
+            .name = member.name,
+            .type = member_type,
+        });
+    }
+
+    for (struct_decl.methods.items) |method| {
+        var params: std.ArrayList(*const Type) = try .initCapacity(
+            self.alloc,
+            method.parameters.items.len,
+        );
+
+        for (method.parameters.items) |p| {
+            const param_type = try self.alloc.create(Type);
+            param_type.* = try self.getTypeFromAst(.{ .strong = p.type });
+            params.appendAssumeCapacity(param_type);
+        }
+
+        const return_type = try self.alloc.create(Type);
+        return_type.* = try self.getTypeFromAst(.{ .strong = method.return_type });
+        t.methods.appendAssumeCapacity(.{
+            .params = params,
+            .return_type = return_type,
+        });
+    }
 
     try self.write("typedef struct {{\n", .{});
     self.indent_level += 1;
@@ -262,11 +260,15 @@ fn compileStructDeclaration(
 
     for (struct_decl.methods.items) |method| {
         try self.registerSymbol(method.name, try self.getTypeFromAst(.{ .strong = method.getType() }), .symbol);
+        try self.pushScope();
+        defer self.popScope();
 
         try self.write("{s}", .{try self.compileTypeAst(method.return_type)});
         try self.write(" __dmr_{s}_{s}(", .{ struct_decl.name, method.name }); // TODO: generics
         for (method.parameters.items, 1..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, try self.getTypeFromAst(.{ .strong = parameter.type }));
+            const parameter_type = try self.getTypeFromAst(.{ .strong = parameter.type });
+            try self.registerSymbol(parameter.name, parameter_type, .symbol);
+            try self.compileVariableSignature(parameter.name, parameter_type);
             if (i < method.parameters.items.len) try self.writeBytes(", ");
         }
         try self.writeBytes(") ");
@@ -352,10 +354,10 @@ fn compileBlock(self: *Self, block: ast.Block) CompilerError!void {
 
 fn compileTypeAst(self: *Self, t: ast.Type) CompilerError![]const u8 {
     return switch (t) {
-        .symbol => |symbol| types.get(symbol) catch symbol,
-        .reference => |reference| try std.fmt.allocPrint(self.alloc, "{s}{s} *", .{
-            if (reference.is_mut) "" else "const ",
+        .symbol => |symbol| try self.compileType(try self.getSymbolType(symbol)),
+        .reference => |reference| try std.fmt.allocPrint(self.alloc, "{s} *{s}", .{
             try self.compileTypeAst(reference.inner.*),
+            if (reference.is_mut) "" else " const",
         }),
         else => |other| std.debug.panic("unimplemented type {s}\n", .{@tagName(other)}),
     };
@@ -363,11 +365,27 @@ fn compileTypeAst(self: *Self, t: ast.Type) CompilerError![]const u8 {
 
 fn compileType(self: *Self, t: Type) CompilerError![]const u8 {
     return switch (t) {
-        .reference => |reference| try std.fmt.allocPrint(self.alloc, "{s}{s} *", .{
-            if (reference.is_mut) "" else "const ",
+        .reference => |reference| try std.fmt.allocPrint(self.alloc, "{s} *{s}", .{
             try self.compileType(reference.inner.*),
+            if (reference.is_mut) "" else " const",
         }),
-        else => |other| try types.get(@tagName(other)),
+        .@"struct" => |s| self.getInnerName(s.name),
+
+        .i8 => "int8_t",
+        .i16 => "int16_t",
+        .i32 => "int32_t",
+        .i64 => "int64_t",
+
+        .u8 => "uint8_t",
+        .u16 => "uint16_t",
+        .u32 => "uint32_t",
+        .u64 => "uint64_t",
+
+        .f32 => "float",
+        .f64 => "double",
+
+        .void => "void",
+        else => |other| std.debug.panic("unimplemented type: {any}\n", .{other}),
     };
 }
 
@@ -423,6 +441,16 @@ fn inferType(self: *Self, expr: ast.Expression) !Type {
         .char => .u8,
         .struct_instantiation => |struct_inst| try self.getSymbolType(struct_inst.name),
         .prefix => |prefix| try self.inferType(prefix.rhs.*),
+        .reference => |reference| .{
+            .reference = .{
+                .inner = b: {
+                    const inner = try self.alloc.create(Type);
+                    inner.* = try self.getTypeFromAst(.{ .infer = reference.inner.* });
+                    break :b inner;
+                },
+                .is_mut = reference.is_mut,
+            },
+        },
         else => |other| std.debug.panic("unimplemented type: {s}\n", .{@tagName(other)}),
     };
 }
@@ -442,14 +470,14 @@ fn compileVariableSignature(self: *Self, name: []const u8, @"type": Type) Compil
 }
 
 fn compileVariableDefinition(self: *Self, v: ast.Statement.VariableDefinition) CompilerError!void {
-    if (!v.is_mut) try self.writeBytes("const ");
-
     const variable_type = try self.getTypeFromAst(
         if (v.type == .inferred)
             .{ .infer = v.assigned_value }
         else
             .{ .strong = v.type },
     );
+
+    if (!v.is_mut) try self.writeBytes("const ");
 
     try self.compileVariableSignature(v.variable_name, variable_type);
 
@@ -539,7 +567,7 @@ fn compileExpression(self: *Self, expression: *const ast.Expression) CompilerErr
         },
         .member => |member| {
             try self.compileExpression(member.lhs);
-            try self.writeBytes("."); // TODO: or -> if lhs is a pointer
+            try self.writeBytes(if (try self.inferType(member.lhs.*) == .reference) "->" else ".");
             try self.compileExpression(member.rhs);
         },
         .ident => |ident| try self.write("{s}", .{ident}),
@@ -560,6 +588,10 @@ fn compileExpression(self: *Self, expression: *const ast.Expression) CompilerErr
             try self.writeBytes("}");
         },
         .range => std.debug.print("illegal range expression\n", .{}),
+        .reference => |reference| {
+            try self.writeBytes("&");
+            try self.compileExpression(reference.inner);
+        },
         else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
     }
 }
@@ -591,7 +623,7 @@ fn registerSymbol(
             },
         },
         .type => .{
-            .symbol = .{
+            .type = .{
                 .type = @"type",
                 .inner_name = name, // TODO: name mangling for generics ig
             },
@@ -602,8 +634,29 @@ fn registerSymbol(
 fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
-        return (scope.get(symbol) orelse
-            continue).symbol.type;
+        return switch (scope.get(symbol) orelse continue) {
+            inline else => |s| s.type,
+        };
 
-    return error.UnknownSymbol;
+    return Type.fromSymbol(symbol) catch utils.printErr(
+        error.UnknownSymbol,
+        "Compiler error: Unknown symbol: {s}\n",
+        .{symbol},
+        .red,
+    );
+}
+
+fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope|
+        return switch (scope.get(symbol) orelse continue) {
+            inline else => |s| s.inner_name,
+        };
+
+    return utils.printErr(
+        error.UnknownSymbol,
+        "Compiler error: Unknown symbol: {s}\n",
+        .{symbol},
+        .red,
+    );
 }
