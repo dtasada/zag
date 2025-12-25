@@ -6,12 +6,12 @@ struct MyStruct {
         self.x = new_x;
     }
 
-	fn add(lhs: MyStruct, rhs: MyStruct) MyStruct {
-		return MyStruct {
-			x: lhs.x + rhs.x,
-			y: lhs.y + rhs.y,
-		};
-	}
+	// fn add(lhs: MyStruct, rhs: MyStruct) MyStruct {
+	// 	return MyStruct {
+	// 		x: lhs.x + rhs.x,
+	// 		y: lhs.y + rhs.y,
+	// 	};
+	// }
 }
 
 fn foo() i32 {
@@ -19,16 +19,10 @@ fn foo() i32 {
 }
 
 fn main() i32 {
-	let a = MyStruct { x: 1, y: 1 };
-	let b = MyStruct { x: 2, y: 2 };
+	// let a = MyStruct { x: 1, y: 1 };
+	// let b = MyStruct { x: 2, y: 2 };
 
     let c = 420;
 
-    for (-4..4) |i| {
-        c += i;
-    }
-
-    // let c = a.add(b);
-
-    return d;
+    // return d;
 }

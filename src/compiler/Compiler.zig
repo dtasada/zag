@@ -34,10 +34,99 @@ indent_level: usize = 0,
 scopes: std.ArrayList(Scope) = .empty,
 
 /// maps a symbol name to the symbol's type
-const Scope = std.StringHashMap(ScopeItem);
-const ScopeItem = struct {
-    type: ast.Type,
-    inner_name: []const u8,
+const Scope = std.StringHashMap(union(enum) {
+    const Item = struct {
+        type: Type,
+        inner_name: []const u8,
+    };
+
+    symbol: Item,
+    type: Item,
+});
+
+const Type = union(enum) {
+    const Function = struct {
+        params: std.ArrayList(*const Type),
+        return_type: *const Type,
+    };
+
+    const Struct = struct {
+        const Member = struct {
+            name: []const u8,
+            type: *const Type,
+        };
+
+        name: []const u8,
+        members: std.ArrayList(Member),
+        methods: std.ArrayList(Function),
+    };
+
+    const Reference = struct {
+        inner: *const Type,
+        is_mut: bool,
+    };
+
+    const Array = struct {
+        inner: *const Type,
+        /// if size is `null` type is an arraylist, else it's an array.
+        /// if size is `_`, type is an array of inferred size.
+        /// if size is a valid expression, type is an array of specified size.
+        size: ?usize = null,
+    };
+
+    const ErrorUnion = struct {
+        success: *const Type,
+        @"error": ?*const Type = null,
+    };
+
+    i8,
+    i16,
+    i32,
+    i64,
+
+    u8,
+    u16,
+    u32,
+    u64,
+
+    f32,
+    f64,
+
+    void,
+
+    @"struct": Struct,
+    optional: *const Type,
+    reference: Reference,
+    array: Array,
+    error_union: ErrorUnion,
+    function: Function,
+
+    fn fromSymbol(symbol: []const u8) !Type {
+        return if (std.mem.eql(u8, symbol, "i8"))
+            .i8
+        else if (std.mem.eql(u8, symbol, "i16"))
+            .i16
+        else if (std.mem.eql(u8, symbol, "i32"))
+            .i32
+        else if (std.mem.eql(u8, symbol, "i64"))
+            .i64
+        else if (std.mem.eql(u8, symbol, "u8"))
+            .u8
+        else if (std.mem.eql(u8, symbol, "u16"))
+            .u16
+        else if (std.mem.eql(u8, symbol, "u32"))
+            .u32
+        else if (std.mem.eql(u8, symbol, "u64"))
+            .u64
+        else if (std.mem.eql(u8, symbol, "f32"))
+            .f32
+        else if (std.mem.eql(u8, symbol, "f64"))
+            .f64
+        else if (std.mem.eql(u8, symbol, "void"))
+            .void
+        else
+            error.TypeNotPrimitive;
+    }
 };
 
 pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const u8) !*Self {
@@ -115,28 +204,69 @@ fn compileStatement(self: *Self, statement: *const ast.Statement) CompilerError!
     try self.output_writer.interface.flush();
 }
 
-fn compileStructDeclaration(self: *Self, struct_decl: ast.Statement.StructDeclaration) CompilerError!void {
-    try self.registerSymbol(struct_decl.name, .{ .symbol = struct_decl.name });
+fn compileStructDeclaration(
+    self: *Self,
+    struct_decl: ast.Statement.StructDeclaration,
+) CompilerError!void {
+    // register struct in scope
+    try self.registerSymbol(struct_decl.name, .{
+        .@"struct" = b: {
+            var t: Type.Struct = .{
+                .name = struct_decl.name,
+                .members = try .initCapacity(self.alloc, struct_decl.members.items.len),
+                .methods = try .initCapacity(self.alloc, struct_decl.methods.items.len),
+            };
+            for (struct_decl.members.items) |member| {
+                // TODO: struct default values
+                const member_type = try self.alloc.create(Type);
+                member_type.* = try self.getTypeFromAst(.{ .strong = member.type });
+                t.members.appendAssumeCapacity(.{
+                    .name = member.name,
+                    .type = member_type,
+                });
+            }
 
-    try self.write("struct {s} {{\n", .{struct_decl.name});
+            for (struct_decl.methods.items) |method| {
+                var params: std.ArrayList(*const Type) = try .initCapacity(
+                    self.alloc,
+                    method.parameters.items.len,
+                );
+                for (method.parameters.items) |p| {
+                    const param_type = try self.alloc.create(Type);
+                    param_type.* = try self.getTypeFromAst(.{ .strong = p.type });
+                    params.appendAssumeCapacity(param_type);
+                }
+
+                const return_type = try self.alloc.create(Type);
+                return_type.* = try self.getTypeFromAst(.{ .strong = method.return_type });
+                t.methods.appendAssumeCapacity(.{
+                    .params = params,
+                    .return_type = return_type,
+                });
+            }
+            break :b t;
+        },
+    }, .type);
+
+    try self.write("typedef struct {{\n", .{});
     self.indent_level += 1;
 
     for (struct_decl.members.items) |member| {
         try self.writeIndent();
-        try self.compileVariableSignature(member.name, member.type);
+        try self.compileVariableSignature(member.name, try self.getTypeFromAst(.{ .strong = member.type }));
         try self.writeBytes(";\n");
     }
 
     self.indent_level -= 1;
-    try self.write("}};\n\n", .{});
+    try self.write("}} {s};\n\n", .{struct_decl.name});
 
     for (struct_decl.methods.items) |method| {
-        try self.registerSymbol(method.name, .{ .function = method.getType() });
+        try self.registerSymbol(method.name, try self.getTypeFromAst(.{ .strong = method.getType() }), .symbol);
 
-        try self.write("{s}", .{try self.compileType(method.return_type)});
+        try self.write("{s}", .{try self.compileTypeAst(method.return_type)});
         try self.write(" __dmr_{s}_{s}(", .{ struct_decl.name, method.name }); // TODO: generics
         for (method.parameters.items, 1..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, parameter.type);
+            try self.compileVariableSignature(parameter.name, try self.getTypeFromAst(.{ .strong = parameter.type }));
             if (i < method.parameters.items.len) try self.writeBytes(", ");
         }
         try self.writeBytes(") ");
@@ -146,12 +276,12 @@ fn compileStructDeclaration(self: *Self, struct_decl: ast.Statement.StructDeclar
 }
 
 fn compileFunctionDefinition(self: *Self, function_def: ast.FunctionDefinition) CompilerError!void {
-    try self.registerSymbol(function_def.name, .{ .function = function_def.getType() });
+    try self.registerSymbol(function_def.name, try self.getTypeFromAst(.{ .strong = function_def.getType() }), .symbol);
 
-    try self.write("{s}", .{try self.compileType(function_def.return_type)});
+    try self.write("{s}", .{try self.compileTypeAst(function_def.return_type)});
     try self.write(" {s}(", .{function_def.name});
     for (function_def.parameters.items, 1..) |parameter, i| {
-        try self.compileVariableSignature(parameter.name, parameter.type);
+        try self.compileVariableSignature(parameter.name, try self.getTypeFromAst(.{ .strong = parameter.type }));
         if (i < function_def.parameters.items.len) try self.writeBytes(", ");
     }
     try self.writeBytes(") ");
@@ -220,41 +350,89 @@ fn compileBlock(self: *Self, block: ast.Block) CompilerError!void {
     try self.writeBytes("}\n\n");
 }
 
-/// prints the type to the file
-fn compileType(self: *Self, t: ast.Type) CompilerError![]const u8 {
+fn compileTypeAst(self: *Self, t: ast.Type) CompilerError![]const u8 {
     return switch (t) {
         .symbol => |symbol| types.get(symbol) catch symbol,
         .reference => |reference| try std.fmt.allocPrint(self.alloc, "{s}{s} *", .{
             if (reference.is_mut) "" else "const ",
-            try self.compileType(reference.inner.*),
+            try self.compileTypeAst(reference.inner.*),
         }),
         else => |other| std.debug.panic("unimplemented type {s}\n", .{@tagName(other)}),
     };
 }
 
-fn inferType(self: *Self, expr: ast.Expression) !ast.Type {
-    return switch (expr) {
-        .ident => |ident| .{ .symbol = ident },
-        .int => |int| .{ .symbol = if (int <= std.math.maxInt(i32)) "i32" else "i64" },
-        .uint => |uint| .{ .symbol = if (uint <= std.math.maxInt(i32)) "i32" else "i64" },
-        .float => .{ .symbol = "f32" },
-        .char => .{ .symbol = "u8" },
-        .struct_instantiation => |struct_inst| .{
-            .symbol = try self.compileType(try self.getSymbolType(struct_inst.name)),
+fn compileType(self: *Self, t: Type) CompilerError![]const u8 {
+    return switch (t) {
+        .reference => |reference| try std.fmt.allocPrint(self.alloc, "{s}{s} *", .{
+            if (reference.is_mut) "" else "const ",
+            try self.compileType(reference.inner.*),
+        }),
+        else => |other| try types.get(@tagName(other)),
+    };
+}
+
+/// Converts an AST type to a Compiler type.
+/// `infer_expr` is the expression with which the type is inferred.
+fn getTypeFromAst(
+    self: *Self,
+    t: union(enum) { strong: ast.Type, infer: ast.Expression },
+) CompilerError!Type {
+    return switch (t) {
+        .strong => |strong| switch (strong) {
+            .symbol => |symbol| Type.fromSymbol(symbol) catch try self.getSymbolType(symbol),
+            .reference => |reference| .{
+                .reference = .{
+                    .inner = b: {
+                        const ref_type = try self.alloc.create(Type);
+                        ref_type.* = try self.getTypeFromAst(.{ .strong = reference.inner.* });
+                        break :b ref_type;
+                    },
+                    .is_mut = reference.is_mut,
+                },
+            },
+            .function => |function| .{
+                .function = .{
+                    .params = b: {
+                        var params: std.ArrayList(*const Type) = try .initCapacity(self.alloc, function.parameters.items.len);
+                        for (function.parameters.items) |p| {
+                            const param = try self.alloc.create(Type);
+                            param.* = try self.getTypeFromAst(.{ .strong = p.type });
+                            params.appendAssumeCapacity(param);
+                        }
+                        break :b params;
+                    },
+                    .return_type = b: {
+                        const return_type = try self.alloc.create(Type);
+                        return_type.* = try self.getTypeFromAst(.{ .strong = function.return_type.* });
+                        break :b return_type;
+                    },
+                },
+            },
+            else => |other| std.debug.panic("unimplemented type {s}\n", .{@tagName(other)}),
         },
+        .infer => |expr| try self.inferType(expr),
+    };
+}
+
+fn inferType(self: *Self, expr: ast.Expression) !Type {
+    return switch (expr) {
+        .ident => |ident| try self.getSymbolType(ident),
+        .int => |int| if (int <= std.math.maxInt(i32)) .i32 else .i64,
+        .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
+        .float => .f32,
+        .char => .u8,
+        .struct_instantiation => |struct_inst| try self.getSymbolType(struct_inst.name),
         .prefix => |prefix| try self.inferType(prefix.rhs.*),
         else => |other| std.debug.panic("unimplemented type: {s}\n", .{@tagName(other)}),
     };
 }
 
-fn compileVariableSignature(self: *Self, name: []const u8, @"type": ast.Type) CompilerError!void {
+fn compileVariableSignature(self: *Self, name: []const u8, @"type": Type) CompilerError!void {
     switch (@"type") {
         .array => |array| {
             if (array.size) |size| {
-                try self.write("{s} {s}[", .{ try self.compileType(array.inner.*), name });
-                try self.compileExpression(size);
-                try self.write("]", .{});
-            }
+                try self.write("{s} {s}[{}]", .{ try self.compileType(array.inner.*), name, size });
+            } else std.debug.print("unimplemented arraylist\n", .{});
         },
         else => {
             try self.write("{s} ", .{try self.compileType(@"type")});
@@ -266,12 +444,14 @@ fn compileVariableSignature(self: *Self, name: []const u8, @"type": ast.Type) Co
 fn compileVariableDefinition(self: *Self, v: ast.Statement.VariableDefinition) CompilerError!void {
     if (!v.is_mut) try self.writeBytes("const ");
 
-    if (v.type == .inferred) {
-        const t = try self.inferType(v.assigned_value);
-        try self.compileVariableSignature(v.variable_name, t);
-    } else {
-        try self.compileVariableSignature(v.variable_name, v.type);
-    }
+    const variable_type = try self.getTypeFromAst(
+        if (v.type == .inferred)
+            .{ .infer = v.assigned_value }
+        else
+            .{ .strong = v.type },
+    );
+
+    try self.compileVariableSignature(v.variable_name, variable_type);
 
     try self.writeBytes(" = ");
 
@@ -279,7 +459,7 @@ fn compileVariableDefinition(self: *Self, v: ast.Statement.VariableDefinition) C
 
     try self.writeBytes(";\n");
 
-    try self.registerSymbol(v.variable_name, v.type);
+    try self.registerSymbol(v.variable_name, variable_type, .symbol);
 }
 
 fn compileReturnStatement(self: *Self, r: ?ast.Expression) CompilerError!void {
@@ -396,19 +576,34 @@ fn popScope(self: *Self) void {
 }
 
 /// registers a new entry in the top scope of the scope stack.
-fn registerSymbol(self: *Self, name: []const u8, @"type": ast.Type) !void {
+fn registerSymbol(
+    self: *Self,
+    name: []const u8,
+    @"type": Type,
+    symbol_or_type: enum { symbol, type },
+) !void {
     var last = &self.scopes.items[self.scopes.items.len - 1];
-    try last.put(name, .{
-        .type = @"type",
-        .inner_name = name, // TODO: name mangling for generics ig
+    try last.put(name, switch (symbol_or_type) {
+        .symbol => .{
+            .symbol = .{
+                .type = @"type",
+                .inner_name = name, // TODO: name mangling for generics ig
+            },
+        },
+        .type => .{
+            .symbol = .{
+                .type = @"type",
+                .inner_name = name, // TODO: name mangling for generics ig
+            },
+        },
     });
 }
 
-fn getSymbolType(self: *const Self, symbol: []const u8) !ast.Type {
+fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
         return (scope.get(symbol) orelse
-            continue).type;
+            continue).symbol.type;
 
     return error.UnknownSymbol;
 }

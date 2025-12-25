@@ -148,10 +148,12 @@ pub const FunctionDefinition = struct {
     return_type: Type,
     body: Block,
 
-    pub fn getType(self: *const FunctionDefinition) Type.Function {
+    pub fn getType(self: *const FunctionDefinition) Type {
         return .{
-            .parameters = self.parameters,
-            .return_type = &self.return_type,
+            .function = .{
+                .parameters = self.parameters,
+                .return_type = &self.return_type,
+            },
         };
     }
 };
