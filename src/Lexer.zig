@@ -72,6 +72,7 @@ pub const Token = union(enum) {
     @"pub",
 
     dot_dot,
+    dot_dot_equals,
 
     // unary operators
     bang,
@@ -331,6 +332,13 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
                 break :blk switch (double_token) {
                     .shift_right => .shift_right_equals,
                     .shift_left => .shift_left_equals,
+                    else => double_token,
+                };
+            },
+            '.' => blk: {
+                _ = self.advance();
+                break :blk switch (double_token) {
+                    .dot_dot => .dot_dot_equals,
                     else => double_token,
                 };
             },

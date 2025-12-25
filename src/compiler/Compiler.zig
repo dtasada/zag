@@ -553,6 +553,7 @@ fn compileExpression(self: *Self, expression: *const ast.Expression) CompilerErr
         .prefix => |prefix| {
             try self.writeBytes(switch (prefix.op) {
                 .dash => "-",
+                .bang => "!",
             });
             try self.compileExpression(prefix.rhs);
         },

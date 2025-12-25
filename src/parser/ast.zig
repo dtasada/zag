@@ -57,6 +57,7 @@ pub const AssignmentOperator = enum {
 
 pub const PrefixOperator = enum {
     dash,
+    bang,
 
     pub fn fromLexerToken(t: LexerToken) PrefixOperator {
         return std.meta.stringToEnum(PrefixOperator, @tagName(std.meta.activeTag(t))) orelse
@@ -127,6 +128,7 @@ pub const Expression = union(enum) {
     const Range = struct {
         start: *const Expression,
         end: *const Expression,
+        inclusive: bool,
     };
 
     const Reference = struct {
