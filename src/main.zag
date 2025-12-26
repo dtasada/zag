@@ -25,9 +25,8 @@ fn main() i32 {
     let mut d = &mut a;              // should compile to `MyStruct * d;`
     b.x(asd, a);
 
-    let b = "asd";
-
-    printf("Hello world!\n");
+    // let b = "asd";
+    // printf("Hello world!\n");
 
     for (0..12) |i| {
 

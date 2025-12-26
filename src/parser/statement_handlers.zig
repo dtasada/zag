@@ -95,8 +95,8 @@ pub fn parseCompoundTypeDeclarationStatement(
     if (self.currentTokenKind() == Lexer.Token.open_paren)
         switch (@"type") {
             .@"struct" => compound.struct_declaration.generic_types = try self.parseGenericParameters(),
-            .@"enum" => compound.enum_declaration.generic_types = try self.parseGenericParameters(),
             .@"union" => compound.union_declaration.generic_types = try self.parseGenericParameters(),
+            .@"enum" => compound.enum_declaration.generic_types = null,
         };
 
     try self.expect(self.advance(), Lexer.Token.open_brace, context, "{");
