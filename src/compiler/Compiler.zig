@@ -198,24 +198,23 @@ pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const 
     return self;
 }
 
-fn write(self: *Self, comptime fmt: []const u8, args: anytype) CompilerError!void {
-    try self.output_writer.interface.print(fmt, args);
+fn print(
+    self: *Self,
+    file_writer: *std.ArrayList(u8),
+    comptime fmt: []const u8,
+    args: anytype,
+) CompilerError!void {
+    try file_writer.print(self.alloc, fmt, args);
 }
 
-/// prints 4 spaces for each indent level
-inline fn writeIndent(self: *Self) CompilerError!void {
-    for (0..self.indent_level) |_|
-        try self.output_writer.interface.print("    ", .{});
+fn write(self: *Self, file_writer: *std.ArrayList(u8), bytes: []const u8) CompilerError!void {
+    try file_writer.appendSlice(self.alloc, bytes);
 }
 
 /// prints 4 spaces for each indent level into an arraylist
-inline fn writeIndentBuf(self: *Self, file: *std.ArrayList(u8)) CompilerError!void {
+inline fn indent(self: *Self, file: *std.ArrayList(u8)) CompilerError!void {
     for (0..self.indent_level) |_|
         try file.appendSlice(self.alloc, "    ");
-}
-
-fn writeBytes(self: *Self, bytes: []const u8) CompilerError!void {
-    try self.output_writer.interface.writeAll(bytes);
 }
 
 pub fn deinit(self: *Self) void {
@@ -233,12 +232,12 @@ pub fn deinit(self: *Self) void {
 pub fn emit(self: *Self) CompilerError!void {
     var file_writer: std.ArrayList(u8) = .empty;
 
-    try file_writer.appendSlice(self.alloc, "#include <zag.h>\n");
+    try self.write(&file_writer, "#include <zag.h>\n");
 
     for (self.parser.output.items) |*statement|
         try self.compileStatement(&file_writer, statement);
 
-    try self.write("{s}", .{file_writer.items});
+    _ = try self.output_writer.interface.write(file_writer.items);
     try self.output_writer.interface.flush();
 }
 
@@ -254,7 +253,7 @@ fn compileStatement(
         .variable_definition => |var_decl| try self.compileVariableDefinition(file_writer, var_decl),
         .expression => |*expr| {
             try self.compileExpression(file_writer, expr);
-            try file_writer.appendSlice(self.alloc, ";\n");
+            try self.write(file_writer, ";\n");
         },
         .@"if" => |if_stmt| try self.compileIfStatement(file_writer, if_stmt),
         .@"while" => |while_stmt| try self.compileWhileStatement(file_writer, while_stmt),
@@ -307,21 +306,21 @@ fn compileStructDeclaration(
         });
     }
 
-    try file_writer.appendSlice(self.alloc, "typedef struct {\n");
+    try self.write(file_writer, "typedef struct {\n");
     self.indent_level += 1;
 
     for (struct_decl.members.items) |member| {
-        try self.writeIndentBuf(file_writer);
+        try self.indent(file_writer);
         try self.compileVariableSignature(
             file_writer,
             member.name,
             try self.getTypeFromAst(.{ .strong = member.type }),
         );
-        try file_writer.appendSlice(self.alloc, ";\n");
+        try self.write(file_writer, ";\n");
     }
 
     self.indent_level -= 1;
-    try file_writer.print(self.alloc, "}} {s};\n\n", .{struct_decl.name});
+    try self.print(file_writer, "}} {s};\n\n", .{struct_decl.name});
 
     for (struct_decl.methods.items) |method| {
         try self.registerSymbol(method.name, try self.getTypeFromAst(.{ .strong = method.getType() }), .symbol);
@@ -329,14 +328,14 @@ fn compileStructDeclaration(
         defer self.popScope();
 
         try self.compileTypeAst(file_writer, method.return_type);
-        try file_writer.print(self.alloc, " __zag_{s}_{s}(", .{ struct_decl.name, method.name }); // TODO: generics
+        try self.print(file_writer, " __zag_{s}_{s}(", .{ struct_decl.name, method.name }); // TODO: generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type = try self.getTypeFromAst(.{ .strong = parameter.type });
             try self.registerSymbol(parameter.name, parameter_type, .symbol);
             try self.compileVariableSignature(file_writer, parameter.name, parameter_type);
-            if (i < method.parameters.items.len) try file_writer.appendSlice(self.alloc, ", ");
+            if (i < method.parameters.items.len) try self.write(file_writer, ", ");
         }
-        try file_writer.appendSlice(self.alloc, ") ");
+        try self.write(file_writer, ") ");
 
         try self.compileBlock(file_writer, method.body);
     }
@@ -354,15 +353,15 @@ fn compileEnumDeclaration(
         .methods = try .initCapacity(self.alloc, enum_decl.methods.items.len),
     };
     try self.registerSymbol(enum_decl.name, .{ .@"enum" = enum_ }, .type);
-    // for (enum_decl.members.items) |member| {
-    //     enum_.members.appendAssumeCapacity(.{
-    //         .name = member.name,
-    //         .value = if (member.default_value) |val|
-    //             self.resolveComptimeExpression(val)
-    //         else
-    //             null,
-    //     });
-    // }
+    for (enum_decl.members.items) |member| {
+        enum_.members.appendAssumeCapacity(.{
+            .name = member.name,
+            .value = b: {
+                std.debug.print("unimplemented enum explicit values\n", .{});
+                break :b null;
+            },
+        });
+    }
 
     for (enum_decl.methods.items) |method| {
         var params: std.ArrayList(*const Type) = try .initCapacity(
@@ -384,18 +383,18 @@ fn compileEnumDeclaration(
         });
     }
 
-    try file_writer.appendSlice(self.alloc, "typedef enum {\n");
+    try self.write(file_writer, "typedef enum {\n");
     self.indent_level += 1;
 
     for (enum_decl.members.items) |member| {
-        try self.writeIndentBuf(file_writer);
-        try file_writer.appendSlice(self.alloc, member.name);
-        if (member.default_value) |val| try file_writer.print(self.alloc, " = {}", .{val});
-        try file_writer.appendSlice(self.alloc, ",\n");
+        try self.indent(file_writer);
+        try self.write(file_writer, member.name);
+        if (member.default_value) |val| try self.print(file_writer, " = {}", .{val});
+        try self.write(file_writer, ",\n");
     }
 
     self.indent_level -= 1;
-    try file_writer.print(self.alloc, "}} {s};\n\n", .{enum_decl.name});
+    try self.print(file_writer, "}} {s};\n\n", .{enum_decl.name});
 
     for (enum_decl.methods.items) |method| {
         try self.registerSymbol(method.name, try self.getTypeFromAst(.{ .strong = method.getType() }), .symbol);
@@ -403,14 +402,14 @@ fn compileEnumDeclaration(
         defer self.popScope();
 
         try self.compileTypeAst(file_writer, method.return_type);
-        try file_writer.print(self.alloc, " __zag_{s}_{s}(", .{ enum_decl.name, method.name }); // TODO: generics
+        try self.print(file_writer, " __zag_{s}_{s}(", .{ enum_decl.name, method.name }); // TODO: generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type = try self.getTypeFromAst(.{ .strong = parameter.type });
             try self.registerSymbol(parameter.name, parameter_type, .symbol);
             try self.compileVariableSignature(file_writer, parameter.name, parameter_type);
-            if (i < method.parameters.items.len) try file_writer.appendSlice(self.alloc, ", ");
+            if (i < method.parameters.items.len) try self.write(file_writer, ", ");
         }
-        try file_writer.appendSlice(self.alloc, ") ");
+        try self.write(file_writer, ") ");
 
         try self.compileBlock(file_writer, method.body);
     }
@@ -424,12 +423,12 @@ fn compileFunctionDefinition(
     try self.registerSymbol(function_def.name, try self.getTypeFromAst(.{ .strong = function_def.getType() }), .symbol);
 
     try self.compileTypeAst(file_writer, function_def.return_type);
-    try file_writer.print(self.alloc, " {s}(", .{function_def.name});
+    try self.print(file_writer, " {s}(", .{function_def.name});
     for (function_def.parameters.items, 1..) |parameter, i| {
         try self.compileVariableSignature(file_writer, parameter.name, try self.getTypeFromAst(.{ .strong = parameter.type }));
-        if (i < function_def.parameters.items.len) try file_writer.appendSlice(self.alloc, ", ");
+        if (i < function_def.parameters.items.len) try self.write(file_writer, ", ");
     }
-    try file_writer.appendSlice(self.alloc, ") ");
+    try self.write(file_writer, ") ");
 
     try self.compileBlock(file_writer, function_def.body);
 }
@@ -439,9 +438,9 @@ fn compileIfStatement(
     file_writer: *std.ArrayList(u8),
     if_statement: ast.Statement.If,
 ) CompilerError!void {
-    try file_writer.appendSlice(self.alloc, "if (");
+    try self.write(file_writer, "if (");
     try self.compileExpression(file_writer, if_statement.condition);
-    try file_writer.appendSlice(self.alloc, ") ");
+    try self.write(file_writer, ") ");
 
     try self.compileStatement(file_writer, if_statement.body);
     if (if_statement.capture) |_|
@@ -456,9 +455,9 @@ fn compileWhileStatement(
     file_writer: *std.ArrayList(u8),
     while_statement: ast.Statement.While,
 ) CompilerError!void {
-    try file_writer.appendSlice(self.alloc, "while (");
+    try self.write(file_writer, "while (");
     try self.compileExpression(file_writer, while_statement.condition);
-    try file_writer.appendSlice(self.alloc, ") ");
+    try self.write(file_writer, ") ");
 
     try self.compileStatement(file_writer, while_statement.body);
     if (while_statement.capture) |_|
@@ -470,22 +469,22 @@ fn compileForStatement(
     file_writer: *std.ArrayList(u8),
     for_statement: ast.Statement.For,
 ) CompilerError!void {
-    try file_writer.appendSlice(self.alloc, "for (");
+    try self.write(file_writer, "for (");
     switch (for_statement.iterator.*) {
         .range => |range| {
             try self.compileType(file_writer, try self.inferType(range.start.*));
-            try file_writer.print(self.alloc, " {s} = ", .{for_statement.capture});
+            try self.print(file_writer, " {s} = ", .{for_statement.capture});
             try self.compileExpression(file_writer, range.start);
-            try file_writer.print(self.alloc, "; {s} < ", .{for_statement.capture});
+            try self.print(file_writer, "; {s} < ", .{for_statement.capture});
             try self.compileExpression(file_writer, range.end);
-            try file_writer.print(self.alloc, "; {s}++", .{for_statement.capture});
+            try self.print(file_writer, "; {s}++", .{for_statement.capture});
         },
         else => |other| switch (try self.inferType(other)) {
             .array => std.debug.print("unimplemented array iterator in for loop\n", .{}),
             else => std.debug.print("illegal array iterator type\n", .{}),
         },
     }
-    try file_writer.appendSlice(self.alloc, ") ");
+    try self.write(file_writer, ") ");
 
     try self.compileStatement(file_writer, for_statement.body);
 }
@@ -498,17 +497,17 @@ fn compileBlock(
     try self.pushScope();
     defer self.popScope();
 
-    try file_writer.appendSlice(self.alloc, "{\n");
+    try self.write(file_writer, "{\n");
 
     self.indent_level += 1;
     for (block.items) |*statement| {
-        try self.writeIndentBuf(file_writer);
+        try self.indent(file_writer);
         try self.compileStatement(file_writer, statement);
     }
     self.indent_level -= 1;
 
-    try self.writeIndentBuf(file_writer);
-    try file_writer.appendSlice(self.alloc, "}\n\n");
+    try self.indent(file_writer);
+    try self.write(file_writer, "}\n\n");
 }
 
 fn compileTypeAst(self: *Self, file_writer: *std.ArrayList(u8), t: ast.Type) CompilerError!void {
@@ -516,7 +515,7 @@ fn compileTypeAst(self: *Self, file_writer: *std.ArrayList(u8), t: ast.Type) Com
         .symbol => |symbol| try self.compileType(file_writer, try self.getSymbolType(symbol)),
         .reference => |reference| {
             try self.compileTypeAst(file_writer, reference.inner.*);
-            try file_writer.print(self.alloc, " *{s}", .{if (reference.is_mut) "" else " const"});
+            try self.print(file_writer, " *{s}", .{if (reference.is_mut) "" else " const"});
         },
         else => |other| std.debug.panic("unimplemented type {s}\n", .{@tagName(other)}),
     }
@@ -526,12 +525,12 @@ fn compileType(self: *Self, file_writer: *std.ArrayList(u8), t: Type) CompilerEr
     return switch (t) {
         .reference => |reference| {
             try self.compileType(file_writer, reference.inner.*);
-            try file_writer.print(self.alloc, " *{s}", .{if (reference.is_mut) "" else " const"});
+            try self.print(file_writer, " *{s}", .{if (reference.is_mut) "" else " const"});
         },
-        .@"struct" => |s| try file_writer.appendSlice(self.alloc, try self.getInnerName(s.name)),
+        .@"struct" => |s| try self.write(file_writer, try self.getInnerName(s.name)),
 
         .optional, .array, .error_union, .function => std.debug.panic("unimplemented type: {any}\n", .{t}),
-        else => |primitive| try file_writer.appendSlice(self.alloc, @tagName(primitive)),
+        else => |primitive| try self.write(file_writer, @tagName(primitive)),
     };
 }
 
@@ -611,12 +610,12 @@ fn compileVariableSignature(
         .array => |array| {
             if (array.size) |size| {
                 try self.compileType(file_writer, array.inner.*);
-                try file_writer.print(self.alloc, " {s}[{}]", .{ name, size });
+                try self.print(file_writer, " {s}[{}]", .{ name, size });
             } else std.debug.print("unimplemented arraylist\n", .{});
         },
         else => {
             try self.compileType(file_writer, @"type");
-            try file_writer.print(self.alloc, " {s}", .{name});
+            try self.print(file_writer, " {s}", .{name});
         },
     }
 }
@@ -633,15 +632,15 @@ fn compileVariableDefinition(
             .{ .strong = v.type },
     );
 
-    if (!v.is_mut) try file_writer.appendSlice(self.alloc, "const ");
+    if (!v.is_mut) try self.write(file_writer, "const ");
 
     try self.compileVariableSignature(file_writer, v.variable_name, variable_type);
 
-    try file_writer.appendSlice(self.alloc, " = ");
+    try self.write(file_writer, " = ");
 
     try self.compileExpression(file_writer, &v.assigned_value);
 
-    try file_writer.appendSlice(self.alloc, ";\n");
+    try self.write(file_writer, ";\n");
 
     try self.registerSymbol(v.variable_name, variable_type, .symbol);
 }
@@ -651,12 +650,12 @@ fn compileReturnStatement(
     file_writer: *std.ArrayList(u8),
     r: ?ast.Expression,
 ) CompilerError!void {
-    try file_writer.appendSlice(self.alloc, "return");
+    try self.write(file_writer, "return");
     if (r) |*expression| {
-        try file_writer.appendSlice(self.alloc, " ");
+        try self.write(file_writer, " ");
         try self.compileExpression(file_writer, expression);
     }
-    try file_writer.appendSlice(self.alloc, ";\n");
+    try self.write(file_writer, ";\n");
 }
 
 fn compileExpression(
@@ -667,7 +666,7 @@ fn compileExpression(
     switch (expression.*) {
         .assignment => |assignment| {
             try self.compileExpression(file_writer, assignment.assignee);
-            try file_writer.print(self.alloc, " {s} ", .{switch (assignment.op) {
+            try self.print(file_writer, " {s} ", .{switch (assignment.op) {
                 .and_equals => "&=",
                 .minus_equals => "-=",
                 .mod_equals => "%=",
@@ -685,7 +684,7 @@ fn compileExpression(
         .block => |block| try self.compileBlock(file_writer, block),
         .binary => |binary| {
             try self.compileExpression(file_writer, binary.lhs);
-            try file_writer.print(self.alloc, " {s} ", .{switch (binary.op) {
+            try self.print(file_writer, " {s} ", .{switch (binary.op) {
                 .plus => "+",
                 .dash => "-",
                 .asterisk => "*",
@@ -709,13 +708,13 @@ fn compileExpression(
             }});
             try self.compileExpression(file_writer, binary.rhs);
         },
-        .float => |float| try file_writer.print(self.alloc, "{}", .{float}),
-        .int => |int| try file_writer.print(self.alloc, "{}", .{int}),
-        .uint => |uint| try file_writer.print(self.alloc, "{}", .{uint}),
-        .string => |string| try file_writer.print(self.alloc, "\"{s}\"", .{string}),
-        .char => |char| try file_writer.print(self.alloc, "'{c}'", .{char}),
+        .float => |float| try self.print(file_writer, "{}", .{float}),
+        .int => |int| try self.print(file_writer, "{}", .{int}),
+        .uint => |uint| try self.print(file_writer, "{}", .{uint}),
+        .string => |string| try self.print(file_writer, "\"{s}\"", .{string}),
+        .char => |char| try self.print(file_writer, "'{c}'", .{char}),
         .prefix => |prefix| {
-            try file_writer.appendSlice(self.alloc, switch (prefix.op) {
+            try self.write(file_writer, switch (prefix.op) {
                 .dash => "-",
                 .bang => "!",
             });
@@ -723,38 +722,38 @@ fn compileExpression(
         },
         .call => |call| {
             try self.compileExpression(file_writer, call.callee);
-            try file_writer.appendSlice(self.alloc, "(");
+            try self.write(file_writer, "(");
             for (call.args.items, 1..) |*expr, i| {
                 try self.compileExpression(file_writer, expr);
-                if (i < call.args.items.len) try file_writer.appendSlice(self.alloc, ", ");
+                if (i < call.args.items.len) try self.write(file_writer, ", ");
             }
-            try file_writer.appendSlice(self.alloc, ")");
+            try self.write(file_writer, ")");
         },
         .member => |member| {
             try self.compileExpression(file_writer, member.lhs);
-            try file_writer.appendSlice(self.alloc, if (try self.inferType(member.lhs.*) == .reference) "->" else ".");
+            try self.write(file_writer, if (try self.inferType(member.lhs.*) == .reference) "->" else ".");
             try self.compileExpression(file_writer, member.rhs);
         },
-        .ident => |ident| try file_writer.appendSlice(self.alloc, ident),
+        .ident => |ident| try self.write(file_writer, ident),
         .struct_instantiation => |struct_inst| {
-            try file_writer.print(self.alloc, "({s}){{\n", .{struct_inst.name});
+            try self.print(file_writer, "({s}){{\n", .{struct_inst.name});
             self.indent_level += 1;
 
             var members = struct_inst.members.iterator();
             while (members.next()) |member| {
-                try self.writeIndentBuf(file_writer);
-                try file_writer.print(self.alloc, ".{s} = ", .{member.key_ptr.*});
+                try self.indent(file_writer);
+                try self.print(file_writer, ".{s} = ", .{member.key_ptr.*});
                 try self.compileExpression(file_writer, member.value_ptr);
-                try file_writer.appendSlice(self.alloc, ",\n");
+                try self.write(file_writer, ",\n");
             }
 
             self.indent_level -= 1;
-            try self.writeIndentBuf(file_writer);
-            try file_writer.appendSlice(self.alloc, "}");
+            try self.indent(file_writer);
+            try self.write(file_writer, "}");
         },
         .range => std.debug.print("illegal range expression\n", .{}),
         .reference => |reference| {
-            try file_writer.appendSlice(self.alloc, "&");
+            try self.write(file_writer, "&");
             try self.compileExpression(file_writer, reference.inner);
         },
         else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
@@ -825,9 +824,3 @@ fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         .red,
     );
 }
-
-// fn resolveComptimeExpression(self: *const Self, expr: ast.Expression) CompilerError!Value {
-//     switch (expr) {
-//         .assignment => |assignment|
-//     }
-// }

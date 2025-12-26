@@ -1,26 +1,3 @@
-; (function_definition name: (ident) @definition.function)
-; (struct_declaration name: (ident_type) @name) @definition.class
-; (enum_declaration name: (ident_type) @name) @definition.class
-; (union_declaration name: (ident_type) @name) @definition.class
-;
-; ((ident_type) @reference (#set! reference.kind "type"))
-;
-; (variable_definition
-;   variable_name: (ident) @definition.var
-; )
-;
-; (ident) @reference
-;
-; ; Scopes
-; [
-;   (block)
-;   (if_expression)
-;   (while_expression)
-;   (for_expression)
-;   (test_expression)
-; ] @scope
-
-;;;;;;;; lua example
 [
   (while_statement)
   (if_statement)

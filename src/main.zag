@@ -14,6 +14,16 @@ struct MyStruct {
 	}
 }
 
+enum MyEnum {
+    a, b, c,
+}
+
+union MyUnion {
+    float: f32,
+    int: i32,
+    string: [2]u8,
+}
+
 fn foo() i32 {
     return 42;
 }

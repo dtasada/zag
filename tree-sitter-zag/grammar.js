@@ -88,8 +88,9 @@ export default grammar({
       repeat(field("method", $.function_definition)),
       "}",
     ),
+
     struct_member: $ => seq(
-      field("name", $.ident_type),
+      field("name", $.ident),
       ":",
       field("type", $.type),
       optional(seq(
@@ -108,8 +109,9 @@ export default grammar({
       repeat(field("method", $.function_definition)),
       "}",
     ),
+
     enum_member: $ => seq(
-      field("member_name", $.ident),
+      field("name", $.ident),
       optional(seq(
         "=",
         field("value", $.expression),
@@ -118,7 +120,7 @@ export default grammar({
 
     union_declaration: $ => seq(
       "union",
-      field("name", $.ident),
+      field("name", $.ident_type),
       "{",
       repeat(seq(field("member", $.union_member), ",")),
       optional(field("member", $.union_member)),
@@ -126,9 +128,9 @@ export default grammar({
       "}",
     ),
     union_member: $ => seq(
-      field("member_name", $.ident),
+      field("name", $.ident),
       ":",
-      field("member_type", $.type),
+      field("type", $.type),
     ),
 
     while_statement: $ => seq(

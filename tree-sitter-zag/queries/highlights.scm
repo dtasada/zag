@@ -64,3 +64,6 @@
 
 (variable_definition variable_name: (ident) @variable)
 (struct_instantiation_expression_member member_name: (ident) @field)
+(struct_member name: (ident) @field)
+(enum_member name: (ident) @field)
+(union_member name: (ident) @field)

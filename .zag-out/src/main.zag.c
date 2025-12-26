@@ -15,6 +15,12 @@ MyStruct __zag_MyStruct_add(MyStruct lhs, MyStruct rhs) {
     };
 }
 
+typedef enum {
+    a,
+    b,
+    c,
+} MyEnum;
+
 i32 foo() {
     return 42;
 }
