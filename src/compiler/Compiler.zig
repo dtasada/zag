@@ -179,6 +179,8 @@ pub fn deinit(self: *Self) void {
 
 /// Entry point for the compiler. Compiles AST into C code.
 pub fn emit(self: *Self) CompilerError!void {
+    try self.writeBytes("#include <zag.h>");
+
     for (self.parser.output.items) |*statement|
         try self.compileStatement(statement);
 }
@@ -371,21 +373,8 @@ fn compileType(self: *Self, t: Type) CompilerError![]const u8 {
         }),
         .@"struct" => |s| self.getInnerName(s.name),
 
-        .i8 => "int8_t",
-        .i16 => "int16_t",
-        .i32 => "int32_t",
-        .i64 => "int64_t",
-
-        .u8 => "uint8_t",
-        .u16 => "uint16_t",
-        .u32 => "uint32_t",
-        .u64 => "uint64_t",
-
-        .f32 => "float",
-        .f64 => "double",
-
-        .void => "void",
-        else => |other| std.debug.panic("unimplemented type: {any}\n", .{other}),
+        .optional, .array, .error_union, .function => std.debug.panic("unimplemented type: {any}\n", .{t}),
+        else => |primitive| @tagName(primitive),
     };
 }
 

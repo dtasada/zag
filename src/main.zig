@@ -2,7 +2,6 @@ const std = @import("std");
 const clap = @import("clap");
 const pretty = @import("pretty");
 const clang = @import("clang");
-const llvm = @import("llvm"); // Add this import
 const builtin = @import("builtin");
 
 const utils = @import("utils.zig");

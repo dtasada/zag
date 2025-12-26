@@ -4,8 +4,8 @@
   * @license MIT
   */
 
-  /// <reference types="tree-sitter-cli/dsl" />
-  // @ts-check
+/// <reference types="tree-sitter-cli/dsl" />
+// @ts-check
 
 export default grammar({
   name: "zag",
@@ -31,14 +31,18 @@ export default grammar({
       $.expression_statement,
     ),
 
-    expression_statement: $ => seq($._expression, ";"),
+    expression_statement: $ => seq($.expression, ";"),
 
-    _expression: $ => choice(
+    expression: $ => choice(
       $.ident,
-      $.string,
-      $.char,
-      $.int,
-      $.float,
+      $.string_literal,
+      $.char_literal,
+      $.number_literal,
+
+      $.true_literal,
+      $.false_literal,
+      $.null_literal,
+      $.undefined_literal,
 
       $.call_expression,
       $.member_expression,
@@ -53,13 +57,11 @@ export default grammar({
       $.reference_expression,
     ),
 
-    expression: $ => $._expression,
-
     function_definition: $ => seq(
       "fn",
       field("name", $.ident),
       field("parameters", $.parameter_list),
-      field("return_type", $._type),
+      field("return_type", $.type),
       field("body", $.block),
     ),
 
@@ -69,64 +71,70 @@ export default grammar({
       field("variable_name", $.ident),
       optional(seq(
         ":",
-        field("type", $._type),
+        field("type", $.type),
       )),
       "=",
-      field("assigned_value", $._expression),
+      field("assigned_value", $.expression),
       ";",
     ),
 
     struct_declaration: $ => seq(
       "struct",
-      field("name", $.ident),
+      field("name", $.ident_type),
       optional(field("generics", $.parameter_list)),
       "{",
-      repeat(seq(
-        field("member_name", $.ident),
-        ":",
-        field("member_type", $._type),
-        optional(seq(
-          "=",
-          field("default_value", $._expression),
-        )),
-        ",",
-      )),
+      repeat(seq(field("member", $.struct_member), ",")),
+      optional(field("member", $.struct_member)),
+      repeat(field("method", $.function_definition)),
       "}",
+    ),
+    struct_member: $ => seq(
+      field("name", $.ident_type),
+      ":",
+      field("type", $.type),
+      optional(seq(
+        "=",
+        field("default_value", $.expression),
+      )),
     ),
 
     enum_declaration: $ => seq(
       "enum",
       optional(field("type", $.parameter_list)),
-      field("name", $.ident),
+      field("name", $.ident_type),
       "{",
-      repeat(seq(
-        field("member_name", $.ident),
-        optional(seq(
-          "=",
-          field("value", $._expression),
-        )),
-        ",",
-      )),
+      repeat(seq(field("member", $.enum_member), ",")),
+      optional(field("member", $.enum_member)),
+      repeat(field("method", $.function_definition)),
       "}",
+    ),
+    enum_member: $ => seq(
+      field("member_name", $.ident),
+      optional(seq(
+        "=",
+        field("value", $.expression),
+      )),
     ),
 
     union_declaration: $ => seq(
       "union",
       field("name", $.ident),
       "{",
-      repeat(seq(
-        field("member_name", $.ident),
-        ":",
-        field("member_type", $._type),
-        ",",
-      )),
+      repeat(seq(field("member", $.union_member), ",")),
+      optional(field("member", $.union_member)),
+      repeat(field("method", $.function_definition)),
       "}",
+    ),
+    union_member: $ => seq(
+      field("member_name", $.ident),
+      ":",
+      field("member_type", $.type),
     ),
 
     while_statement: $ => seq(
       "while",
       "(",
-      field("condition", $._expression),
+      field("condition", $.expression),
       ")",
       optional(field("capture", $.capture)),
       field("body", $._statement),
@@ -135,7 +143,7 @@ export default grammar({
     for_statement: $ => seq(
       "for",
       "(",
-      field("iterator", $._expression),
+      field("iterator", $.expression),
       ")",
       optional(field("capture", $.capture)),
       field("body", $._statement),
@@ -144,7 +152,7 @@ export default grammar({
     if_statement: $ => prec.right(1, seq(
       "if",
       "(",
-      field("condition", $._expression),
+      field("condition", $.expression),
       ")",
       optional(field("capture", $.capture)),
       field("body", $._statement),
@@ -156,7 +164,7 @@ export default grammar({
 
     return_statement: $ => seq(
       "return",
-      optional(field("return_value", $._expression)),
+      optional(field("return_value", $.expression)),
       ";",
     ),
 
@@ -169,48 +177,64 @@ export default grammar({
     variable_signature: $ => seq(
       field("name", $.ident),
       ":",
-      field("type", $._type),
+      field("type", $.type),
     ),
 
-    type: $ => $._type,
-
-    _type: $ => choice(
-      $.ident,
+    type: $ => choice(
+      $.ident_type,
+      $.primitive_type,
       $.optional_type,
       $.reference_type,
       $.array_type,
       $.error_union,
       $.function_type
     ),
+    ident_type: $ => alias($.ident, $.ident_type),
+
+    primitive_type: $ => choice(
+      "i8",
+      "i16",
+      "i32",
+      "i64",
+      "u8",
+      "u16",
+      "u32",
+      "u64",
+      "f32",
+      "f64",
+      "void",
+      "bool",
+      "type",
+    ),
 
     optional_type: $ => prec.right(8, seq(
       "?",
-      field("inner", $._type),
+      field("inner", $.type),
     )),
 
     reference_type: $ => prec.right(8, seq(
       "&",
       optional("mut"),
-      field("inner", $._type),
+      field("inner", $.type),
     )),
 
     array_type: $ => seq(
       "[",
-      optional(field("size", $._expression)),
+      optional(field("size", $.expression)),
       "]",
-      field("inner", $._type),
+      field("inner", $.type),
     ),
 
     error_union: $ => prec.left(4, seq(
-      optional(field("error", $._type)),
+      optional(field("error", $.type)),
       "!",
-      field("success", $._type),
+      field("success", $.type),
     )),
 
     function_type: $ => seq(
       "fn",
       field("params", $.parameter_list),
-      field("return_type", $._type),
+      field("return_type", $.type),
     ),
 
 
@@ -221,108 +245,112 @@ export default grammar({
     ),
 
     call_expression: $ => prec(10, seq(
-      field("lhs", $._expression),
+      field("callee", $.expression),
       "(",
       repeat(seq(
-        field("argument", $._expression),
+        field("argument", $.expression),
         ",",
       )),
+      optional(field("argument", $.expression)),
       ")",
     )),
 
     member_expression: $ => prec.left(11, seq(
-      field("lhs", $._expression),
+      field("lhs", $.expression),
       ".",
-      field("rhs", $._expression),
+      field("rhs", choice(
+        $.ident,
+        $.call_expression,
+        $.expression,
+      )),
     )),
 
     binary_expression: $ => choice(
-      prec.left(6, seq(field("lhs", $._expression), field("op", "+"), field("rhs", $._expression))),
-      prec.left(6, seq(field("lhs", $._expression), field("op", "-"), field("rhs", $._expression))),
-      prec.left(7, seq(field("lhs", $._expression), field("op", "*"), field("rhs", $._expression))),
-      prec.left(7, seq(field("lhs", $._expression), field("op", "/"), field("rhs", $._expression))),
-      prec.left(7, seq(field("lhs", $._expression), field("op", "%"), field("rhs", $._expression))),
-      prec.left(5, seq(field("lhs", $._expression), field("op", "=="), field("rhs", $._expression))),
-      prec.left(5, seq(field("lhs", $._expression), field("op", ">"), field("rhs", $._expression))),
-      prec.left(5, seq(field("lhs", $._expression), field("op", "<"), field("rhs", $._expression))),
-      prec.left(5, seq(field("lhs", $._expression), field("op", ">="), field("rhs", $._expression))),
-      prec.left(5, seq(field("lhs", $._expression), field("op", "<="), field("rhs", $._expression))),
-      prec.left(5, seq(field("lhs", $._expression), field("op", "!="), field("rhs", $._expression))),
-      prec.left(7, seq(field("lhs", $._expression), field("op", "&"), field("rhs", $._expression))),
-      prec.left(6, seq(field("lhs", $._expression), field("op", "|"), field("rhs", $._expression))),
-      prec.left(6, seq(field("lhs", $._expression), field("op", "^"), field("rhs", $._expression))),
-      prec.left(4, seq(field("lhs", $._expression), field("op", "and"), field("rhs", $._expression))),
-      prec.left(4, seq(field("lhs", $._expression), field("op", "or"), field("rhs", $._expression))),
-      prec.left(7, seq(field("lhs", $._expression), field("op", ">>"), field("rhs", $._expression))),
-      prec.left(7, seq(field("lhs", $._expression), field("op", "<<"), field("rhs", $._expression))),
+      prec.left(6, seq(field("lhs", $.expression), field("op", "+"), field("rhs", $.expression))),
+      prec.left(6, seq(field("lhs", $.expression), field("op", "-"), field("rhs", $.expression))),
+      prec.left(7, seq(field("lhs", $.expression), field("op", "*"), field("rhs", $.expression))),
+      prec.left(7, seq(field("lhs", $.expression), field("op", "/"), field("rhs", $.expression))),
+      prec.left(7, seq(field("lhs", $.expression), field("op", "%"), field("rhs", $.expression))),
+      prec.left(5, seq(field("lhs", $.expression), field("op", "=="), field("rhs", $.expression))),
+      prec.left(5, seq(field("lhs", $.expression), field("op", ">"), field("rhs", $.expression))),
+      prec.left(5, seq(field("lhs", $.expression), field("op", "<"), field("rhs", $.expression))),
+      prec.left(5, seq(field("lhs", $.expression), field("op", ">="), field("rhs", $.expression))),
+      prec.left(5, seq(field("lhs", $.expression), field("op", "<="), field("rhs", $.expression))),
+      prec.left(5, seq(field("lhs", $.expression), field("op", "!="), field("rhs", $.expression))),
+      prec.left(7, seq(field("lhs", $.expression), field("op", "&"), field("rhs", $.expression))),
+      prec.left(6, seq(field("lhs", $.expression), field("op", "|"), field("rhs", $.expression))),
+      prec.left(6, seq(field("lhs", $.expression), field("op", "^"), field("rhs", $.expression))),
+      prec.left(4, seq(field("lhs", $.expression), field("op", "and"), field("rhs", $.expression))),
+      prec.left(4, seq(field("lhs", $.expression), field("op", "or"), field("rhs", $.expression))),
+      prec.left(7, seq(field("lhs", $.expression), field("op", ">>"), field("rhs", $.expression))),
+      prec.left(7, seq(field("lhs", $.expression), field("op", "<<"), field("rhs", $.expression))),
     ),
 
     prefix_expression: $ => prec.right(8, seq(
       field("op", $.prefix_operator),
-      field("rhs", $._expression),
+      field("rhs", $.expression),
     )),
 
     assignment_expression: $ => prec.right(3, seq(
-      field("assignee", $._expression),
+      field("assignee", $.expression),
       field("op", $.assignment_operator),
-      field("rhs", $._expression),
+      field("rhs", $.expression),
     )),
 
     if_expression: $ => prec.right(2, seq(
       "if",
       "(",
-      field("condition", $._expression),
+      field("condition", $.expression),
       ")",
       optional(field("capture", $.capture)),
-      field("body", $._expression),
+      field("body", $.expression),
       optional(field("else", seq(
         "else",
-        $._expression,
+        $.expression,
       ))),
     )),
 
     struct_instantiation_expression: $ => prec(10, seq(
-      field("name", $.ident),
+      field("name", $.ident_type),
       "{",
-      repeat(seq(
-        field("member_name", $.ident),
-        ":",
-        field("member_value", $._expression),
-        ",",
-      )),
+      repeat(seq(field("member", $.struct_instantiation_expression_member), ",")),
+      optional(field("member", $.struct_instantiation_expression_member)),
       "}",
     )),
+    struct_instantiation_expression_member: $ => seq(
+      field("member_name", $.ident),
+      ":",
+      field("member_value", $.expression),
+    ),
 
     array_instantiation_expression: $ => seq(
       "[",
-      optional(field("size", $._expression)),
+      optional(field("size", $.expression)),
       "]",
       "{",
       repeat(seq(
-        field("initializer_list", $._expression),
+        field("initializer_list", $.expression),
         ",",
       )),
       "}",
     ),
 
     range_expression: $ => prec.left(5, seq(
-      field("start", $._expression),
+      field("start", $.expression),
       choice("..", "..="),
-      field("end", $._expression),
+      field("end", $.expression),
     )),
 
     reference_expression: $ => prec.right(9, seq(
       "&",
       optional("mut"),
-      field("inner", $._expression),
+      field("inner", $.expression),
     )),
 
     parameter_list: $ => seq(
       "(",
-      repeat(seq(
-        $.variable_signature,
-        ",",
-      )),
+      repeat(seq($.variable_signature, ",")),
+      optional($.variable_signature),
       ")",
     ),
 
@@ -347,10 +375,31 @@ export default grammar({
 
     ident: $ => /[a-zA-Z_]+[a-zA-Z0-9_]*/,
 
-    string: $ => seq('"', /.*/, '"'),
-    char: $ => seq("'", /./, "'"),
-    int: $ => /[+-]?\d+/,
-    float: $ => /[+-]?([0-9]*[.])?[0-9]+/,
+    string_literal: $ => seq(
+      '"',
+      repeat(choice($.escape_sequence, /[^"\\]+/)),
+      token.immediate('"')
+    ),
+
+    escape_sequence: $ => token.immediate(
+      seq(
+        "\\",
+        choice(
+          /[^xu\n]/,
+          /u[0-9a-fA-F]{4}/,
+          /u\{[0-9a-fA-F]+\}/,
+          /x[0-9a-fA-F]{2}/
+        )
+      )
+    ),
+
+    char_literal: $ => seq("'", /./, "'"),
+    number_literal: $ => /[+-]?([0-9]*[.])?[0-9]+/,
     comment: $ => token(seq('//', /.*/)),
+
+    true_literal: $ => "true",
+    false_literal: $ => "false",
+    null_literal: $ => "null",
+    undefined_literal: $ => "undefined",
   },
 });

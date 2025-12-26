@@ -65,7 +65,6 @@ pub const Token = union(enum) {
     @"else",
     @"for",
     @"while",
-    in,
     @"return",
     @"and",
     @"or",
@@ -174,7 +173,6 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
     try keywords.put("else", .@"else");
     try keywords.put("for", .@"for");
     try keywords.put("while", .@"while");
-    try keywords.put("in", .in);
     try keywords.put("return", .@"return");
     try keywords.put("and", .@"and");
     try keywords.put("or", .@"or");

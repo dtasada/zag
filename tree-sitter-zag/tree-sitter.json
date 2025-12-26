@@ -10,7 +10,10 @@
         "zag"
       ],
       "injection-regex": "^zag$",
-      "class-name": "TreeSitterZag"
+      "class-name": "TreeSitterZag",
+      "highlights": [
+        "queries/highlights.scm"
+      ]
     }
   ],
   "metadata": {
