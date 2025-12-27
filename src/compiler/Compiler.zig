@@ -357,7 +357,7 @@ fn compileStatement(
         .@"while" => |while_stmt| try self.compileWhileStatement(file_writer, while_stmt),
         .@"for" => |for_stmt| try self.compileForStatement(file_writer, for_stmt),
         .block => |block| try self.compileBlock(file_writer, block),
-        .enum_declaration => |enum_decl| try self.compileEnumDeclaration(file_writer, enum_decl),
+        .enum_declaration => |enum_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"enum", enum_decl),
         .union_declaration => |union_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"union", union_decl),
     }
 }
@@ -365,16 +365,17 @@ fn compileStatement(
 fn compileCompoundTypeDeclaration(
     self: *Self,
     file_writer: *std.ArrayList(u8),
-    comptime T: enum { @"struct", @"union" },
-    type_decl: switch (T) {
-        .@"struct" => ast.Statement.StructDeclaration,
-        .@"union" => ast.Statement.UnionDeclaration,
+    type_decl: union(enum) {
+        @"struct": ast.Statement.StructDeclaration,
+        @"union": ast.Statement.UnionDeclaration,
+        @"enum": ast.Statement.EnumDeclaration,
     },
 ) CompilerError!void {
     // register struct in scope
-    var compound_type: switch (T) {
+    var compound_type: switch (type_decl) {
         .@"struct" => Type.Struct,
         .@"union" => Type.Union,
+        .@"enum" => Type.Enum,
     } = .{
         .name = type_decl.name,
         .members = .init(self.alloc),
@@ -382,25 +383,34 @@ fn compileCompoundTypeDeclaration(
     };
     try self.registerSymbol(
         type_decl.name,
-        switch (T) {
+        switch (type_decl) {
             .@"struct" => .{ .@"struct" = compound_type },
             .@"union" => .{ .@"union" = compound_type },
+            .@"enum" => .{ .@"enum" = compound_type },
         },
         .type,
     );
-    for (type_decl.members.items) |member| {
-        // TODO: struct default values
-        const member_type = try self.alloc.create(Type);
-        member_type.* = switch (T) {
-            .@"struct" => try self.getTypeFromAst(.{ .strong = member.type }),
-            .@"union" => if (member.type) |t|
-                try self.getTypeFromAst(.{ .strong = t })
-            else
-                .void,
-        };
-
-        try compound_type.members.put(member.name, member_type);
-    }
+    for (type_decl.members.items) |member|
+        try compound_type.members.put(member.name, switch (type_decl) {
+            // TODO: default values
+            .@"struct" => b: {
+                const member_type = try self.alloc.create(Type);
+                member_type.* = try self.getTypeFromAst(.{ .strong = member.type });
+                break :b member_type;
+            },
+            .@"union" => b: {
+                const member_type = try self.alloc.create(Type);
+                member_type.* = if (member.type) |t|
+                    try self.getTypeFromAst(.{ .strong = t })
+                else
+                    .void;
+                break :b member_type;
+            },
+            .@"enum" => b: {
+                std.debug.print("unimplemented enum explicit values\n", .{});
+                break :b null;
+            },
+        });
 
     for (type_decl.methods.items) |method| {
         var params: std.ArrayList(*const Type) = try .initCapacity(
@@ -422,29 +432,40 @@ fn compileCompoundTypeDeclaration(
         });
     }
 
-    try self.write(
-        file_writer,
-        "typedef " ++ switch (T) {
-            .@"struct" => "struct",
-            .@"union" => "union",
-        } ++ " {\n",
-    );
+    try self.print(file_writer, "typedef {s} {{\n", .{switch (type_decl) {
+        .@"struct" => "struct",
+        .@"union" => "union",
+        .@"enum" => "enum",
+    }});
     self.indent_level += 1;
 
     for (type_decl.members.items) |member| {
         try self.indent(file_writer);
-        try self.compileVariableSignature(
-            file_writer,
-            member.name,
-            switch (T) {
-                .@"struct" => try self.getTypeFromAst(.{ .strong = member.type }),
-                .@"union" => if (member.type) |t|
-                    try self.getTypeFromAst(.{ .strong = t })
-                else
-                    .void,
+        switch (type_decl) {
+            .@"struct" => {
+                try self.compileVariableSignature(
+                    file_writer,
+                    member.name,
+                    try self.getTypeFromAst(.{ .strong = member.type }),
+                );
+                try self.write(file_writer, ";\n");
             },
-        );
-        try self.write(file_writer, ";\n");
+            .@"union" => {
+                try self.compileVariableSignature(
+                    file_writer,
+                    member.name,
+                    if (member.type) |t|
+                        try self.getTypeFromAst(.{ .strong = t })
+                    else
+                        .void,
+                );
+                try self.write(file_writer, ";\n");
+            },
+            .@"enum" => {
+                try self.print(file_writer, "{s},\n", .{member.name});
+                std.debug.print("unimplemented explicit enum member values\n", .{});
+            },
+        }
     }
 
     self.indent_level -= 1;
@@ -457,77 +478,6 @@ fn compileCompoundTypeDeclaration(
 
         try self.compileTypeAst(file_writer, method.return_type);
         try self.print(file_writer, " __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: generics
-        for (method.parameters.items, 1..) |parameter, i| {
-            const parameter_type = try self.getTypeFromAst(.{ .strong = parameter.type });
-            try self.registerSymbol(parameter.name, parameter_type, .symbol);
-            try self.compileVariableSignature(file_writer, parameter.name, parameter_type);
-            if (i < method.parameters.items.len) try self.write(file_writer, ", ");
-        }
-        try self.write(file_writer, ") ");
-
-        try self.compileBlock(file_writer, method.body);
-    }
-}
-
-fn compileEnumDeclaration(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    enum_decl: ast.Statement.EnumDeclaration,
-) CompilerError!void {
-    // register struct in scope
-    var enum_: Type.Enum = .{
-        .name = enum_decl.name,
-        .members = .init(self.alloc),
-        .methods = .init(self.alloc),
-    };
-    try self.registerSymbol(enum_decl.name, .{ .@"enum" = enum_ }, .type);
-    for (enum_decl.members.items) |member| {
-        try enum_.members.put(member.name, b: {
-            std.debug.print("unimplemented enum explicit values\n", .{});
-            break :b null;
-        });
-    }
-
-    for (enum_decl.methods.items) |method| {
-        var params: std.ArrayList(*const Type) = try .initCapacity(
-            self.alloc,
-            method.parameters.items.len,
-        );
-
-        for (method.parameters.items) |p| {
-            const param_type = try self.alloc.create(Type);
-            param_type.* = try self.getTypeFromAst(.{ .strong = p.type });
-            params.appendAssumeCapacity(param_type);
-        }
-
-        const return_type = try self.alloc.create(Type);
-        return_type.* = try self.getTypeFromAst(.{ .strong = method.return_type });
-        try enum_.methods.put(method.name, .{
-            .params = params,
-            .return_type = return_type,
-        });
-    }
-
-    try self.write(file_writer, "typedef enum {\n");
-    self.indent_level += 1;
-
-    for (enum_decl.members.items) |member| {
-        try self.indent(file_writer);
-        try self.write(file_writer, member.name);
-        if (member.default_value) |val| try self.print(file_writer, " = {}", .{val});
-        try self.write(file_writer, ",\n");
-    }
-
-    self.indent_level -= 1;
-    try self.print(file_writer, "}} {s};\n\n", .{enum_decl.name});
-
-    for (enum_decl.methods.items) |method| {
-        try self.registerSymbol(method.name, try self.getTypeFromAst(.{ .strong = method.getType() }), .symbol);
-        try self.pushScope();
-        defer self.popScope();
-
-        try self.compileTypeAst(file_writer, method.return_type);
-        try self.print(file_writer, " __zag_{s}_{s}(", .{ enum_decl.name, method.name }); // TODO: generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type = try self.getTypeFromAst(.{ .strong = parameter.type });
             try self.registerSymbol(parameter.name, parameter_type, .symbol);
