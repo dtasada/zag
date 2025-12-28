@@ -5,6 +5,9 @@ const ast = @import("../parser/ast.zig");
 
 const Parser = @import("../parser/Parser.zig");
 
+const Type = @import("Type.zig").Type;
+const Value = @import("Value.zig").Value;
+
 const Self = @This();
 
 pub const CompilerError = error{
@@ -70,202 +73,6 @@ const Scope = std.StringHashMap(union(enum) {
     symbol: Item,
     type: Item,
 });
-
-const Type = union(enum) {
-    const Function = struct {
-        params: std.ArrayList(*const Type),
-        return_type: *const Type,
-    };
-
-    fn CompoundType(T: enum { @"struct", @"enum", @"union" }) type {
-        return struct {
-            name: []const u8,
-            members: std.StringHashMap(switch (T) {
-                .@"struct", .@"union" => *const Type,
-                .@"enum" => ?usize,
-            }),
-            methods: std.StringHashMap(Function),
-        };
-    }
-
-    const Struct = CompoundType(.@"struct");
-    const Union = CompoundType(.@"union");
-    const Enum = CompoundType(.@"enum");
-
-    const Reference = struct {
-        inner: *const Type,
-        is_mut: bool,
-    };
-
-    const Array = struct {
-        inner: *const Type,
-        /// if size is `null` type is an arraylist, else it's an array.
-        /// if size is `_`, type is an array of inferred size.
-        /// if size is a valid expression, type is an array of specified size.
-        size: ?usize = null,
-    };
-
-    const ErrorUnion = struct {
-        success: *const Type,
-        @"error": ?*const Type = null,
-    };
-
-    i8,
-    i16,
-    i32,
-    i64,
-
-    u8,
-    u16,
-    u32,
-    u64,
-
-    f32,
-    f64,
-
-    bool,
-
-    void,
-
-    @"struct": Struct,
-    @"enum": Enum,
-    @"union": Union,
-    optional: *const Type,
-    reference: Reference,
-    array: Array,
-    error_union: ErrorUnion,
-    function: Function,
-
-    fn fromSymbol(symbol: []const u8) !Type {
-        return if (std.mem.eql(u8, symbol, "i8"))
-            .i8
-        else if (std.mem.eql(u8, symbol, "i16"))
-            .i16
-        else if (std.mem.eql(u8, symbol, "i32"))
-            .i32
-        else if (std.mem.eql(u8, symbol, "i64"))
-            .i64
-        else if (std.mem.eql(u8, symbol, "u8"))
-            .u8
-        else if (std.mem.eql(u8, symbol, "u16"))
-            .u16
-        else if (std.mem.eql(u8, symbol, "u32"))
-            .u32
-        else if (std.mem.eql(u8, symbol, "u64"))
-            .u64
-        else if (std.mem.eql(u8, symbol, "f32"))
-            .f32
-        else if (std.mem.eql(u8, symbol, "f64"))
-            .f64
-        else if (std.mem.eql(u8, symbol, "void"))
-            .void
-        else if (std.mem.eql(u8, symbol, "bool"))
-            .bool
-        else
-            error.TypeNotPrimitive;
-    }
-};
-
-const Value = union(enum) {
-    i8: i8,
-    i16: i16,
-    i32: i32,
-    i64: i64,
-
-    u8: u8,
-    u16: u16,
-    u32: u32,
-    u64: u64,
-
-    f32: f32,
-    f64: f64,
-
-    bool: bool,
-
-    void,
-
-    @"struct": CompoundType(.@"struct"),
-    @"enum": CompoundType(.@"enum"),
-    @"union": CompoundType(.@"union"),
-    optional: struct {
-        type: Type,
-        value: *const Value,
-    },
-    reference: struct { value: *const Value, type: Type.Reference },
-    array: struct { value: *const Value, type: Type.Array },
-    error_union: struct { value: *const Value, type: Type.ErrorUnion },
-    function: struct { value: *const Value, type: Type.Function },
-
-    fn CompoundType(compound_type: enum { @"struct", @"union", @"enum" }) type {
-        return struct {
-            type: switch (compound_type) {
-                .@"struct" => Type.Struct,
-                .@"union" => Type.Union,
-                .@"enum" => Type.Enum,
-            },
-            members: std.StringHashMap(*const Value),
-            methods: std.StringHashMap(*const Value),
-        };
-    }
-
-    pub fn binaryOperation(lhs: Value, op: ast.BinaryOperator, rhs: Value) !Value {
-        if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs))
-            @panic("invalid binary operation: the two values are not of the same type\n");
-
-        const switch_fn = (struct {
-            fn switchFn(inner_lhs: anytype, inner_op: ast.BinaryOperator, inner_rhs: anytype) !Value {
-                return switch (inner_op) {
-                    .plus => inner_lhs + inner_rhs,
-                    .dash => inner_lhs - inner_rhs,
-                    .asterisk => inner_lhs * inner_rhs,
-                    .slash => @divTrunc(inner_lhs, inner_rhs),
-                    .percent => @mod(inner_lhs, inner_rhs),
-
-                    .equals_equals => inner_lhs == inner_rhs,
-                    .greater => inner_lhs > inner_rhs,
-                    .less => inner_lhs < inner_rhs,
-                    .greater_equals => inner_lhs >= inner_rhs,
-                    .less_equals => inner_lhs <= inner_rhs,
-                    .bang_equals => inner_lhs != inner_rhs,
-
-                    .ampersand => inner_lhs & inner_rhs,
-                    .pipe => inner_lhs | inner_rhs,
-                    .caret => inner_lhs ^ inner_rhs,
-                    .logical_and => inner_lhs and inner_rhs,
-                    .logical_or => inner_lhs or inner_rhs,
-                    .shift_right => inner_lhs >> inner_rhs,
-                    .shift_left => inner_lhs << inner_rhs,
-                };
-            }
-        }).switchFn;
-
-        const result = switch (lhs) {
-            .i64, .i32, .i16, .i8 => |lhs_int| switch (rhs) {
-                .i64, .i32, .i16, .i8 => |rhs_int| try switch_fn(lhs_int, op, rhs_int),
-                else => @panic("invalid binary operation: the two values are not of numeric boolean type\n"),
-            },
-            .u64, .u32, .u16, .u8 => |lhs_uint| switch (rhs) {
-                .u64, .u32, .u16, .u8 => |rhs_uint| try switch_fn(lhs_uint, op, rhs_uint),
-                else => @panic("invalid binary operation: the two values are not of numeric boolean type\n"),
-            },
-            .f64, .f32 => |lhs_float| switch (rhs) {
-                .f64, .f32 => |rhs_float| try switch_fn(lhs_float, op, rhs_float),
-                else => @panic("invalid binary operation: the two values are not of numeric boolean type\n"),
-            },
-            .bool => |lhs_bool| switch (rhs) {
-                .bool => |rhs_bool| try switch_fn(lhs_bool, op, rhs_bool),
-                else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),
-            },
-            else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),
-        };
-
-        return switch (lhs) {
-            .i64 => .{ .i64 = result },
-            .u64 => .{ .u64 = result },
-            .f64 => .{ .f64 = result },
-        };
-    }
-};
 
 pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const u8) !*Self {
     const self = try alloc.create(Self);
@@ -353,9 +160,9 @@ fn compileStatement(
             try self.compileExpression(file_writer, expr);
             try self.write(file_writer, ";\n");
         },
-        .@"if" => |if_stmt| try self.compileIfStatement(file_writer, if_stmt),
-        .@"while" => |while_stmt| try self.compileWhileStatement(file_writer, while_stmt),
-        .@"for" => |for_stmt| try self.compileForStatement(file_writer, for_stmt),
+        .@"if" => |if_stmt| try self.compileConditionalStatement(file_writer, .@"if", if_stmt),
+        .@"while" => |while_stmt| try self.compileConditionalStatement(file_writer, .@"while", while_stmt),
+        .@"for" => |for_stmt| try self.compileConditionalStatement(file_writer, .@"for", for_stmt),
         .block => |block| try self.compileBlock(file_writer, block),
         .enum_declaration => |enum_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"enum", enum_decl),
         .union_declaration => |union_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"union", union_decl),
@@ -365,14 +172,15 @@ fn compileStatement(
 fn compileCompoundTypeDeclaration(
     self: *Self,
     file_writer: *std.ArrayList(u8),
-    type_decl: union(enum) {
-        @"struct": ast.Statement.StructDeclaration,
-        @"union": ast.Statement.UnionDeclaration,
-        @"enum": ast.Statement.EnumDeclaration,
+    comptime T: enum { @"struct", @"union", @"enum" },
+    type_decl: switch (T) {
+        .@"struct" => ast.Statement.StructDeclaration,
+        .@"union" => ast.Statement.UnionDeclaration,
+        .@"enum" => ast.Statement.EnumDeclaration,
     },
 ) CompilerError!void {
     // register struct in scope
-    var compound_type: switch (type_decl) {
+    var compound_type: switch (T) {
         .@"struct" => Type.Struct,
         .@"union" => Type.Union,
         .@"enum" => Type.Enum,
@@ -383,7 +191,7 @@ fn compileCompoundTypeDeclaration(
     };
     try self.registerSymbol(
         type_decl.name,
-        switch (type_decl) {
+        switch (T) {
             .@"struct" => .{ .@"struct" = compound_type },
             .@"union" => .{ .@"union" = compound_type },
             .@"enum" => .{ .@"enum" = compound_type },
@@ -391,7 +199,7 @@ fn compileCompoundTypeDeclaration(
         .type,
     );
     for (type_decl.members.items) |member|
-        try compound_type.members.put(member.name, switch (type_decl) {
+        try compound_type.members.put(member.name, switch (T) {
             // TODO: default values
             .@"struct" => b: {
                 const member_type = try self.alloc.create(Type);
@@ -432,7 +240,7 @@ fn compileCompoundTypeDeclaration(
         });
     }
 
-    try self.print(file_writer, "typedef {s} {{\n", .{switch (type_decl) {
+    try self.print(file_writer, "typedef {s} {{\n", .{switch (T) {
         .@"struct" => "struct",
         .@"union" => "union",
         .@"enum" => "enum",
@@ -441,7 +249,7 @@ fn compileCompoundTypeDeclaration(
 
     for (type_decl.members.items) |member| {
         try self.indent(file_writer);
-        switch (type_decl) {
+        switch (T) {
             .@"struct" => {
                 try self.compileVariableSignature(
                     file_writer,
@@ -508,60 +316,54 @@ fn compileFunctionDefinition(
     try self.compileBlock(file_writer, function_def.body);
 }
 
-fn compileIfStatement(
+fn compileConditionalStatement(
     self: *Self,
     file_writer: *std.ArrayList(u8),
-    if_statement: ast.Statement.If,
+    comptime T: enum { @"if", @"while", @"for" },
+    statement: switch (T) {
+        .@"if" => ast.Statement.If,
+        .@"while" => ast.Statement.While,
+        .@"for" => ast.Statement.For,
+    },
 ) CompilerError!void {
-    try self.write(file_writer, "if (");
-    try self.compileExpression(file_writer, if_statement.condition);
-    try self.write(file_writer, ") ");
+    try self.print(file_writer, "{s} (", .{switch (T) {
+        .@"if" => "if",
+        .@"for" => "for",
+        .@"while" => "while",
+    }});
 
-    try self.compileStatement(file_writer, if_statement.body);
-    if (if_statement.capture) |_|
-        std.debug.print("unimplemented if statement capture\n", .{});
-
-    if (if_statement.@"else") |@"else"|
-        try self.compileStatement(file_writer, @"else");
-}
-
-fn compileWhileStatement(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    while_statement: ast.Statement.While,
-) CompilerError!void {
-    try self.write(file_writer, "while (");
-    try self.compileExpression(file_writer, while_statement.condition);
-    try self.write(file_writer, ") ");
-
-    try self.compileStatement(file_writer, while_statement.body);
-    if (while_statement.capture) |_|
-        std.debug.print("unimplemented while statement capture\n", .{});
-}
-
-fn compileForStatement(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    for_statement: ast.Statement.For,
-) CompilerError!void {
-    try self.write(file_writer, "for (");
-    switch (for_statement.iterator.*) {
-        .range => |range| {
-            try self.compileType(file_writer, try self.inferType(range.start.*));
-            try self.print(file_writer, " {s} = ", .{for_statement.capture});
-            try self.compileExpression(file_writer, range.start);
-            try self.print(file_writer, "; {s} < ", .{for_statement.capture});
-            try self.compileExpression(file_writer, range.end);
-            try self.print(file_writer, "; {s}++", .{for_statement.capture});
-        },
-        else => |other| switch (try self.inferType(other)) {
-            .array => std.debug.print("unimplemented array iterator in for loop\n", .{}),
-            else => std.debug.print("illegal array iterator type\n", .{}),
+    switch (T) {
+        .@"if", .@"while" => try self.compileExpression(file_writer, statement.condition),
+        .@"for" => switch (statement.iterator.*) {
+            .range => |range| {
+                try self.compileType(file_writer, try self.inferType(range.start.*));
+                try self.print(file_writer, " {s} = ", .{statement.capture});
+                try self.compileExpression(file_writer, range.start);
+                try self.print(file_writer, "; {s} < ", .{statement.capture});
+                try self.compileExpression(file_writer, range.end);
+                try self.print(file_writer, "; {s}++", .{statement.capture});
+            },
+            else => |other| switch (try self.inferType(other)) {
+                .array => std.debug.print("unimplemented array iterator in for loop\n", .{}),
+                else => std.debug.print("illegal array iterator type\n", .{}),
+            },
         },
     }
     try self.write(file_writer, ") ");
 
-    try self.compileStatement(file_writer, for_statement.body);
+    switch (T) {
+        .@"if", .@"while" => if (statement.capture != null)
+            std.debug.print("unimplemented conditional statement capture\n", .{}),
+        else => {},
+    }
+
+    try self.compileStatement(file_writer, statement.body);
+
+    switch (T) {
+        .@"if" => if (statement.@"else") |@"else"|
+            try self.compileStatement(file_writer, @"else"),
+        else => {},
+    }
 }
 
 fn compileBlock(
