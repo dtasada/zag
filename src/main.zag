@@ -15,11 +15,7 @@ struct MyStruct {
 }
 
 fn main() i32 {
-	let mut a = MyStruct { x: 1, y: 1 }; // should compile to `const MyStruct a`
-	let b = &a;                      // should compile to `const MyStruct * const b;`
-    let c = &mut b;                  // should compile to `const MyStruct * c;`
-    let mut d = &mut c;              // should compile to `MyStruct * d;`
-    d.setX(a);
+	let mut array = [_]f32{1, 2, 3};
 
     let c = 420;
 }

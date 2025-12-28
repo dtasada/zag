@@ -121,6 +121,7 @@ pub const Expression = union(enum) {
     };
 
     pub const ArrayInstantiation = struct {
+        length: *const Expression,
         type: Type,
         contents: std.ArrayList(Expression) = .empty,
     };
@@ -144,22 +145,6 @@ pub const Expression = union(enum) {
     };
 };
 
-pub const FunctionDefinition = struct {
-    name: []const u8,
-    parameters: ParameterList = .empty,
-    return_type: Type,
-    body: Block,
-
-    pub fn getType(self: *const FunctionDefinition) Type {
-        return .{
-            .function = .{
-                .parameters = self.parameters,
-                .return_type = &self.return_type,
-            },
-        };
-    }
-};
-
 pub const Statement = union(enum) {
     @"return": ?Expression,
     expression: Expression,
@@ -172,6 +157,22 @@ pub const Statement = union(enum) {
     @"if": If,
     @"while": While,
     @"for": For,
+
+    pub const FunctionDefinition = struct {
+        name: []const u8,
+        parameters: ParameterList = .empty,
+        return_type: Type,
+        body: Block,
+
+        pub fn getType(self: *const FunctionDefinition) Type {
+            return .{
+                .function = .{
+                    .parameters = self.parameters,
+                    .return_type = &self.return_type,
+                },
+            };
+        }
+    };
 
     pub const VariableDefinition = struct {
         is_mut: bool,

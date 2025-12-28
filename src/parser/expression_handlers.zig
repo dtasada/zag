@@ -157,12 +157,16 @@ pub fn parseStructInstantiationExpression(self: *Self, lhs: *const ast.Expressio
 
 pub fn parseArrayInstantiationExpression(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
-    var array = ast.Expression.ArrayInstantiation{ .type = undefined };
 
     try self.expect(self.advance(), Lexer.Token.open_bracket, "array instantiation", "[");
+    const length = try self.alloc.create(ast.Expression);
+    length.* = try parseExpression(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_bracket, "array instantiation", "]");
 
-    array.type = try self.type_parser.parseType(self.alloc, .default);
+    var array: ast.Expression.ArrayInstantiation = .{
+        .type = try self.type_parser.parseType(self.alloc, .default),
+        .length = length,
+    };
 
     try self.expect(self.advance(), Lexer.Token.open_brace, "array instantiation", "{");
     while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {

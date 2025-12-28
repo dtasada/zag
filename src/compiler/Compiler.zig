@@ -3,6 +3,9 @@ const std = @import("std");
 const utils = @import("../utils.zig");
 const ast = @import("../parser/ast.zig");
 
+const expressions = @import("expressions.zig");
+const statements = @import("statements.zig");
+
 const Parser = @import("../parser/Parser.zig");
 
 const Type = @import("Type.zig").Type;
@@ -107,14 +110,13 @@ pub fn deinit(self: *Self) void {
     self.zag_header.deinit(self.alloc);
 
     self.popScope();
-    // there should be no more scopes left
-    std.debug.assert(self.scopes.items.len == 0);
+    std.debug.assert(self.scopes.items.len == 0); // there should be no more scopes left
 
     for (self.scopes.items) |*scope| scope.deinit();
     self.scopes.deinit(self.alloc);
 }
 
-fn print(
+pub fn print(
     self: *Self,
     file_writer: *std.ArrayList(u8),
     comptime fmt: []const u8,
@@ -123,12 +125,12 @@ fn print(
     try file_writer.print(self.alloc, fmt, args);
 }
 
-fn write(self: *Self, file_writer: *std.ArrayList(u8), bytes: []const u8) CompilerError!void {
+pub fn write(self: *Self, file_writer: *std.ArrayList(u8), bytes: []const u8) CompilerError!void {
     try file_writer.appendSlice(self.alloc, bytes);
 }
 
 /// prints 4 spaces for each indent level into an arraylist
-inline fn indent(self: *Self, file: *std.ArrayList(u8)) CompilerError!void {
+pub inline fn indent(self: *Self, file: *std.ArrayList(u8)) CompilerError!void {
     for (0..self.indent_level) |_|
         try file.appendSlice(self.alloc, "    ");
 }
@@ -140,178 +142,23 @@ pub fn emit(self: *Self) CompilerError!void {
     try self.write(&file_writer, "#include <zag.h>\n");
 
     for (self.parser.output.items) |*statement|
-        try self.compileStatement(&file_writer, statement);
+        try statements.compileStatement(self, &file_writer, statement);
 
     try self.output.write(file_writer.items);
     try self.output.flush();
 }
 
-fn compileStatement(
+pub fn compileFunctionDefinition(
     self: *Self,
     file_writer: *std.ArrayList(u8),
-    statement: *const ast.Statement,
+    function_def: ast.Statement.FunctionDefinition,
 ) CompilerError!void {
-    switch (statement.*) {
-        .function_definition => |fn_def| try self.compileFunctionDefinition(file_writer, fn_def),
-        .struct_declaration => |struct_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"struct", struct_decl),
-        .@"return" => |return_expr| try self.compileReturnStatement(file_writer, return_expr),
-        .variable_definition => |var_decl| try self.compileVariableDefinition(file_writer, var_decl),
-        .expression => |*expr| {
-            try self.compileExpression(file_writer, expr);
-            try self.write(file_writer, ";\n");
-        },
-        .@"if" => |if_stmt| try self.compileConditionalStatement(file_writer, .@"if", if_stmt),
-        .@"while" => |while_stmt| try self.compileConditionalStatement(file_writer, .@"while", while_stmt),
-        .@"for" => |for_stmt| try self.compileConditionalStatement(file_writer, .@"for", for_stmt),
-        .block => |block| try self.compileBlock(file_writer, block),
-        .enum_declaration => |enum_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"enum", enum_decl),
-        .union_declaration => |union_decl| try self.compileCompoundTypeDeclaration(file_writer, .@"union", union_decl),
-    }
-}
-
-fn compileCompoundTypeDeclaration(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    comptime T: enum { @"struct", @"union", @"enum" },
-    type_decl: switch (T) {
-        .@"struct" => ast.Statement.StructDeclaration,
-        .@"union" => ast.Statement.UnionDeclaration,
-        .@"enum" => ast.Statement.EnumDeclaration,
-    },
-) CompilerError!void {
-    // register struct in scope
-    var compound_type: switch (T) {
-        .@"struct" => Type.Struct,
-        .@"union" => Type.Union,
-        .@"enum" => Type.Enum,
-    } = try .init(self.alloc, type_decl.name);
-
-    try self.registerSymbol(type_decl.name, switch (T) {
-        .@"struct" => .{ .@"struct" = compound_type },
-        .@"union" => .{ .@"union" = compound_type },
-        .@"enum" => .{ .@"enum" = compound_type },
-    }, .type);
-
-    for (type_decl.members.items) |member| {
-        if (compound_type.getProperty(member.name)) |_|
-            std.debug.panic(
-                "comperr: duplicate member name in compound type declaration: {s}\n",
-                .{member.name},
-            );
-
-        try compound_type.members.put(member.name, switch (T) {
-            // TODO: default values
-            .@"struct" => b: {
-                const member_type = try self.alloc.create(Type);
-                member_type.* = try self.getTypeFromAst(.{ .strong = member.type });
-                break :b member_type;
-            },
-            .@"union" => b: {
-                const member_type = try self.alloc.create(Type);
-                member_type.* = if (member.type) |t|
-                    try self.getTypeFromAst(.{ .strong = t })
-                else
-                    .void;
-                break :b member_type;
-            },
-            .@"enum" => b: {
-                std.debug.print("unimplemented enum explicit values\n", .{});
-                break :b null;
-            },
-        });
-    }
-
-    for (type_decl.methods.items) |method| {
-        var params: std.ArrayList(*const Type) = try .initCapacity(
-            self.alloc,
-            method.parameters.items.len,
-        );
-
-        for (method.parameters.items) |p| {
-            const param_type = try self.alloc.create(Type);
-            param_type.* = try self.getTypeFromAst(.{ .strong = p.type });
-            params.appendAssumeCapacity(param_type);
-        }
-
-        const return_type = try self.alloc.create(Type);
-        return_type.* = try self.getTypeFromAst(.{ .strong = method.return_type });
-        try compound_type.methods.put(method.name, .{
-            .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
-                type_decl.name,
-                method.name,
-            }), // TODO mangling
-            .params = params,
-            .return_type = return_type,
-        });
-    }
-
-    try self.print(file_writer, "typedef {s} {{\n", .{switch (T) {
-        .@"struct" => "struct",
-        .@"union" => "union",
-        .@"enum" => "enum",
-    }});
-    self.indent_level += 1;
-
-    var members = compound_type.members.iterator();
-    while (members.next()) |member| {
-        try self.indent(file_writer);
-        switch (T) {
-            .@"struct" => {
-                try self.compileVariableSignature(
-                    file_writer,
-                    member.key_ptr.*,
-                    member.value_ptr.*.*,
-                );
-                try self.write(file_writer, ";\n");
-            },
-            .@"union" => {
-                try self.compileVariableSignature(
-                    file_writer,
-                    member.key_ptr.*,
-                    member.value_ptr.*.*,
-                );
-                try self.write(file_writer, ";\n");
-            },
-            .@"enum" => {
-                try self.print(file_writer, "{s},\n", .{member.key_ptr.*});
-                std.debug.print("unimplemented explicit enum member values\n", .{});
-            },
-        }
-    }
-
-    self.indent_level -= 1;
-    try self.print(file_writer, "}} {s};\n\n", .{type_decl.name});
-
-    for (type_decl.methods.items) |method| {
-        try self.registerSymbol(method.name, try self.getTypeFromAst(.{ .strong = method.getType() }), .symbol);
-        try self.pushScope();
-        defer self.popScope();
-
-        try self.compileTypeAst(file_writer, method.return_type);
-        try self.print(file_writer, " __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
-        for (method.parameters.items, 1..) |parameter, i| {
-            const parameter_type = try self.getTypeFromAst(.{ .strong = parameter.type });
-            try self.registerSymbol(parameter.name, parameter_type, .symbol);
-            try self.compileVariableSignature(file_writer, parameter.name, parameter_type);
-            if (i < method.parameters.items.len) try self.write(file_writer, ", ");
-        }
-        try self.write(file_writer, ") ");
-
-        try self.compileBlock(file_writer, method.body);
-    }
-}
-
-fn compileFunctionDefinition(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    function_def: ast.FunctionDefinition,
-) CompilerError!void {
-    try self.registerSymbol(function_def.name, try self.getTypeFromAst(.{ .strong = function_def.getType() }), .symbol);
+    try self.registerSymbol(function_def.name, try .fromAst(self, .{ .strong = function_def.getType() }), .symbol);
 
     try self.compileTypeAst(file_writer, function_def.return_type);
     try self.print(file_writer, " {s}(", .{function_def.name});
     for (function_def.parameters.items, 1..) |parameter, i| {
-        try self.compileVariableSignature(file_writer, parameter.name, try self.getTypeFromAst(.{ .strong = parameter.type }));
+        try self.compileVariableSignature(file_writer, parameter.name, try .fromAst(self, .{ .strong = parameter.type }));
         if (i < function_def.parameters.items.len) try self.write(file_writer, ", ");
     }
     try self.write(file_writer, ") ");
@@ -319,57 +166,7 @@ fn compileFunctionDefinition(
     try self.compileBlock(file_writer, function_def.body);
 }
 
-fn compileConditionalStatement(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    comptime T: enum { @"if", @"while", @"for" },
-    statement: switch (T) {
-        .@"if" => ast.Statement.If,
-        .@"while" => ast.Statement.While,
-        .@"for" => ast.Statement.For,
-    },
-) CompilerError!void {
-    try self.print(file_writer, "{s} (", .{switch (T) {
-        .@"if" => "if",
-        .@"for" => "for",
-        .@"while" => "while",
-    }});
-
-    switch (T) {
-        .@"if", .@"while" => try self.compileExpression(file_writer, statement.condition),
-        .@"for" => switch (statement.iterator.*) {
-            .range => |range| {
-                try self.compileType(file_writer, try self.inferType(range.start.*));
-                try self.print(file_writer, " {s} = ", .{statement.capture});
-                try self.compileExpression(file_writer, range.start);
-                try self.print(file_writer, "; {s} < ", .{statement.capture});
-                try self.compileExpression(file_writer, range.end);
-                try self.print(file_writer, "; {s}++", .{statement.capture});
-            },
-            else => |other| switch (try self.inferType(other)) {
-                .array => std.debug.print("unimplemented array iterator in for loop\n", .{}),
-                else => std.debug.print("illegal array iterator type\n", .{}),
-            },
-        },
-    }
-    try self.write(file_writer, ") ");
-
-    switch (T) {
-        .@"if", .@"while" => if (statement.capture != null)
-            std.debug.print("unimplemented conditional statement capture\n", .{}),
-        else => {},
-    }
-
-    try self.compileStatement(file_writer, statement.body);
-
-    switch (T) {
-        .@"if" => if (statement.@"else") |@"else"|
-            try self.compileStatement(file_writer, @"else"),
-        else => {},
-    }
-}
-
-fn compileBlock(
+pub fn compileBlock(
     self: *Self,
     file_writer: *std.ArrayList(u8),
     block: ast.Block,
@@ -382,7 +179,7 @@ fn compileBlock(
     self.indent_level += 1;
     for (block.items) |*statement| {
         try self.indent(file_writer);
-        try self.compileStatement(file_writer, statement);
+        try statements.compileStatement(self, file_writer, statement);
     }
     self.indent_level -= 1;
 
@@ -390,7 +187,7 @@ fn compileBlock(
     try self.write(file_writer, "}\n\n");
 }
 
-fn compileTypeAst(self: *Self, file_writer: *std.ArrayList(u8), t: ast.Type) CompilerError!void {
+pub fn compileTypeAst(self: *Self, file_writer: *std.ArrayList(u8), t: ast.Type) CompilerError!void {
     switch (t) {
         .symbol => |symbol| try self.compileType(file_writer, try self.getSymbolType(symbol)),
         .reference => |reference| {
@@ -401,7 +198,7 @@ fn compileTypeAst(self: *Self, file_writer: *std.ArrayList(u8), t: ast.Type) Com
     }
 }
 
-fn compileType(self: *Self, file_writer: *std.ArrayList(u8), t: Type) CompilerError!void {
+pub fn compileType(self: *Self, file_writer: *std.ArrayList(u8), t: Type) CompilerError!void {
     return switch (t) {
         .reference => |reference| {
             try self.compileType(file_writer, reference.inner.*);
@@ -413,101 +210,17 @@ fn compileType(self: *Self, file_writer: *std.ArrayList(u8), t: Type) CompilerEr
     };
 }
 
-/// Converts an AST type to a Compiler type.
-/// `infer_expr` is the expression with which the type is inferred.
-fn getTypeFromAst(self: *Self, t: union(enum) {
-    strong: ast.Type,
-    infer: ast.Expression,
-}) CompilerError!Type {
-    return switch (t) {
-        .strong => |strong| switch (strong) {
-            .symbol => |symbol| Type.fromSymbol(symbol) catch try self.getSymbolType(symbol),
-            .reference => |reference| .{
-                .reference = .{
-                    .inner = b: {
-                        const ref_type = try self.alloc.create(Type);
-                        ref_type.* = try self.getTypeFromAst(.{ .strong = reference.inner.* });
-                        break :b ref_type;
-                    },
-                    .is_mut = reference.is_mut,
-                },
-            },
-            .function => |function| .{
-                .function = .{
-                    .params = b: {
-                        var params: std.ArrayList(*const Type) = try .initCapacity(
-                            self.alloc,
-                            function.parameters.items.len,
-                        );
-                        for (function.parameters.items) |p| {
-                            const param = try self.alloc.create(Type);
-                            param.* = try self.getTypeFromAst(.{ .strong = p.type });
-                            params.appendAssumeCapacity(param);
-                        }
-                        break :b params;
-                    },
-                    .return_type = b: {
-                        const return_type = try self.alloc.create(Type);
-                        return_type.* = try self.getTypeFromAst(.{ .strong = function.return_type.* });
-                        break :b return_type;
-                    },
-                },
-            },
-            .array => |array| .{
-                .array = .{
-                    .inner = b: {
-                        const array_type = try self.alloc.create(Type);
-                        array_type.* = try self.getTypeFromAst(.{ .strong = array.inner.* });
-                        break :b array_type;
-                    },
-                    .size = (try self.solveComptimeExpression(if (array.size) |s|
-                        s.*
-                    else
-                        @panic("can't infer array size"))).u64,
-                },
-            },
-            else => |other| std.debug.panic("unimplemented type {s}\n", .{@tagName(other)}),
-        },
-        .infer => |expr| try self.inferType(expr),
-    };
-}
-
-fn inferType(self: *Self, expr: ast.Expression) !Type {
-    return switch (expr) {
-        .ident => |ident| try self.getSymbolType(ident),
-        .int => |int| if (int <= std.math.maxInt(i32)) .i32 else .i64,
-        .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
-        .float => .f32,
-        .char => .u8,
-        .struct_instantiation => |struct_inst| try self.getSymbolType(struct_inst.name),
-        .prefix => |prefix| try self.inferType(prefix.rhs.*),
-        .reference => |reference| .{
-            .reference = .{
-                .inner = b: {
-                    const inner = try self.alloc.create(Type);
-                    inner.* = try self.getTypeFromAst(.{ .infer = reference.inner.* });
-                    break :b inner;
-                },
-                .is_mut = reference.is_mut,
-            },
-        },
-        else => |other| std.debug.panic("unimplemented type: {s}\n", .{@tagName(other)}),
-    };
-}
-
-fn compileVariableSignature(
+pub fn compileVariableSignature(
     self: *Self,
     file_writer: *std.ArrayList(u8),
     name: []const u8,
     @"type": Type,
 ) CompilerError!void {
     switch (@"type") {
-        .array => |array| {
-            if (array.size) |size| {
-                try self.compileType(file_writer, array.inner.*);
-                try self.print(file_writer, " {s}[{}]", .{ name, size });
-            } else std.debug.print("unimplemented arraylist\n", .{});
-        },
+        .array => |array| if (array.size) |size| {
+            try self.compileType(file_writer, array.inner.*);
+            try self.print(file_writer, " {s}[{}]", .{ name, size });
+        } else std.debug.print("unimplemented arraylist\n", .{}),
         else => {
             try self.compileType(file_writer, @"type");
             try self.print(file_writer, " {s}", .{name});
@@ -515,238 +228,7 @@ fn compileVariableSignature(
     }
 }
 
-fn compileVariableDefinition(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    v: ast.Statement.VariableDefinition,
-) CompilerError!void {
-    const variable_type = try self.getTypeFromAst(
-        if (v.type == .inferred)
-            .{ .infer = v.assigned_value }
-        else
-            .{ .strong = v.type },
-    );
-
-    if (!v.is_mut) try self.write(file_writer, "const ");
-
-    try self.compileVariableSignature(file_writer, v.variable_name, variable_type);
-
-    try self.write(file_writer, " = ");
-
-    try self.compileExpression(file_writer, &v.assigned_value);
-
-    try self.write(file_writer, ";\n");
-
-    try self.registerSymbol(v.variable_name, variable_type, .symbol);
-}
-
-fn compileReturnStatement(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    r: ?ast.Expression,
-) CompilerError!void {
-    try self.write(file_writer, "return");
-    if (r) |*expression| {
-        try self.write(file_writer, " ");
-        try self.compileExpression(file_writer, expression);
-    }
-    try self.write(file_writer, ";\n");
-}
-
-fn compileExpression(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    expression: *const ast.Expression,
-) CompilerError!void {
-    switch (expression.*) {
-        .assignment => |assignment| {
-            try self.compileExpression(file_writer, assignment.assignee);
-            try self.print(file_writer, " {s} ", .{switch (assignment.op) {
-                .and_equals => "&=",
-                .minus_equals => "-=",
-                .mod_equals => "%=",
-                .or_equals => "|=",
-                .plus_equals => "+=",
-                .shift_left_equals => "<<=",
-                .shift_right_equals => ">>=",
-                .slash_equals => "/=",
-                .times_equals => "*=",
-                .xor_equals => "^=",
-                .equals => "=",
-            }});
-            try self.compileExpression(file_writer, assignment.value);
-        },
-        .block => |block| try self.compileBlock(file_writer, block),
-        .binary => |binary| {
-            try self.compileExpression(file_writer, binary.lhs);
-            try self.print(file_writer, " {s} ", .{switch (binary.op) {
-                .plus => "+",
-                .dash => "-",
-                .asterisk => "*",
-                .slash => "/",
-                .percent => "%",
-
-                .equals_equals => "==",
-                .greater => ">",
-                .less => "<",
-                .greater_equals => ">=",
-                .less_equals => "<=",
-                .bang_equals => "!=",
-
-                .ampersand => "&",
-                .pipe => "|",
-                .caret => "^",
-                .logical_and => "&&",
-                .logical_or => "||",
-                .shift_right => ">>",
-                .shift_left => "<<",
-            }});
-            try self.compileExpression(file_writer, binary.rhs);
-        },
-        .float => |float| try self.print(file_writer, "{}", .{float}),
-        .int => |int| try self.print(file_writer, "{}", .{int}),
-        .uint => |uint| try self.print(file_writer, "{}", .{uint}),
-        .string => |string| try self.print(file_writer, "\"{s}\"", .{string}),
-        .char => |char| try self.print(file_writer, "'{c}'", .{char}),
-        .prefix => |prefix| {
-            try self.write(file_writer, switch (prefix.op) {
-                .dash => "-",
-                .bang => "!",
-            });
-            try self.compileExpression(file_writer, prefix.rhs);
-        },
-        .call => |call| switch (call.callee.*) {
-            .member => |member| {
-                var parent_expr_buf: std.ArrayList(u8) = .empty;
-                try self.compileExpression(&parent_expr_buf, member.parent);
-                const parent_type = try self.getSymbolType(parent_expr_buf.items);
-
-                var parent_reference_level: i32 = 0;
-
-                b: switch (parent_type) {
-                    .@"struct" => |@"struct"| {
-                        if (@"struct".methods.get(member.member_name)) |method| {
-                            const self_param = method.params.items[0];
-                            const ref_level_diff = parent_reference_level - b2: {
-                                var self_method_reference_level: i32 = 0;
-                                count_ref_level: switch (self_param.*) {
-                                    .reference => |reference| {
-                                        self_method_reference_level += 1;
-                                        continue :count_ref_level reference.inner.*;
-                                    },
-                                    else => break :count_ref_level,
-                                }
-                                break :b2 self_method_reference_level;
-                            };
-                            try self.print(file_writer, "{s}(", .{method.inner_name});
-                            for (0..@abs(ref_level_diff)) |_|
-                                try self.write(
-                                    file_writer,
-                                    if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
-                                        "&"
-                                    else
-                                        unreachable,
-                                );
-                            try self.compileExpression(file_writer, member.parent);
-                            try self.write(file_writer, ", ");
-                            for (call.args.items, 1..) |*arg, i| {
-                                try self.compileExpression(file_writer, arg);
-                                if (i < call.args.items.len) try self.write(file_writer, ", ");
-                            }
-                            try self.write(file_writer, ")");
-                        } else std.debug.panic("comperr: {s}.{s} is not a method\n", .{
-                            @"struct".name,
-                            member.member_name,
-                        });
-                    },
-                    .reference => |reference| {
-                        parent_reference_level += 1;
-                        continue :b reference.inner.*;
-                    },
-                    else => |other| std.debug.panic(
-                        "comperr: member expression on {s} is illegal\n",
-                        .{@tagName(other)},
-                    ),
-                }
-            },
-            else => {
-                try self.compileExpression(file_writer, call.callee);
-                try self.write(file_writer, "(");
-                for (call.args.items, 1..) |*expr, i| {
-                    try self.compileExpression(file_writer, expr);
-                    if (i < call.args.items.len) try self.write(file_writer, ", ");
-                }
-                try self.write(file_writer, ")");
-            },
-        },
-        .member => |member| try self.compileMemberExpression(file_writer, member),
-        .ident => |ident| {
-            if (self.getSymbolType(ident) catch null) |_|
-                try self.write(file_writer, ident)
-            else
-                std.debug.panic("comperr: unknown symbol {s}\n", .{ident});
-        },
-        .struct_instantiation => |struct_inst| {
-            try self.print(file_writer, "({s}){{\n", .{struct_inst.name});
-            self.indent_level += 1;
-
-            var members = struct_inst.members.iterator();
-            while (members.next()) |member| {
-                try self.indent(file_writer);
-                try self.print(file_writer, ".{s} = ", .{member.key_ptr.*});
-                try self.compileExpression(file_writer, member.value_ptr);
-                try self.write(file_writer, ",\n");
-            }
-
-            self.indent_level -= 1;
-            try self.indent(file_writer);
-            try self.write(file_writer, "}");
-        },
-        .range => std.debug.print("illegal range expression\n", .{}),
-        .reference => |reference| {
-            try self.write(file_writer, "&");
-            try self.compileExpression(file_writer, reference.inner);
-        },
-        else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
-    }
-}
-
-fn compileMemberExpression(
-    self: *Self,
-    file_writer: *std.ArrayList(u8),
-    member: ast.Expression.Member,
-) CompilerError!void {
-    const parent_type = try self.inferType(member.parent.*);
-    var delimiter: enum { @".", @"->" } = .@".";
-    b: switch (parent_type) {
-        .@"struct" => |@"struct"| {
-            if (@"struct".getProperty(member.member_name)) |property| switch (property) {
-                .member => {
-                    try self.compileExpression(file_writer, member.parent);
-                    try self.print(file_writer, "{s}{s}", .{
-                        @tagName(delimiter),
-                        member.member_name,
-                    });
-                    delimiter = .@".";
-                },
-                .method => std.debug.print("unimplemented: member methods\n", .{}),
-            } else std.debug.panic("comperr: property {s} doesn't exist for type {s}\n", .{
-                member.member_name,
-                @"struct".name,
-            });
-        },
-        .reference => |reference| {
-            delimiter = .@"->";
-            continue :b reference.inner.*;
-        },
-        else => |other| std.debug.panic(
-            "comperr: member expression on {s} is illegal\n",
-            .{@tagName(other)},
-        ),
-    }
-}
-
-fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
+pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
     _ = self;
     return switch (expression) {
         .int => |int| .{ .i64 = int },
@@ -760,18 +242,18 @@ fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
 }
 
 /// appends a new empty scope to the scope stack.
-fn pushScope(self: *Self) !void {
+pub fn pushScope(self: *Self) !void {
     try self.scopes.append(self.alloc, .init(self.alloc));
 }
 
 /// pops the scope of the scope stack.
-fn popScope(self: *Self) void {
+pub fn popScope(self: *Self) void {
     var last = self.scopes.pop().?;
     last.deinit();
 }
 
 /// registers a new entry in the top scope of the scope stack.
-fn registerSymbol(
+pub fn registerSymbol(
     self: *Self,
     name: []const u8,
     @"type": Type,
@@ -794,7 +276,7 @@ fn registerSymbol(
     });
 }
 
-fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
+pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
         return switch (scope.get(symbol) orelse continue) {

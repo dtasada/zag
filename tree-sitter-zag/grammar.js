@@ -7,6 +7,10 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
+function commaSep(item) {
+  return seq(repeat(seq(item, ",")), optional(item));
+}
+
 export default grammar({
   name: "zag",
 
@@ -83,9 +87,10 @@ export default grammar({
       field("name", $.ident_type),
       optional(field("generics", $.parameter_list)),
       "{",
-      repeat(seq(field("member", $.struct_member), ",")),
-      optional(field("member", $.struct_member)),
-      repeat(field("method", $.function_definition)),
+      // repeat(choice(
+        commaSep(field("member", $.struct_member)),
+        repeat(field("method", $.function_definition)),
+      // )),
       "}",
     ),
 
@@ -104,9 +109,10 @@ export default grammar({
       optional(field("type", $.parameter_list)),
       field("name", $.ident_type),
       "{",
-      repeat(seq(field("member", $.enum_member), ",")),
-      optional(field("member", $.enum_member)),
-      repeat(field("method", $.function_definition)),
+      // repeat(choice(
+        commaSep(field("member", $.enum_member)),
+        repeat(field("method", $.function_definition)),
+      // )),
       "}",
     ),
 
@@ -122,9 +128,10 @@ export default grammar({
       "union",
       field("name", $.ident_type),
       "{",
-      repeat(seq(field("member", $.union_member), ",")),
-      optional(field("member", $.union_member)),
-      repeat(field("method", $.function_definition)),
+      // repeat(choice(
+        commaSep(field("member", $.union_member)),
+        repeat(field("method", $.function_definition)),
+      // )),
       "}",
     ),
     union_member: $ => seq(
@@ -319,8 +326,7 @@ export default grammar({
     struct_instantiation_expression: $ => prec(10, seq(
       field("name", $.ident_type),
       "{",
-      repeat(seq(field("member", $.struct_instantiation_expression_member), ",")),
-      optional(field("member", $.struct_instantiation_expression_member)),
+      commaSep(field("member", $.struct_instantiation_expression_member)),
       "}",
     )),
     struct_instantiation_expression_member: $ => seq(
@@ -333,11 +339,9 @@ export default grammar({
       "[",
       optional(field("size", $.expression)),
       "]",
+      $.type,
       "{",
-      repeat(seq(
-        field("initializer_list", $.expression),
-        ",",
-      )),
+      field("initializer_list", commaSep($.expression)),
       "}",
     ),
 
@@ -355,8 +359,7 @@ export default grammar({
 
     parameter_list: $ => seq(
       "(",
-      repeat(seq($.variable_signature, ",")),
-      optional($.variable_signature),
+      commaSep($.variable_signature),
       ")",
     ),
 
