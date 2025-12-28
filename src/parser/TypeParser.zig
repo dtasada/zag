@@ -1,8 +1,8 @@
 const std = @import("std");
-const utils = @import("../utils.zig");
+const utils = @import("utils");
 const expression_handlers = @import("expression_handlers.zig");
 
-const Lexer = @import("../Lexer.zig");
+const Lexer = @import("Lexer");
 const Parser = @import("Parser.zig");
 
 const BindingPower = Parser.BindingPower;

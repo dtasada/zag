@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const ast = @import("../parser/ast.zig");
+const ast = @import("Parser").ast;
 const expressions = @import("expressions.zig");
 
 const Type = @import("Type.zig").Type;

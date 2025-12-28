@@ -1,13 +1,12 @@
 const std = @import("std");
 const clap = @import("clap");
 const pretty = @import("pretty");
-const clang = @import("clang");
 const builtin = @import("builtin");
 
-const utils = @import("utils.zig");
-const Lexer = @import("Lexer.zig");
-const Parser = @import("parser/Parser.zig");
-const Compiler = @import("compiler/Compiler.zig");
+const utils = @import("utils");
+const Lexer = @import("Lexer");
+const Parser = @import("Parser");
+const Compiler = @import("Compiler");
 
 const BuildError = error{
     FailedToReadSource,

@@ -1,7 +1,7 @@
 const std = @import("std");
-const utils = @import("../utils.zig");
+const utils = @import("utils");
 
-const LexerToken = @import("../Lexer.zig").Token;
+const LexerToken = @import("Lexer").Token;
 
 pub const ParameterList = std.ArrayList(VariableSignature);
 pub const ArgumentList = std.ArrayList(Expression);

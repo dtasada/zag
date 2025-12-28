@@ -1,12 +1,12 @@
 const std = @import("std");
 const pretty = @import("pretty");
-const utils = @import("../utils.zig");
-const ast = @import("ast.zig");
+const utils = @import("utils");
+pub const ast = @import("ast.zig");
 
 const statement_handlers = @import("statement_handlers.zig");
 const expression_handlers = @import("expression_handlers.zig");
 
-const Lexer = @import("../Lexer.zig");
+const Lexer = @import("Lexer");
 const TypeParser = @import("TypeParser.zig");
 
 const Self = @This();

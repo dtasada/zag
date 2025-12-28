@@ -1,12 +1,12 @@
 const std = @import("std");
 
-const utils = @import("../utils.zig");
-const ast = @import("../parser/ast.zig");
+const utils = @import("utils");
+const ast = @import("Parser").ast;
 
 const expressions = @import("expressions.zig");
 const statements = @import("statements.zig");
 
-const Parser = @import("../parser/Parser.zig");
+const Parser = @import("Parser");
 
 const Type = @import("Type.zig").Type;
 const Value = @import("Value.zig").Value;
