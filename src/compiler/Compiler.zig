@@ -192,6 +192,15 @@ pub fn compileVariableSignature(
             try self.compileType(file_writer, array.inner.*);
             try self.print(file_writer, " {s}[{}]", .{ name, size });
         } else std.debug.print("unimplemented arraylist\n", .{}),
+        .function => |function| {
+            try self.compileType(file_writer, function.return_type.*);
+            try self.print(file_writer, " (*{s})(", .{name});
+            for (function.params.items, 1..) |param, i| {
+                try self.compileType(file_writer, param.*);
+                if (i < function.params.items.len) try self.write(file_writer, ", ");
+            }
+            try self.write(file_writer, ")");
+        },
         else => {
             try self.compileType(file_writer, @"type");
             try self.print(file_writer, " {s}", .{name});
@@ -200,14 +209,13 @@ pub fn compileVariableSignature(
 }
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
-    _ = self;
     return switch (expression) {
         .int => |int| .{ .i64 = int },
         .uint => |uint| .{ .u64 = uint },
         .float => |float| .{ .f64 = float },
         .char => |char| .{ .u8 = char },
-        // .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
-        //     .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
+        .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
+            .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
         else => std.debug.panic("unimplemented comptime expression for {s}\n", .{@tagName(expression)}),
     };
 }

@@ -2,7 +2,10 @@ const std = @import("std");
 
 const ast = @import("Parser").ast;
 
+const expressions = @import("expressions.zig");
+
 const Compiler = @import("Compiler.zig");
+const CompilerError = Compiler.CompilerError;
 
 pub const Type = union(enum) {
     const Self = @This();
@@ -189,15 +192,28 @@ pub const Type = union(enum) {
         };
     }
 
-    pub fn infer(compiler: *Compiler, expr: ast.Expression) !Self {
+    pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
             .ident => |ident| try compiler.getSymbolType(ident),
-            .int => |int| if (int <= std.math.maxInt(i32)) .i32 else .i64,
-            .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
-            .float => .f32,
+            .string => .{ .reference = .{ .inner = &.u8, .is_mut = true } },
             .char => .u8,
+            .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
+            .int => |int| if (int <= std.math.maxInt(i32) and int >= std.math.minInt(i32))
+                .i32
+            else
+                .i64,
+            .float => |float| if (float == @as(f64, @floatCast(@as(f32, @floatCast(float)))))
+                // if the float fits in an f32, then default to f32. if the float is too big,
+                // use f64
+                .f32
+            else
+                .f64,
+
+            .call => |call| try inferCallExpression(compiler, call),
             .struct_instantiation => |struct_inst| try compiler.getSymbolType(struct_inst.name),
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
+            .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
+            .member => |member| try inferMemberExpression(compiler, member),
             .reference => |reference| .{
                 .reference = .{
                     .inner = b: {
@@ -208,29 +224,88 @@ pub const Type = union(enum) {
                     .is_mut = reference.is_mut,
                 },
             },
-            .array_instantiation => |array| {
-                const t = try compiler.alloc.create(Type);
-                t.* = try .fromAst(compiler, array.type);
-
-                const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident, "_"))
-                    array.contents.items.len
-                else b: {
-                    const length = (try compiler.solveComptimeExpression(array.length.*)).u64;
-
-                    if (length != array.contents.items.len)
-                        std.debug.panic("comperr: array type size does not match initializer list\n", .{});
-
-                    break :b length;
-                };
-
-                return .{
-                    .array = .{
-                        .inner = t,
-                        .size = size,
-                    },
-                };
-            },
             else => |other| std.debug.panic("unimplemented type: {s}\n", .{@tagName(other)}),
         };
+    }
+
+    fn inferCallExpression(compiler: *Compiler, call: ast.Expression.Call) !Self {
+        return switch (call.callee.*) {
+            .member => |m| {
+                var parent_expr_buf: std.ArrayList(u8) = .empty;
+                try expressions.compile(compiler, &parent_expr_buf, m.parent, .{}); // TODO fix bug
+                const parent_type = try compiler.getSymbolType(parent_expr_buf.items);
+
+                b: switch (parent_type) {
+                    .@"struct" => |@"struct"| {
+                        if (@"struct".methods.get(m.member_name)) |method| {
+                            return method.return_type.*;
+                        } else std.debug.panic("comperr: {s}.{s} is not a method\n", .{
+                            @"struct".name,
+                            m.member_name,
+                        });
+                    },
+                    .reference => |reference| continue :b reference.inner.*,
+                    else => |other| std.debug.panic(
+                        "comperr: member expression on {s} is illegal\n",
+                        .{@tagName(other)},
+                    ),
+                }
+            },
+            else => switch (try infer(compiler, call.callee.*)) {
+                .function => |function| function.return_type.*,
+                else => std.debug.panic("comperr: unimplemented idek\n", .{}),
+            },
+        };
+    }
+
+    fn inferArrayInstantiationExpression(compiler: *Compiler, array: ast.Expression.ArrayInstantiation) !Self {
+        const t = try compiler.alloc.create(Type);
+        t.* = try .fromAst(compiler, array.type);
+
+        const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident, "_"))
+            array.contents.items.len
+        else b: {
+            const length = (try compiler.solveComptimeExpression(array.length.*)).u64;
+
+            if (length != array.contents.items.len)
+                std.debug.panic("comperr: array type size does not match initializer list\n", .{});
+
+            break :b length;
+        };
+
+        return .{
+            .array = .{
+                .inner = t,
+                .size = size,
+            },
+        };
+    }
+
+    fn inferMemberExpression(compiler: *Compiler, member: ast.Expression.Member) !Self {
+        var parent_expr_buf: std.ArrayList(u8) = .empty;
+        try expressions.compile(compiler, &parent_expr_buf, member.parent, .{});
+        const parent_type = try compiler.getSymbolType(parent_expr_buf.items);
+
+        b: switch (parent_type) {
+            .@"struct" => |@"struct"| {
+                if (@"struct".getProperty(member.member_name)) |property| switch (property) {
+                    .member => |m| return m.*,
+                    .method => |method| return .{
+                        .function = .{
+                            .params = method.params,
+                            .return_type = method.return_type,
+                        },
+                    },
+                } else std.debug.panic("comperr: property {s} doesn't exist for type {s}\n", .{
+                    member.member_name,
+                    @"struct".name,
+                });
+            },
+            .reference => |reference| continue :b reference.inner.*,
+            else => |other| std.debug.panic(
+                "comperr: member expression on {s} is illegal\n",
+                .{@tagName(other)},
+            ),
+        }
     }
 };

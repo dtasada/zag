@@ -136,7 +136,8 @@ fn compoundTypeDeclaration(
             },
             .@"enum" => {
                 try self.print(file_writer, "{s},\n", .{member.key_ptr.*});
-                std.debug.print("unimplemented explicit enum member values\n", .{});
+                if (member.value_ptr.*) |_|
+                    std.debug.print("unimplemented explicit enum member values\n", .{});
             },
         }
     }
@@ -243,8 +244,11 @@ fn conditional(
     try compile(self, file_writer, statement.body);
 
     switch (T) {
-        .@"if" => if (statement.@"else") |@"else"|
-            try compile(self, file_writer, @"else"),
+        .@"if" => if (statement.@"else") |@"else"| {
+            try self.indent(file_writer);
+            try self.write(file_writer, "else ");
+            try compile(self, file_writer, @"else");
+        },
         else => {},
     }
 }

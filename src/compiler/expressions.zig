@@ -75,6 +75,22 @@ pub fn compile(
             try compile(self, file_writer, index.index, .{});
             try self.write(file_writer, "]");
         },
+        .@"if" => |@"if"| {
+            try self.write(file_writer, "((");
+            try compile(self, file_writer, @"if".condition, .{});
+            try self.write(file_writer, ") ? ");
+
+            if (@"if".capture != null)
+                std.debug.print("unimplemented if expression capture\n", .{});
+
+            try compile(self, file_writer, @"if".body, .{});
+
+            if (@"if".@"else") |@"else"| {
+                try self.write(file_writer, " : ");
+                try compile(self, file_writer, @"else", .{});
+                try self.write(file_writer, ")");
+            } else std.debug.panic("comperr: if expression must contain an else clause\n", .{});
+        },
         else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
     }
 }
@@ -97,7 +113,7 @@ fn member(
                     });
                     delimiter = .@".";
                 },
-                .method => std.debug.print("unimplemented: member methods\n", .{}),
+                .method => |method| try self.print(file_writer, "&{s}", .{method.inner_name}),
             } else std.debug.panic("comperr: property {s} doesn't exist for type {s}\n", .{
                 expr.member_name,
                 @"struct".name,
