@@ -219,6 +219,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(Lexer.Token.ampersand, expression_handlers.parseReferenceExpression);
     try self.led(Lexer.Token.dot_dot, .relational, expression_handlers.parseRangeExpression);
     try self.led(Lexer.Token.dot_dot_equals, .relational, expression_handlers.parseRangeExpression);
+    try self.led(Lexer.Token.open_bracket, .call, expression_handlers.parseIndexExpression);
 
     // Statements
     try self.statement(Lexer.Token.let, statement_handlers.parseVariableDeclarationStatement);

@@ -11,6 +11,7 @@ pub fn compile(
     self: *Self,
     file_writer: *std.ArrayList(u8),
     expression: *const ast.Expression,
+    opts: struct { is_const: bool = false },
 ) CompilerError!void {
     switch (expression.*) {
         .assignment => |a| try assignment(self, file_writer, a),
@@ -29,7 +30,7 @@ pub fn compile(
                 .dash => "-",
                 .bang => "!",
             });
-            try compile(self, file_writer, prefix.rhs);
+            try compile(self, file_writer, prefix.rhs, .{});
         },
         .ident => |ident| {
             if (self.getSymbolType(ident) catch null) |_|
@@ -45,7 +46,7 @@ pub fn compile(
             while (members.next()) |m| {
                 try self.indent(file_writer);
                 try self.print(file_writer, ".{s} = ", .{m.key_ptr.*});
-                try compile(self, file_writer, m.value_ptr);
+                try compile(self, file_writer, m.value_ptr, .{});
                 try self.write(file_writer, ",\n");
             }
 
@@ -55,7 +56,24 @@ pub fn compile(
         },
         .reference => |reference| {
             try self.write(file_writer, "&");
-            try compile(self, file_writer, reference.inner);
+            try compile(self, file_writer, reference.inner, .{});
+        },
+        .array_instantiation => |array| {
+            try self.write(file_writer, "(");
+            if (opts.is_const) try self.write(file_writer, "const ");
+            try self.compileType(file_writer, try .fromAst(self, array.type));
+            try self.print(file_writer, "[]){{", .{});
+            for (array.contents.items, 1..) |*item, i| {
+                try compile(self, file_writer, item, .{});
+                if (i < array.contents.items.len) try self.write(file_writer, ", ");
+            }
+            try self.write(file_writer, "}");
+        },
+        .index => |index| {
+            try compile(self, file_writer, index.lhs, .{});
+            try self.write(file_writer, "[");
+            try compile(self, file_writer, index.index, .{});
+            try self.write(file_writer, "]");
         },
         else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
     }
@@ -72,7 +90,7 @@ fn member(
         .@"struct" => |@"struct"| {
             if (@"struct".getProperty(expr.member_name)) |property| switch (property) {
                 .member => {
-                    try compile(self, file_writer, expr.parent);
+                    try compile(self, file_writer, expr.parent, .{});
                     try self.print(file_writer, "{s}{s}", .{
                         @tagName(delimiter),
                         expr.member_name,
@@ -101,7 +119,7 @@ fn assignment(
     file_writer: *std.ArrayList(u8),
     expr: ast.Expression.Assignment,
 ) CompilerError!void {
-    try compile(self, file_writer, expr.assignee);
+    try compile(self, file_writer, expr.assignee, .{});
     try self.print(file_writer, " {s} ", .{switch (expr.op) {
         .and_equals => "&=",
         .minus_equals => "-=",
@@ -115,7 +133,7 @@ fn assignment(
         .xor_equals => "^=",
         .equals => "=",
     }});
-    try compile(self, file_writer, expr.value);
+    try compile(self, file_writer, expr.value, .{});
 }
 
 fn binary(
@@ -123,7 +141,7 @@ fn binary(
     file_writer: *std.ArrayList(u8),
     expr: ast.Expression.Binary,
 ) CompilerError!void {
-    try compile(self, file_writer, expr.lhs);
+    try compile(self, file_writer, expr.lhs, .{});
     try self.print(file_writer, " {s} ", .{switch (expr.op) {
         .plus => "+",
         .dash => "-",
@@ -146,7 +164,7 @@ fn binary(
         .shift_right => ">>",
         .shift_left => "<<",
     }});
-    try compile(self, file_writer, expr.rhs);
+    try compile(self, file_writer, expr.rhs, .{});
 }
 
 fn call(
@@ -157,7 +175,7 @@ fn call(
     switch (expr.callee.*) {
         .member => |m| {
             var parent_expr_buf: std.ArrayList(u8) = .empty;
-            try compile(self, &parent_expr_buf, m.parent);
+            try compile(self, &parent_expr_buf, m.parent, .{});
             const parent_type = try self.getSymbolType(parent_expr_buf.items);
 
             var parent_reference_level: i32 = 0;
@@ -186,10 +204,10 @@ fn call(
                                 else
                                     unreachable,
                             );
-                        try compile(self, file_writer, m.parent);
+                        try compile(self, file_writer, m.parent, .{});
                         try self.write(file_writer, ", ");
                         for (expr.args.items, 1..) |*arg, i| {
-                            try compile(self, file_writer, arg);
+                            try compile(self, file_writer, arg, .{});
                             if (i < expr.args.items.len) try self.write(file_writer, ", ");
                         }
                         try self.write(file_writer, ")");
@@ -209,10 +227,10 @@ fn call(
             }
         },
         else => {
-            try compile(self, file_writer, expr.callee);
+            try compile(self, file_writer, expr.callee, .{});
             try self.write(file_writer, "(");
             for (expr.args.items, 1..) |*e, i| {
-                try compile(self, file_writer, e);
+                try compile(self, file_writer, e, .{});
                 if (i < expr.args.items.len) try self.write(file_writer, ", ");
             }
             try self.write(file_writer, ")");

@@ -14,8 +14,7 @@ struct MyStruct {
 	}
 }
 
-fn main() i32 {
-	let mut array = [_]f32{1, 2, 3};
-
-    let c = 420;
+fn main() void {
+	let array = [_]f32{1, 2, 3};
+    array[2] = 0;
 }

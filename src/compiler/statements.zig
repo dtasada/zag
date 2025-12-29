@@ -19,7 +19,7 @@ pub fn compile(
         .@"return" => |return_expr| try returnStatement(self, file_writer, return_expr),
         .variable_definition => |var_decl| try variableDefinition(self, file_writer, var_decl),
         .expression => |*expr| {
-            try expressions.compile(self, file_writer, expr);
+            try expressions.compile(self, file_writer, expr, .{});
             try self.write(file_writer, ";\n");
         },
         .@"if" => |if_stmt| try conditional(self, file_writer, .@"if", if_stmt),
@@ -171,7 +171,7 @@ fn returnStatement(
     try self.write(file_writer, "return");
     if (r) |*expression| {
         try self.write(file_writer, " ");
-        try expressions.compile(self, file_writer, expression);
+        try expressions.compile(self, file_writer, expression, .{});
     }
     try self.write(file_writer, ";\n");
 }
@@ -192,11 +192,11 @@ fn variableDefinition(
 
     try self.write(file_writer, " = ");
 
-    try expressions.compile(self, file_writer, &v.assigned_value);
+    try self.registerSymbol(v.variable_name, variable_type, .symbol);
+
+    try expressions.compile(self, file_writer, &v.assigned_value, .{ .is_const = !v.is_mut });
 
     try self.write(file_writer, ";\n");
-
-    try self.registerSymbol(v.variable_name, variable_type, .symbol);
 }
 
 fn conditional(
@@ -216,14 +216,14 @@ fn conditional(
     }});
 
     switch (T) {
-        .@"if", .@"while" => try expressions.compile(self, file_writer, statement.condition),
+        .@"if", .@"while" => try expressions.compile(self, file_writer, statement.condition, .{}),
         .@"for" => switch (statement.iterator.*) {
             .range => |range| {
                 try self.compileType(file_writer, try .infer(self, range.start.*));
                 try self.print(file_writer, " {s} = ", .{statement.capture});
-                try expressions.compile(self, file_writer, range.start);
+                try expressions.compile(self, file_writer, range.start, .{});
                 try self.print(file_writer, "; {s} < ", .{statement.capture});
-                try expressions.compile(self, file_writer, range.end);
+                try expressions.compile(self, file_writer, range.end, .{});
                 try self.print(file_writer, "; {s}++", .{statement.capture});
             },
             else => |other| switch (try Type.infer(self, other)) {

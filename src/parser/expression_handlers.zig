@@ -243,7 +243,7 @@ pub fn parseBlockExpression(self: *Self) ParserError!ast.Expression {
 }
 
 pub fn parseRangeExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
-    const token = self.advance(); // move past '..'
+    const token = self.advance(); // move past '..|..='
 
     const end = try self.alloc.create(ast.Expression);
     end.* = try parseExpression(self, .default);
@@ -253,6 +253,22 @@ pub fn parseRangeExpression(self: *Self, lhs: *const ast.Expression, _: BindingP
             .start = lhs,
             .end = end,
             .inclusive = token != .dot_dot,
+        },
+    }, try self.getExprPos(lhs.*));
+}
+
+pub fn parseIndexExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+    _ = self.advance(); // move past '['
+
+    const index = try self.alloc.create(ast.Expression);
+    index.* = try parseExpression(self, .default);
+
+    try self.expect(self.advance(), .close_bracket, "index expression", "]");
+
+    return self.putExprPos(.{
+        .index = .{
+            .lhs = lhs,
+            .index = index,
         },
     }, try self.getExprPos(lhs.*));
 }

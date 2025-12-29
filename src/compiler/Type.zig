@@ -208,18 +208,27 @@ pub const Type = union(enum) {
                     .is_mut = reference.is_mut,
                 },
             },
-            .array_instantiation => |array| .{
-                .array = .{
-                    .inner = b: {
-                        const t = try compiler.alloc.create(Type);
-                        t.* = try .fromAst(compiler, array.type);
-                        break :b t;
+            .array_instantiation => |array| {
+                const t = try compiler.alloc.create(Type);
+                t.* = try .fromAst(compiler, array.type);
+
+                const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident, "_"))
+                    array.contents.items.len
+                else b: {
+                    const length = (try compiler.solveComptimeExpression(array.length.*)).u64;
+
+                    if (length != array.contents.items.len)
+                        std.debug.panic("comperr: array type size does not match initializer list\n", .{});
+
+                    break :b length;
+                };
+
+                return .{
+                    .array = .{
+                        .inner = t,
+                        .size = size,
                     },
-                    .size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident, "_"))
-                        array.contents.items.len
-                    else
-                        (try compiler.solveComptimeExpression(array.length.*)).u64,
-                },
+                };
             },
             else => |other| std.debug.panic("unimplemented type: {s}\n", .{@tagName(other)}),
         };

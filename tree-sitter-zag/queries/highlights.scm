@@ -23,7 +23,7 @@
 (binary_expression op: _ @operator)
 (prefix_expression op: _ @operator)
 (assignment_operator) @operator
-[".." "..=" "&"] @operator
+[".." "..=" "&" "!"] @operator
 
 [";" "." "," ":"] @punctuation.delimiter
 
@@ -68,3 +68,6 @@
 (struct_member name: (ident) @field)
 (enum_member name: (ident) @field)
 (union_member name: (ident) @field)
+
+((ident) @variable.builtin
+  (#eq? @variable.builtin "_"))

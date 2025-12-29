@@ -86,6 +86,7 @@ pub const Expression = union(enum) {
     block: Block,
     @"if": If,
     range: Range,
+    index: Index,
     reference: Reference,
 
     pub const Binary = struct {
@@ -142,6 +143,11 @@ pub const Expression = union(enum) {
         capture: ?[]const u8 = null,
         body: *const Expression,
         @"else": ?*const Expression = null,
+    };
+
+    const Index = struct {
+        lhs: *const Expression,
+        index: *const Expression,
     };
 };
 
