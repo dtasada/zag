@@ -14,7 +14,7 @@ struct MyStruct {
 	}
 }
 
-fn main() void {
+fn main() i32 {
     let my_obj = MyStruct {
         x: 1,
         y: 1,

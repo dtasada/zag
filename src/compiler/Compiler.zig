@@ -41,10 +41,12 @@ const File = struct {
     handler: std.fs.File,
     writer: std.fs.File.Writer,
     buf: []u8,
+    path: []const u8,
 
-    fn init(alloc: std.mem.Allocator, file: std.fs.File) !File {
+    fn init(alloc: std.mem.Allocator, path: []const u8, file: std.fs.File) !File {
         var self: File = .{
             .handler = file,
+            .path = path,
             .buf = try alloc.alloc(u8, 1024),
             .writer = undefined,
         };
@@ -80,25 +82,69 @@ const Scope = std.StringHashMap(union(enum) {
 pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const u8) !*Self {
     const self = try alloc.create(Self);
 
-    const out_path = try std.fs.path.join(alloc, &.{ ".zag-out", std.fs.path.dirname(file_path) orelse "" });
-    var zag_out = try std.fs.cwd().makeOpenPath(out_path, .{});
-    defer zag_out.close();
+    // mkdir .zag-out/
+    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+    defer @".zag-out".close();
+    // mkdir .zag-out/src
+    try @".zag-out".makePath(std.fs.path.dirname(file_path) orelse "");
 
-    const out_file_path = try std.fmt.allocPrint(alloc, "{s}.c", .{std.fs.path.basename(file_path)});
-    defer alloc.free(out_file_path);
-    const output_file = try zag_out.createFile(out_file_path, .{});
+    // mkdir .zag-out/zag
+    var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
+    defer @".zag-out/zag".close();
 
-    const zag_header_path = try std.fmt.allocPrint(alloc, "zag.h", .{});
-    defer alloc.free(zag_header_path);
-    const zag_header_file = try zag_out.createFile(zag_header_path, .{});
+    const @".c" = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}); // src/main.zag -> src/main.zag.c
+    const output_file = try @".zag-out".createFile(@".c", .{}); // mkdir .zag-out/src/main.zag.c
+
+    const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
+    const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
+    _ = try zag_header_file.write(
+        \\#ifndef ZAG_H
+        \\#define ZAG_H
+        \\
+        \\#include <stdbool.h>
+        \\#include <stdint.h>
+        \\
+        \\typedef int8_t  i8;
+        \\typedef int16_t i16;
+        \\typedef int32_t i32;
+        \\typedef int64_t i64;
+        \\
+        \\typedef uint8_t  u8;
+        \\typedef uint16_t u16;
+        \\typedef uint32_t u32;
+        \\typedef uint64_t u64;
+        \\
+        \\typedef float  f32;
+        \\typedef double f64;
+        \\
+        \\#define __ZAG_OPTIONAL_TYPE(union_name, inner_type) \
+        \\    typedef struct {                                \
+        \\        bool       is_some;                         \
+        \\        inner_type payload;                         \
+        \\    } union_name;
+        \\
+        \\#define __ZAG_ERROR_UNION_TYPE(union_name, error_type, success_type) \
+        \\    typedef struct {                                                 \
+        \\        bool is_success;                                             \
+        \\        union {                                                      \
+        \\            success_type success;                                    \
+        \\            error_type   error;                                      \
+        \\        } payload;                                                   \
+        \\    } union_name;
+        \\
+        \\#endif
+    );
 
     self.* = .{
         .alloc = alloc,
         .parser = parser,
 
-        .output = try .init(alloc, output_file),
-        .zag_header = try .init(alloc, zag_header_file),
+        .output = try .init(alloc, @".c", output_file),
+        .zag_header = try .init(alloc, zag_header_path, zag_header_file),
     };
+
+    var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
+    defer @".zag-out/bin".close();
 
     try self.pushScope();
 
@@ -146,6 +192,44 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.output.write(file_writer.items);
     try self.output.flush();
+
+    const out_c_file_path = try std.fs.path.join(self.alloc, &.{ ".zag-out", self.output.path }); // .zag-out/src/main.zag.c
+    defer self.alloc.free(out_c_file_path);
+
+    const main_obj = try std.fs.path.join(self.alloc, &.{ ".zag-out", "bin", "main" });
+    const @"-Iinclude" = try std.fs.path.join(self.alloc, &.{ "-I./", ".zag-out", "zag" });
+
+    std.debug.print("{s} {s} {s} {s} {s}\n", .{
+        "/usr/bin/cc",
+        "-o",
+        main_obj,
+        out_c_file_path,
+        @"-Iinclude",
+    });
+
+    var cc = std.process.Child.init(&.{
+        "/usr/bin/cc",
+        "-o",
+        main_obj,
+        out_c_file_path,
+        @"-Iinclude",
+    }, self.alloc);
+
+    cc.stdin_behavior = .Ignore;
+    cc.stdout_behavior = .Pipe;
+    cc.stderr_behavior = .Pipe;
+    cc.spawn() catch |err| {
+        utils.print("Couldn't spawn compiler command: {}\n", .{err}, .red);
+        return;
+    };
+    const stdout = cc.stdout.?.readToEndAlloc(self.alloc, 1 << 20) catch return;
+    const stderr = cc.stderr.?.readToEndAlloc(self.alloc, 1 << 20) catch return;
+
+    const term = cc.wait() catch return;
+
+    std.debug.print("exit: {}\n", .{term});
+    std.debug.print("stdout:\n{s}\n", .{stdout});
+    std.debug.print("stderr:\n{s}\n", .{stderr});
 }
 
 pub fn compileBlock(
