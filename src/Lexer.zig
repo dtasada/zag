@@ -175,8 +175,6 @@ inline fn advanceN(self: *Self, n: usize) void {
         self.line_col.line += 1;
         self.line_col.col = 1;
 
-        if (self.input[self.pos] == '\n') self.pos += 1;
-
         self.current_line_len = std.mem.indexOfScalar(
             u8,
             self.input[self.pos..],
@@ -411,9 +409,9 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
         }
 
         const exponent_start = self.pos;
-        while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar())) {
+        while (self.pos < self.input.len and std.ascii.isDigit(self.currentChar()))
             _ = self.advance();
-        }
+
         if (self.pos == exponent_start) {
             // 'e' not followed by digits is an error.
             // We need to consume the 'e' and any following alphanumeric characters to avoid re-parsing.
@@ -428,9 +426,8 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
     // A number followed by another letter is an error (e.g. `123a`).
     if (self.pos < self.input.len and std.ascii.isAlphabetic(self.input[self.pos])) {
         // Consume the rest of the bad identifier.
-        while (self.pos < self.input.len and std.ascii.isAlphanumeric(self.currentChar())) {
+        while (self.pos < self.input.len and std.ascii.isAlphanumeric(self.currentChar()))
             _ = self.advance();
-        }
         try self.appendToken(alloc, Token{ .bad_token = LexerError.BadNumber });
         return;
     }
@@ -440,14 +437,14 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
     try self.appendToken(alloc, if (is_float) blk: {
         break :blk .{
             .float = std.fmt.parseFloat(f64, number_str) catch |err| {
-                utils.print("Couldn't parse float: {}\n", .{err}, .red);
+                utils.print("Couldn't lex float: {}\n", .{err}, .red);
                 break :blk .{ .bad_token = LexerError.BadNumber };
             },
         };
     } else blk: {
         break :blk .{
             .int = std.fmt.parseInt(u64, number_str, 10) catch |err| {
-                utils.print("Couldn't parse integer: {}", .{err}, .red);
+                utils.print("Couldn't lex integer: {}", .{err}, .red);
                 break :blk .{ .bad_token = LexerError.BadNumber };
             },
         };

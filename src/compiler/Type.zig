@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const utils = @import("utils");
 const ast = @import("Parser").ast;
 
 const expressions = @import("expressions.zig");
@@ -205,7 +206,12 @@ pub const Type = union(enum) {
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
-            .ident => |ident| try compiler.getSymbolType(ident),
+            .ident => |ident| compiler.getSymbolType(ident) catch return utils.printErr(
+                error.UnknownSymbol,
+                "comperr: Unknown symbol '{s}' at {f}\n",
+                .{ ident, try compiler.parser.getExprPos(expr) },
+                .red,
+            ),
             .string => .{ .reference = .{ .inner = &.u8, .is_mut = false } },
             .char => .u8,
             .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
@@ -221,7 +227,12 @@ pub const Type = union(enum) {
                 .f64,
 
             .call => |call| try inferCallExpression(compiler, call),
-            .struct_instantiation => |struct_inst| try compiler.getSymbolType(struct_inst.name),
+            .struct_instantiation => |struct_inst| compiler.getSymbolType(struct_inst.name) catch return utils.printErr(
+                error.UnknownSymbol,
+                "comperr: Unknown symbol '{s}' at {f}\n",
+                .{ struct_inst.name, try compiler.parser.getExprPos(expr) },
+                .red,
+            ),
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .member => |member| try inferMemberExpression(compiler, member),
@@ -244,7 +255,12 @@ pub const Type = union(enum) {
             .member => |m| {
                 var parent_expr_buf: std.ArrayList(u8) = .empty;
                 try expressions.compile(compiler, &parent_expr_buf, m.parent, .{}); // TODO fix bug
-                const parent_type = try compiler.getSymbolType(parent_expr_buf.items);
+                const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
+                    error.UnknownSymbol,
+                    "comperr: Unknown symbol '{s}' at {f}\n",
+                    .{ parent_expr_buf.items, try compiler.parser.getExprPos(m) },
+                    .red,
+                );
 
                 b: switch (parent_type) {
                     .@"struct" => |@"struct"| {
@@ -293,9 +309,15 @@ pub const Type = union(enum) {
     }
 
     fn inferMemberExpression(compiler: *Compiler, member: ast.Expression.Member) !Self {
+        // TODO: this is bad
         var parent_expr_buf: std.ArrayList(u8) = .empty;
         try expressions.compile(compiler, &parent_expr_buf, member.parent, .{});
-        const parent_type = try compiler.getSymbolType(parent_expr_buf.items);
+        const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
+            error.UnknownSymbol,
+            "comperr: Unknown symbol '{s}' at {f}\n",
+            .{ parent_expr_buf.items, try compiler.parser.getExprPos(member) },
+            .red,
+        );
 
         b: switch (parent_type) {
             .@"struct" => |@"struct"| {
@@ -307,15 +329,19 @@ pub const Type = union(enum) {
                             .return_type = method.return_type,
                         },
                     },
-                } else std.debug.panic("comperr: property {s} doesn't exist for type {s}\n", .{
-                    member.member_name,
-                    @"struct".name,
-                });
+                } else return utils.printErr(
+                    error.UndeclaredProperty,
+                    "comperr: '{f}' has no member '{s}' ({f})\n",
+                    .{ parent_type, member.member_name, try compiler.parser.getExprPos(member.parent.*) },
+                    .red,
+                );
             },
             .reference => |reference| continue :b reference.inner.*,
-            else => |other| std.debug.panic(
-                "comperr: member expression on {s} is illegal\n",
-                .{@tagName(other)},
+            else => return utils.printErr(
+                error.IllegalExpression,
+                "comperr: Member expression on '{f}' is illegal\n",
+                .{parent_type},
+                .red,
             ),
         }
     }

@@ -28,7 +28,7 @@ pub fn parsePrimaryExpression(self: *Self) !ast.Expression {
 
 pub fn parseBinaryExpression(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
-    const op = ast.BinaryOperator.fromLexerToken(self.advance());
+    const op: ast.BinaryOperator = .fromLexerToken(self.advance());
     const rhs = try parseExpression(self, bp);
 
     const new_rhs = try self.alloc.create(ast.Expression);

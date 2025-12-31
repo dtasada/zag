@@ -14,20 +14,27 @@ const Value = @import("Value.zig").Value;
 const Self = @This();
 
 pub const CompilerError = error{
+    AssignmentToImmutableVariable,
+    BadMutability,
+    DuplicateMember,
+    IllegalExpression,
+    MemberExpressionOnPrimitiveType,
+    MemberIsNotAMethod,
     MissingArguments,
+    MissingElseClause,
+    OutOfMemory,
+    SymbolNotVariable,
     TooManyArguments,
     TypeMismatch,
-    SymbolNotVariable,
-    UnsupportedType,
-    UnsupportedExpression,
+    TypeNotPrimitive,
+    UndeclaredField,
+    UndeclaredProperty,
+    UndeclaredType,
     UndeclaredVariable,
     UnknownSymbol,
-    UndeclaredType,
-    UndeclaredField,
+    UnsupportedExpression,
+    UnsupportedType,
     VariableRedeclaration,
-    OutOfMemory,
-    AssignmentToImmutableVariable,
-    MemberExpressionOnPrimitiveType,
 } || Parser.ParserError || std.Io.Writer.Error;
 
 alloc: std.mem.Allocator,
@@ -359,12 +366,7 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
         };
 
     // return primitive type
-    return Type.fromSymbol(symbol) catch utils.printErr(
-        error.UnknownSymbol,
-        "Compiler error: Unknown symbol: {s}\n",
-        .{symbol},
-        .red,
-    );
+    return try Type.fromSymbol(symbol);
 }
 
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
@@ -382,7 +384,7 @@ pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
 
     return utils.printErr(
         error.UnknownSymbol,
-        "Compiler error: Unknown symbol: {s}\n",
+        "comperr: Unknown symbol: {s}\n",
         .{symbol},
         .red,
     );
@@ -397,7 +399,7 @@ fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
 
     return utils.printErr(
         error.UnknownSymbol,
-        "Compiler error: Unknown symbol: {s}\n",
+        "comperr: Unknown symbol: {s}\n",
         .{symbol},
         .red,
     );

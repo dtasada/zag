@@ -452,10 +452,11 @@ pub inline fn putExprPos(self: *Self, expr: ast.Expression, pos: utils.Position)
 }
 
 /// Gets expression from `source_map` by hash code.
+/// `expr` must be an expression or a child of an expression. *const Expression will fail.
 pub inline fn getExprPos(self: *const Self, expr: anytype) !utils.Position {
     var h = std.hash.Wyhash.init(0);
     hash(&h, expr, 0);
-    return self.source_map.get(h.final()) orelse error.ExpressionNotInMap;
+    return self.source_map.get(h.final()) orelse @panic("Expression not in map!\n");
 }
 
 /// Puts expression's hash code into `source_map` with `pos` as value and then returns it back.

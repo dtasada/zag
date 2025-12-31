@@ -35,12 +35,15 @@ pub fn compile(
             });
             try compile(self, file_writer, prefix.rhs, .{});
         },
-        .ident => |ident| {
-            if (self.getSymbolType(ident) catch null) |_|
-                try self.write(file_writer, ident)
-            else
-                std.debug.panic("comperr: unknown symbol {s}\n", .{ident});
-        },
+        .ident => |ident| if (self.getSymbolType(ident) catch null) |_|
+            try self.write(file_writer, ident)
+        else
+            return utils.printErr(
+                error.UnknownSymbol,
+                "comperr: Unknown symbol '{s}' at {f}.\n",
+                .{ ident, try self.parser.getExprPos(expression.*) },
+                .red,
+            ),
         .struct_instantiation => |struct_inst| {
             try self.print(file_writer, "({s}){{\n", .{struct_inst.name});
             self.indent_level += 1;
@@ -92,7 +95,12 @@ pub fn compile(
                 try self.write(file_writer, " : ");
                 try compile(self, file_writer, @"else", .{});
                 try self.write(file_writer, ")");
-            } else std.debug.panic("comperr: if expression must contain an else clause\n", .{});
+            } else return utils.printErr(
+                error.MissingElseClause,
+                "comperr: If expression must contain an else clause ({f})\n",
+                .{try self.parser.getExprPos(@"if")},
+                .red,
+            );
         },
         else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
     }
@@ -117,18 +125,22 @@ fn member(
                     delimiter = .@".";
                 },
                 .method => |method| try self.print(file_writer, "&{s}", .{method.inner_name}),
-            } else std.debug.panic("comperr: property {s} doesn't exist for type {s}\n", .{
-                expr.member_name,
-                @"struct".name,
-            });
+            } else return utils.printErr(
+                error.UndeclaredProperty,
+                "comperr: '{f}' has no member '{s}' ({f})\n",
+                .{ parent_type, expr.member_name, try self.parser.getExprPos(expr) },
+                .red,
+            );
         },
         .reference => |reference| {
             delimiter = .@"->";
             continue :b reference.inner.*;
         },
-        else => |other| std.debug.panic(
-            "comperr: member expression on {s} is illegal\n",
-            .{@tagName(other)},
+        else => return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Member expression on '{f}' is illegal\n",
+            .{parent_type},
+            .red,
         ),
     }
 }
@@ -202,11 +214,13 @@ fn call(
             b: switch (try Type.infer(self, m.parent.*)) {
                 .@"struct" => |@"struct"| if (@"struct".methods.get(m.member_name)) |method| {
                     switch (method.params.items[0].*) {
-                        .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) std.debug.panic(
+                        .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
+                            error.BadMutability,
                             "comperr: method requires &mut {s}, but &{s} was passed.",
                             .{ @"struct".name, @"struct".name },
+                            .red,
                         ),
-                        .@"struct" => |param_arg| if (!param_arg.eq(&@"struct")) std.debug.panic("comperr: idk\n", .{}),
+                        .@"struct" => |param_arg| if (!param_arg.eq(&@"struct")) unreachable,
                         else => unreachable,
                     }
 
@@ -239,13 +253,13 @@ fn call(
                     }
 
                     for (method.params.items[1..], 0..) |param, i| {
-                        const received_type_expr = call_expr.args.items[i];
-                        const received_type: Type = try .infer(self, received_type_expr);
+                        const received_expr = call_expr.args.items[i];
+                        const received_type: Type = try .infer(self, received_expr);
                         if (!param.eq(&received_type)) {
-                            const pos = try self.parser.getExprPos(received_type_expr);
+                            const pos = try self.parser.getExprPos(received_expr);
                             return utils.printErr(
                                 error.TypeMismatch,
-                                "comperr: type doesn't match method signature at {f}. Expected {f}, got {f}\n",
+                                "comperr: type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
                                 .{ pos, param, received_type },
                                 .red,
                             );
@@ -279,27 +293,38 @@ fn call(
                         if (i < call_expr.args.items.len) try self.write(file_writer, ", ");
                     }
                     try self.write(file_writer, ")");
-                } else std.debug.panic("comperr: {s}.{s} is not a method\n", .{
-                    @"struct".name,
-                    m.member_name,
-                }),
+                } else return utils.printErr(
+                    error.MemberIsNotAMethod,
+                    "comperr: {s}.{s} is not a method\n",
+                    .{ @"struct".name, m.member_name },
+                    .red,
+                ),
                 .reference => |reference| {
                     if (reference.is_mut) reference_is_mut = true;
 
                     parent_reference_level += 1;
                     continue :b reference.inner.*;
                 },
-                else => |other| std.debug.panic(
+                else => |other| return utils.printErr(
+                    error.IllegalExpression,
                     "comperr: member expression on {s} is illegal\n",
                     .{@tagName(other)},
+                    .red,
                 ),
             }
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| {
                 for (function.params.items[1..], 0..) |param, i| {
+                    const received_expr = call_expr.args.items[i];
+                    const received_type: Type = try .infer(self, received_expr);
                     if (!param.eq(&try .infer(self, call_expr.args.items[i]))) {
-                        std.debug.panic("comperr: type doesn't match function signature\n", .{});
+                        return utils.printErr(
+                            error.TypeMismatch,
+                            "comperr: type doesn't function method signature at {f}. Expected '{f}', got '{f}'\n",
+                            .{ try self.parser.getExprPos(received_expr), param, received_type },
+                            .red,
+                        );
                     }
                 }
 

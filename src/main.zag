@@ -1,6 +1,7 @@
 struct MyStruct {
     x: i32,
     y: i32,
+    x: i32,
 
     fn setX(self: &mut MyStruct, new_x: i32) void {
         self.x = new_x;
@@ -19,9 +20,10 @@ fn add(lhs: i32, rhs: i32) i32 {
 }
 
 fn main() i32 {
-    let mut my_obj = MyStruct { x: 1, y: 1 };
+    let mut my_obj: MyStruct = asd;
 
-    let ms = MyStruct;
+    // let a = my_obj.z;
+    // let b = my_obj;
 
     // my_obj.setX(MyStruct);
     // my_obj.add(my_obj);

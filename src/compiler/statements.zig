@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const utils = @import("utils");
 const ast = @import("Parser").ast;
 const expressions = @import("expressions.zig");
 
@@ -55,11 +56,12 @@ fn compoundTypeDeclaration(
     }, .type);
 
     for (type_decl.members.items) |member| {
-        if (compound_type.getProperty(member.name)) |_|
-            std.debug.panic(
-                "comperr: duplicate member name in compound type declaration: {s}\n",
-                .{member.name},
-            );
+        if (compound_type.getProperty(member.name)) |_| return utils.printErr(
+            error.DuplicateMember,
+            "comperr: Duplicate member {s} declared in {s} at {f}.\n",
+            .{ member.name, type_decl.name, try self.parser.getExprPos(type_decl) },
+            .red,
+        );
 
         try compound_type.members.put(member.name, switch (T) {
             // TODO: default values
