@@ -115,6 +115,7 @@ pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const 
         \\#define ZAG_H
         \\
         \\#include <stdbool.h>
+        \\#include <stddef.h>
         \\#include <stdint.h>
         \\
         \\typedef int8_t  i8;
@@ -126,6 +127,8 @@ pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const 
         \\typedef uint16_t u16;
         \\typedef uint32_t u32;
         \\typedef uint64_t u64;
+        \\
+        \\typedef size_t size;
         \\
         \\typedef float  f32;
         \\typedef double f64;

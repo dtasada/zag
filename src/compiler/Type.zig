@@ -104,6 +104,8 @@ pub const Type = union(enum) {
     u32,
     u64,
 
+    size,
+
     f32,
     f64,
 
@@ -139,6 +141,8 @@ pub const Type = union(enum) {
             .u32
         else if (std.mem.eql(u8, symbol, "u64"))
             .u64
+        else if (std.mem.eql(u8, symbol, "size"))
+            .size
         else if (std.mem.eql(u8, symbol, "f32"))
             .f32
         else if (std.mem.eql(u8, symbol, "f64"))
@@ -266,21 +270,26 @@ pub const Type = union(enum) {
                     .@"struct" => |@"struct"| {
                         if (@"struct".methods.get(m.member_name)) |method| {
                             return method.return_type.*;
-                        } else std.debug.panic("comperr: {s}.{s} is not a method\n", .{
+                        } else std.debug.panic("comperr: '{s}.{s}' is not a method\n", .{
                             @"struct".name,
                             m.member_name,
                         });
                     },
                     .reference => |reference| continue :b reference.inner.*,
                     else => |other| std.debug.panic(
-                        "comperr: member expression on {s} is illegal\n",
-                        .{@tagName(other)},
+                        "comperr: Member expression on {f} is illegal\n",
+                        .{other},
                     ),
                 }
             },
             else => switch (try infer(compiler, call.callee.*)) {
                 .function => |function| function.return_type.*,
-                else => std.debug.panic("comperr: unimplemented idek\n", .{}),
+                else => |t| utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Member expression on '{f}' is illegal ({f})\n",
+                    .{ t, try compiler.parser.getExprPos(.{ .call = call }) },
+                    .red,
+                ),
             },
         };
     }

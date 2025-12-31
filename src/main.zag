@@ -19,5 +19,8 @@ fn add(lhs: i32, rhs: i32) i32 {
 }
 
 fn main() i32 {
-    let a: [3]i32 = [_]i32{1, 2};
+    let a: [3]i32 = [_]i32{1, 2, 3};
+
+    for (a) |i| {
+    }
 }

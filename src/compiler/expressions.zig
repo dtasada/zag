@@ -102,7 +102,7 @@ pub fn compile(
                 .red,
             );
         },
-        else => |other| std.debug.print("unimplemented expression {s}\n", .{@tagName(other)}),
+        .bad_node => unreachable,
     }
 }
 

@@ -242,8 +242,19 @@ fn conditional(
                 try self.print(file_writer, "; {s}++", .{statement.capture});
             },
             else => |other| switch (try Type.infer(self, other)) {
-                .array => std.debug.print("unimplemented array iterator in for loop\n", .{}),
-                else => std.debug.print("illegal array iterator type\n", .{}),
+                .array => |array| {
+                    try self.compileType(file_writer, .size);
+                    try self.print(file_writer, " {s} = 0", .{statement.capture});
+                    try self.print(file_writer, "; {s} < {}", .{ statement.capture, array.size orelse
+                        @panic("unimplemented: arraylist size") });
+                    try self.print(file_writer, "; {s}++", .{statement.capture});
+                },
+                else => |t| return utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
+                    .{ t, try self.parser.getExprPos(statement.iterator.*) },
+                    .red,
+                ),
             },
         },
     }
