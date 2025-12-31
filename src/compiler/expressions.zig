@@ -98,7 +98,7 @@ pub fn compile(
             } else return utils.printErr(
                 error.MissingElseClause,
                 "comperr: If expression must contain an else clause ({f})\n",
-                .{try self.parser.getExprPos(@"if")},
+                .{try self.parser.getExprPos(.{ .@"if" = @"if" })},
                 .red,
             );
         },
@@ -128,7 +128,7 @@ fn member(
             } else return utils.printErr(
                 error.UndeclaredProperty,
                 "comperr: '{f}' has no member '{s}' ({f})\n",
-                .{ parent_type, expr.member_name, try self.parser.getExprPos(expr) },
+                .{ parent_type, expr.member_name, try self.parser.getExprPos(.{ .member = expr }) },
                 .red,
             );
         },
@@ -321,7 +321,7 @@ fn call(
                     if (!param.eq(&try .infer(self, call_expr.args.items[i]))) {
                         return utils.printErr(
                             error.TypeMismatch,
-                            "comperr: type doesn't function method signature at {f}. Expected '{f}', got '{f}'\n",
+                            "comperr: type doesn't match function signature at {f}. Expected '{f}', got '{f}'\n",
                             .{ try self.parser.getExprPos(received_expr), param, received_type },
                             .red,
                         );

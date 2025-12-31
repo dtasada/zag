@@ -258,7 +258,7 @@ pub const Type = union(enum) {
                 const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
                     error.UnknownSymbol,
                     "comperr: Unknown symbol '{s}' at {f}\n",
-                    .{ parent_expr_buf.items, try compiler.parser.getExprPos(m) },
+                    .{ parent_expr_buf.items, try compiler.parser.getExprPos(.{ .member = m }) },
                     .red,
                 );
 
@@ -315,7 +315,7 @@ pub const Type = union(enum) {
         const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
             error.UnknownSymbol,
             "comperr: Unknown symbol '{s}' at {f}\n",
-            .{ parent_expr_buf.items, try compiler.parser.getExprPos(member) },
+            .{ parent_expr_buf.items, try compiler.parser.getExprPos(.{ .member = member }) },
             .red,
         );
 

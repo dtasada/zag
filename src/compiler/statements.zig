@@ -59,7 +59,11 @@ fn compoundTypeDeclaration(
         if (compound_type.getProperty(member.name)) |_| return utils.printErr(
             error.DuplicateMember,
             "comperr: Duplicate member {s} declared in {s} at {f}.\n",
-            .{ member.name, type_decl.name, try self.parser.getExprPos(type_decl) },
+            .{ member.name, type_decl.name, try self.parser.getStatementPos(switch (T) {
+                .@"struct" => .{ .struct_declaration = type_decl },
+                .@"union" => .{ .union_declaration = type_decl },
+                .@"enum" => .{ .enum_declaration = type_decl },
+            }) },
             .red,
         );
 

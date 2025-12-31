@@ -169,9 +169,9 @@ inline fn updatePosBackup(self: *Self) void {
 inline fn advanceN(self: *Self, n: usize) void {
     self.pos += n;
 
-    if (self.line_col.col + n <= self.current_line_len)
-        self.line_col.col += n
-    else {
+    if (self.line_col.col + n <= self.current_line_len + 1) {
+        self.line_col.col += n;
+    } else {
         self.line_col.line += 1;
         self.line_col.col = 1;
 
@@ -452,6 +452,7 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
 }
 
 fn appendToken(self: *Self, alloc: std.mem.Allocator, token: Token) !void {
+    std.debug.print("registering token {f} at {f}\n", .{ token, self.start_line_col });
     try self.tokens.append(alloc, token);
     try self.source_map.append(alloc, self.start_line_col);
 }

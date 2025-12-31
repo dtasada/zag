@@ -22,8 +22,10 @@ const BpLookup = std.AutoHashMap(Lexer.TokenKind, BindingPower);
 
 pub fn hash(context: anytype, key: anytype, depth: u32) void {
     if (depth > 100) { // arbitrary recursion limit
+        utils.print("exceeding hash depth limit of 100.", .{}, .red);
         return;
     }
+
     const Key = @TypeOf(key);
     switch (@typeInfo(Key)) {
         .noreturn, .type, .undefined, .null, .void => {},
@@ -453,7 +455,7 @@ pub inline fn putExprPos(self: *Self, expr: ast.Expression, pos: utils.Position)
 
 /// Gets expression from `source_map` by hash code.
 /// `expr` must be an expression or a child of an expression. *const Expression will fail.
-pub inline fn getExprPos(self: *const Self, expr: anytype) !utils.Position {
+pub inline fn getExprPos(self: *const Self, expr: ast.Expression) !utils.Position {
     var h = std.hash.Wyhash.init(0);
     hash(&h, expr, 0);
     return self.source_map.get(h.final()) orelse @panic("Expression not in map!\n");
@@ -468,8 +470,8 @@ pub inline fn putStatementPos(self: *Self, stmt: ast.Statement, pos: utils.Posit
 }
 
 /// Gets expression from `source_map` by hash code.
-pub inline fn getStatementPos(self: *const Self, stmt: anytype) !utils.Position {
+pub inline fn getStatementPos(self: *const Self, stmt: ast.Statement) !utils.Position {
     var h = std.hash.Wyhash.init(0);
     hash(&h, stmt, 0);
-    return self.source_map.get(h.final()) orelse error.StatementNotInMap;
+    return self.source_map.get(h.final()) orelse @panic("Statement not in map!\n");
 }
