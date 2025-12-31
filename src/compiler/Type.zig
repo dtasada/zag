@@ -59,6 +59,32 @@ pub const Type = union(enum) {
                     .methods = methods,
                 };
             }
+
+            pub fn eq(lhs: *const Struct, rhs: *const Struct) bool {
+                inline for (@typeInfo(Struct).@"struct".fields) |field| {
+                    const pa: *const field.type = @ptrCast(&@field(lhs.*, field.name));
+                    const pb: *const field.type = @ptrCast(&@field(rhs.*, field.name));
+                    if (!deepEqInternal(field.type, pa, pb)) return false;
+                }
+                return true;
+
+                // return Type.eq(
+                //     &.{
+                //         .@"struct" = .{
+                //             .name = rhs.name,
+                //             .members = rhs.members,
+                //             .methods = rhs.methods,
+                //         },
+                //     },
+                //     &.{
+                //         .@"struct" = .{
+                //             .name = lhs.name,
+                //             .members = lhs.members,
+                //             .methods = lhs.methods,
+                //         },
+                //     },
+                // );
+            }
         };
     }
 
@@ -195,7 +221,7 @@ pub const Type = union(enum) {
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
             .ident => |ident| try compiler.getSymbolType(ident),
-            .string => .{ .reference = .{ .inner = &.u8, .is_mut = true } },
+            .string => .{ .reference = .{ .inner = &.u8, .is_mut = false } },
             .char => .u8,
             .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
             .int => |int| if (int <= std.math.maxInt(i32) and int >= std.math.minInt(i32))
@@ -307,5 +333,76 @@ pub const Type = union(enum) {
                 .{@tagName(other)},
             ),
         }
+    }
+
+    /// Recursively compares two values of type T for deep equality.
+    /// - Handles structs, unions, enums, pointers, slices, arrays, primitives.
+    /// - Assumes no cycles in pointers.
+    /// - Works for arbitrary nested types.
+    pub fn eq(a: *const Self, b: *const Self) bool {
+        if (a == b) return true;
+
+        return deepEqInternal(Self, a, b);
+    }
+
+    fn deepEqInternal(comptime T: type, a: *const T, b: *const T) bool {
+        const info = @typeInfo(T);
+
+        return switch (info) {
+            .int, .float, .bool, .comptime_int, .comptime_float => a.* == b.*,
+            .pointer => |pointer| {
+                if (a == b) return true;
+                return deepEqInternal(pointer.child, @ptrCast(a.*), @ptrCast(b.*));
+            },
+            .array => |array| {
+                for (0..array.len) |i| {
+                    if (!deepEqInternal(array.child, &a.*[i], &b.*[i])) return false;
+                }
+                return true;
+            },
+            .@"struct" => |@"struct"| {
+                inline for (@"struct".fields) |field| {
+                    const pa: *const field.type = @ptrCast(&@field(a.*, field.name));
+                    const pb: *const field.type = @ptrCast(&@field(b.*, field.name));
+                    if (!deepEqInternal(field.type, pa, pb)) return false;
+                }
+                return true;
+            },
+            .@"union" => |@"union"| {
+                if (std.meta.activeTag(a.*) != std.meta.activeTag(b.*)) return false;
+
+                const idx = @intFromEnum(std.meta.activeTag(a.*));
+
+                inline for (@"union".fields, 0..) |field, i| {
+                    if (idx == i) {
+                        const pa: *const field.type = @ptrCast(&@field(a.*, field.name));
+                        const pb: *const field.type = @ptrCast(&@field(b.*, field.name));
+                        return deepEqInternal(field.type, pa, pb);
+                    }
+                }
+
+                unreachable;
+            },
+            .@"enum" => a.* == b.*,
+            .void => true,
+            .@"opaque", .@"fn" => {
+                std.debug.print("checking type equality for unhandled types! generates ub", .{});
+                return false;
+            },
+            .optional => |opt| {
+                const a_val = a.*;
+                const b_val = b.*;
+
+                if (a_val == null and b_val == null) return true;
+                if (a_val == null or b_val == null) return false;
+
+                return deepEqInternal(opt.child, &a_val.?, &b_val.?);
+            },
+            else => comptime {
+                var buf: [128]u8 = undefined;
+                const err = std.fmt.bufPrint(&buf, "Type not supported for deep equality: {s}", .{@typeName(T)}) catch "error creating error message";
+                @compileError(err);
+            },
+        };
     }
 };

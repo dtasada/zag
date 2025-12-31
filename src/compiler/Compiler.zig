@@ -14,6 +14,7 @@ const Value = @import("Value.zig").Value;
 const Self = @This();
 
 pub const CompilerError = error{
+    SymbolNotVariable,
     UnsupportedType,
     UnsupportedExpression,
     UndeclaredVariable,
@@ -70,13 +71,15 @@ const File = struct {
 
 /// maps a symbol name to the symbol's type
 const Scope = std.StringHashMap(union(enum) {
-    const Item = struct {
+    symbol: struct {
+        type: Type,
+        is_mut: bool,
+        inner_name: []const u8,
+    },
+    type: struct {
         type: Type,
         inner_name: []const u8,
-    };
-
-    symbol: Item,
-    type: Item,
+    },
 });
 
 pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const u8) !*Self {
@@ -320,12 +323,16 @@ pub fn registerSymbol(
     self: *Self,
     name: []const u8,
     @"type": Type,
-    symbol_or_type: enum { symbol, type },
+    symbol_or_type: union(enum) {
+        symbol: struct { is_mut: bool = false },
+        type: void,
+    },
 ) !void {
     var last = &self.scopes.items[self.scopes.items.len - 1];
     try last.put(name, switch (symbol_or_type) {
-        .symbol => .{
+        .symbol => |symbol| .{
             .symbol = .{
+                .is_mut = symbol.is_mut,
                 .type = @"type",
                 .inner_name = name, // TODO: name mangling for generics ig
             },
@@ -347,6 +354,27 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
         };
 
     return Type.fromSymbol(symbol) catch utils.printErr(
+        error.UnknownSymbol,
+        "Compiler error: Unknown symbol: {s}\n",
+        .{symbol},
+        .red,
+    );
+}
+
+pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope|
+        return switch (scope.get(symbol) orelse continue) {
+            .symbol => |s| s.is_mut,
+            .type => return utils.printErr(
+                error.SymbolNotVariable,
+                "Compiler error: Symbol {s} is a type, not a variable\n",
+                .{symbol},
+                .red,
+            ),
+        };
+
+    return utils.printErr(
         error.UnknownSymbol,
         "Compiler error: Unknown symbol: {s}\n",
         .{symbol},

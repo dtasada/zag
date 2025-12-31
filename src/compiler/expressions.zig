@@ -186,53 +186,66 @@ fn binary(
 fn call(
     self: *Self,
     file_writer: *std.ArrayList(u8),
-    expr: ast.Expression.Call,
+    call_expr: ast.Expression.Call,
 ) CompilerError!void {
-    switch (expr.callee.*) {
+    switch (call_expr.callee.*) {
         .member => |m| {
-            var parent_expr_buf: std.ArrayList(u8) = .empty;
-            try compile(self, &parent_expr_buf, m.parent, .{});
-            const parent_type = try self.getSymbolType(parent_expr_buf.items);
-
             var parent_reference_level: i32 = 0;
+            var reference_is_mut = switch (m.parent.*) {
+                .ident => |ident| try self.getSymbolMutability(ident),
+                else => false,
+            };
 
-            b: switch (parent_type) {
-                .@"struct" => |@"struct"| {
-                    if (@"struct".methods.get(m.member_name)) |method| {
-                        const self_param = method.params.items[0];
-                        const ref_level_diff = parent_reference_level - b2: {
-                            var self_method_reference_level: i32 = 0;
-                            count_ref_level: switch (self_param.*) {
-                                .reference => |reference| {
-                                    self_method_reference_level += 1;
-                                    continue :count_ref_level reference.inner.*;
-                                },
-                                else => break :count_ref_level,
-                            }
-                            break :b2 self_method_reference_level;
-                        };
-                        try self.print(file_writer, "{s}(", .{method.inner_name});
-                        for (0..@abs(ref_level_diff)) |_|
-                            try self.write(
-                                file_writer,
-                                if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
-                                    "&"
-                                else
-                                    unreachable,
-                            );
-                        try compile(self, file_writer, m.parent, .{});
-                        try self.write(file_writer, ", ");
-                        for (expr.args.items, 1..) |*arg, i| {
-                            try compile(self, file_writer, arg, .{});
-                            if (i < expr.args.items.len) try self.write(file_writer, ", ");
+            b: switch (try Type.infer(self, m.parent.*)) {
+                .@"struct" => |@"struct"| if (@"struct".methods.get(m.member_name)) |method| {
+                    switch (method.params.items[0].*) {
+                        .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) std.debug.panic(
+                            "comperr: method requires &mut {s}, but &{s} was passed.",
+                            .{ @"struct".name, @"struct".name },
+                        ),
+                        .@"struct" => |param_arg| if (!param_arg.eq(&@"struct")) std.debug.panic("comperr: idk\n", .{}),
+                        else => unreachable,
+                    }
+
+                    for (method.params.items[1..], 0..) |param, i| {
+                        if (!param.eq(&try .infer(self, call_expr.args.items[i])))
+                            std.debug.panic("comperr: type doesn't match method signature\n", .{});
+                    }
+
+                    const ref_level_diff = parent_reference_level - b2: {
+                        var self_method_reference_level: i32 = 0;
+                        count_ref_level: switch (method.params.items[0].*) {
+                            .reference => |reference| {
+                                self_method_reference_level += 1;
+                                continue :count_ref_level reference.inner.*;
+                            },
+                            else => break :count_ref_level,
                         }
-                        try self.write(file_writer, ")");
-                    } else std.debug.panic("comperr: {s}.{s} is not a method\n", .{
-                        @"struct".name,
-                        m.member_name,
-                    });
-                },
+                        break :b2 self_method_reference_level;
+                    };
+                    try self.print(file_writer, "{s}(", .{method.inner_name});
+                    for (0..@abs(ref_level_diff)) |_|
+                        try self.write(
+                            file_writer,
+                            if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
+                                "&"
+                            else
+                                unreachable,
+                        );
+                    try compile(self, file_writer, m.parent, .{});
+                    try self.write(file_writer, ", ");
+                    for (call_expr.args.items, 1..) |*arg, i| {
+                        try compile(self, file_writer, arg, .{});
+                        if (i < call_expr.args.items.len) try self.write(file_writer, ", ");
+                    }
+                    try self.write(file_writer, ")");
+                } else std.debug.panic("comperr: {s}.{s} is not a method\n", .{
+                    @"struct".name,
+                    m.member_name,
+                }),
                 .reference => |reference| {
+                    if (reference.is_mut) reference_is_mut = true;
+
                     parent_reference_level += 1;
                     continue :b reference.inner.*;
                 },
@@ -242,14 +255,25 @@ fn call(
                 ),
             }
         },
-        else => {
-            try compile(self, file_writer, expr.callee, .{});
-            try self.write(file_writer, "(");
-            for (expr.args.items, 1..) |*e, i| {
-                try compile(self, file_writer, e, .{});
-                if (i < expr.args.items.len) try self.write(file_writer, ", ");
-            }
-            try self.write(file_writer, ")");
+        else => switch (try Type.infer(self, call_expr.callee.*)) {
+            .function => |function| {
+                for (function.params.items[1..], 0..) |param, i| {
+                    std.debug.print("param type: {}\n", .{param});
+                    std.debug.print("infer type: {}\n", .{try Type.infer(self, call_expr.args.items[i])});
+                    if (!param.eq(&try .infer(self, call_expr.args.items[i]))) {
+                        std.debug.panic("comperr: type doesn't match function signature\n", .{});
+                    }
+                }
+
+                try compile(self, file_writer, call_expr.callee, .{});
+                try self.write(file_writer, "(");
+                for (call_expr.args.items, 1..) |*e, i| {
+                    try compile(self, file_writer, e, .{});
+                    if (i < call_expr.args.items.len) try self.write(file_writer, ", ");
+                }
+                try self.write(file_writer, ")");
+            },
+            else => std.debug.panic("comperr: expression is not callable\n", .{}),
         },
     }
 }

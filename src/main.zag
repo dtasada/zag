@@ -14,16 +14,14 @@ struct MyStruct {
 	}
 }
 
+fn add(lhs: i32, rhs: i32) i32 {
+    return lhs + rhs;
+}
+
 fn main() i32 {
-    let my_obj = MyStruct {
-        x: 1,
-        y: 1,
-    };
+    let mut my_obj = MyStruct { x: 1, y: 1 };
+    let obj_ref = &my_obj;
 
-    let array: [2 * 2]u8 = my_obj;
-
-    let cond: i32 = if (0) 0 else if (1) 1 else 2;
-
-    let setX = MyStruct.setX;
-    setX(&my_obj, 4);
+    my_obj.setX(2);
+    my_obj.add(obj_ref);
 }

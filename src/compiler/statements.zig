@@ -146,7 +146,7 @@ fn compoundTypeDeclaration(
     try self.print(file_writer, "}} {s};\n\n", .{type_decl.name});
 
     for (type_decl.methods.items) |method| {
-        try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .symbol);
+        try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .{ .symbol = .{} });
         try self.pushScope();
         defer self.popScope();
 
@@ -154,7 +154,7 @@ fn compoundTypeDeclaration(
         try self.print(file_writer, " __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type: Type = try .fromAst(self, parameter.type);
-            try self.registerSymbol(parameter.name, parameter_type, .symbol);
+            try self.registerSymbol(parameter.name, parameter_type, .{ .symbol = .{} });
             try self.compileVariableSignature(file_writer, parameter.name, parameter_type);
             if (i < method.parameters.items.len) try self.write(file_writer, ", ");
         }
@@ -193,7 +193,7 @@ fn variableDefinition(
 
     try self.write(file_writer, " = ");
 
-    try self.registerSymbol(v.variable_name, variable_type, .symbol);
+    try self.registerSymbol(v.variable_name, variable_type, .{ .symbol = .{ .is_mut = v.is_mut } });
 
     try expressions.compile(self, file_writer, &v.assigned_value, .{ .is_const = !v.is_mut });
 
@@ -258,13 +258,18 @@ fn functionDefinition(
     file_writer: *std.ArrayList(u8),
     function_def: ast.Statement.FunctionDefinition,
 ) CompilerError!void {
-    try self.registerSymbol(function_def.name, try .fromAst(self, function_def.getType()), .symbol);
+    try self.registerSymbol(function_def.name, try .fromAst(self, function_def.getType()), .{ .symbol = .{} });
+
+    try self.pushScope();
+    defer self.popScope();
 
     try self.compileType(file_writer, try .fromAst(self, function_def.return_type));
     try self.print(file_writer, " {s}(", .{function_def.name});
     for (function_def.parameters.items, 1..) |parameter, i| {
         try self.compileVariableSignature(file_writer, parameter.name, try .fromAst(self, parameter.type));
         if (i < function_def.parameters.items.len) try self.write(file_writer, ", ");
+
+        try self.registerSymbol(parameter.name, try .fromAst(self, parameter.type), .{ .symbol = .{} });
     }
     try self.write(file_writer, ") ");
 
