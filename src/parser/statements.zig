@@ -2,7 +2,7 @@ const std = @import("std");
 const pretty = @import("pretty");
 const utils = @import("utils");
 const ast = @import("ast.zig");
-const expression_handlers = @import("expression_handlers.zig");
+const expressions = @import("expressions.zig");
 
 const Lexer = @import("Lexer");
 const TypeParser = @import("TypeParser.zig");
@@ -10,13 +10,13 @@ const TypeParser = @import("TypeParser.zig");
 const Self = @import("Parser.zig");
 const ParserError = Self.ParserError;
 
-pub fn parseStatement(self: *Self) ParserError!ast.Statement {
+pub fn parse(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
     if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
         return statement_fn(self);
     }
 
-    const expression = try expression_handlers.parseExpression(self, .default);
+    const expression = try expressions.parse(self, .default);
 
     try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
     _ = self.advance(); // consume semicolon
@@ -24,7 +24,7 @@ pub fn parseStatement(self: *Self) ParserError!ast.Statement {
     return self.putStatementPos(.{ .expression = expression }, pos);
 }
 
-pub fn parseVariableDeclarationStatement(self: *Self) ParserError!ast.Statement {
+pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume `let`
 
@@ -52,7 +52,7 @@ pub fn parseVariableDeclarationStatement(self: *Self) ParserError!ast.Statement 
         "=",
     );
 
-    const assigned_value = try expression_handlers.parseExpression(self, .assignment);
+    const assigned_value = try expressions.parse(self, .assignment);
 
     try self.expect(
         self.advance(),
@@ -72,7 +72,7 @@ pub fn parseVariableDeclarationStatement(self: *Self) ParserError!ast.Statement 
 }
 
 /// parses either a struct, enum, or union declaration statement
-pub fn parseCompoundTypeDeclarationStatement(
+pub fn compoundTypeDeclaration(
     self: *Self,
     comptime @"type": enum { @"struct", @"enum", @"union" },
 ) ParserError!ast.Statement {
@@ -120,7 +120,7 @@ pub fn parseCompoundTypeDeclarationStatement(
                     switch (@"type") {
                         .@"struct", .@"enum" => if (self.currentTokenKind() == Lexer.Token.equals) blk: {
                             _ = self.advance();
-                            break :blk try expression_handlers.parseExpression(self, .default);
+                            break :blk try expressions.parse(self, .default);
                         } else null,
                         .@"union" => null,
                     };
@@ -145,7 +145,7 @@ pub fn parseCompoundTypeDeclarationStatement(
                 _ = self.advance(); // if there was a comma, consume it
             },
             .@"fn" => {
-                const @"fn" = (try parseFunctionDefinition(self)).function_definition;
+                const @"fn" = (try functionDefinition(self)).function_definition;
 
                 try switch (@"type") {
                     .@"struct" => compound.struct_declaration.methods.append(self.alloc, @"fn"),
@@ -163,19 +163,19 @@ pub fn parseCompoundTypeDeclarationStatement(
     return self.putStatementPos(compound, pos);
 }
 
-pub fn parseStructDeclarationStatement(self: *Self) ParserError!ast.Statement {
-    return try parseCompoundTypeDeclarationStatement(self, .@"struct");
+pub fn structDeclaration(self: *Self) ParserError!ast.Statement {
+    return try compoundTypeDeclaration(self, .@"struct");
 }
 
-pub fn parseEnumDeclarationStatement(self: *Self) ParserError!ast.Statement {
-    return try parseCompoundTypeDeclarationStatement(self, .@"enum");
+pub fn enumDeclaration(self: *Self) ParserError!ast.Statement {
+    return try compoundTypeDeclaration(self, .@"enum");
 }
 
-pub fn parseUnionDeclarationStatement(self: *Self) ParserError!ast.Statement {
-    return try parseCompoundTypeDeclarationStatement(self, .@"union");
+pub fn unionDeclaration(self: *Self) ParserError!ast.Statement {
+    return try compoundTypeDeclaration(self, .@"union");
 }
 
-pub fn parseFunctionDefinition(self: *Self) ParserError!ast.Statement {
+pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
     try self.expect(self.advance(), Lexer.Token.@"fn", "function definition", "fn");
     const function_name = try self.expect(self.advance(), Lexer.Token.ident, "function definition", "function name");
@@ -193,13 +193,13 @@ pub fn parseFunctionDefinition(self: *Self) ParserError!ast.Statement {
     }, pos);
 }
 
-pub fn parseReturnStatement(self: *Self) ParserError!ast.Statement {
+pub fn @"return"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "return" keyword and parse from there.
 
     const pos = self.currentPosition();
     var expression: ?ast.Expression = null;
     if (self.currentTokenKind() != Lexer.Token.semicolon)
-        expression = try expression_handlers.parseExpression(self, .default);
+        expression = try expressions.parse(self, .default);
 
     try self.expect(self.advance(), Lexer.Token.semicolon, "return statement", ";");
     return self.putStatementPos(.{
@@ -207,13 +207,13 @@ pub fn parseReturnStatement(self: *Self) ParserError!ast.Statement {
     }, pos);
 }
 
-pub fn parseForStatement(self: *Self) ParserError!ast.Statement {
+pub fn @"for"(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume "for" keyeword and parse from there.
 
     try self.expect(self.advance(), Lexer.Token.open_paren, "for statement iterator", "(");
     const iterator = try self.alloc.create(ast.Expression);
-    iterator.* = try expression_handlers.parseExpression(self, .default);
+    iterator.* = try expressions.parse(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_paren, "for statement iterator", ")");
 
     try self.expect(self.advance(), Lexer.Token.pipe, "for statement capture", "|");
@@ -224,7 +224,7 @@ pub fn parseForStatement(self: *Self) ParserError!ast.Statement {
     body.* = if (self.currentTokenKind() == .open_brace)
         .{ .block = try self.parseBlock() }
     else
-        try parseStatement(self);
+        try parse(self);
 
     return self.putStatementPos(.{
         .@"for" = .{
@@ -235,16 +235,16 @@ pub fn parseForStatement(self: *Self) ParserError!ast.Statement {
     }, pos);
 }
 
-pub fn parseWhileStatement(self: *Self) ParserError!ast.Statement {
-    return try parseConditionalStatement(self, .@"while");
+pub fn @"while"(self: *Self) ParserError!ast.Statement {
+    return try conditional(self, .@"while");
 }
 
-pub fn parseIfStatement(self: *Self) ParserError!ast.Statement {
-    return try parseConditionalStatement(self, .@"if");
+pub fn @"if"(self: *Self) ParserError!ast.Statement {
+    return try conditional(self, .@"if");
 }
 
 /// parses either `if` statement or `while` statement
-pub fn parseConditionalStatement(self: *Self, comptime @"type": enum { @"if", @"while" }) ParserError!ast.Statement {
+pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) ParserError!ast.Statement {
     const context = switch (@"type") {
         .@"while" => "while statement",
         .@"if" => "if statement",
@@ -255,7 +255,7 @@ pub fn parseConditionalStatement(self: *Self, comptime @"type": enum { @"if", @"
     try self.expect(self.advance(), Lexer.Token.open_paren, context, "(");
 
     const condition = try self.alloc.create(ast.Expression);
-    condition.* = try expression_handlers.parseExpression(self, .default);
+    condition.* = try expressions.parse(self, .default);
 
     try self.expect(self.advance(), Lexer.Token.close_paren, context, ")");
 
@@ -273,7 +273,7 @@ pub fn parseConditionalStatement(self: *Self, comptime @"type": enum { @"if", @"
     body.* = if (self.currentTokenKind() == .open_brace)
         .{ .block = try self.parseBlock() }
     else
-        try parseStatement(self);
+        try parse(self);
 
     const pos = self.currentPosition();
     return switch (@"type") {
@@ -286,7 +286,7 @@ pub fn parseConditionalStatement(self: *Self, comptime @"type": enum { @"if", @"
                 @"else".?.* = if (self.currentTokenKind() == .open_brace)
                     .{ .block = try self.parseBlock() }
                 else
-                    try parseStatement(self);
+                    try parse(self);
             }
 
             return self.putStatementPos(.{

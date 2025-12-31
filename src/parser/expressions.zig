@@ -2,7 +2,7 @@ const std = @import("std");
 const pretty = @import("pretty");
 const utils = @import("utils");
 const ast = @import("ast.zig");
-const statement_handlers = @import("statement_handlers.zig");
+const statements = @import("statements.zig");
 
 const Lexer = @import("Lexer");
 const TypeParser = @import("TypeParser.zig");
@@ -11,7 +11,7 @@ const Self = @import("Parser.zig");
 const ParserError = Self.ParserError;
 const BindingPower = Self.BindingPower;
 
-pub fn parsePrimaryExpression(self: *Self) !ast.Expression {
+pub fn primary(self: *Self) !ast.Expression {
     const pos = self.currentPosition();
 
     const kind: ast.Expression = switch (self.advance()) {
@@ -26,10 +26,10 @@ pub fn parsePrimaryExpression(self: *Self) !ast.Expression {
     return self.putExprPos(kind, pos);
 }
 
-pub fn parseBinaryExpression(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
+pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
     const op: ast.BinaryOperator = .fromLexerToken(self.advance());
-    const rhs = try parseExpression(self, bp);
+    const rhs = try parse(self, bp);
 
     const new_rhs = try self.alloc.create(ast.Expression);
     new_rhs.* = rhs;
@@ -43,7 +43,7 @@ pub fn parseBinaryExpression(self: *Self, lhs: *const ast.Expression, bp: Bindin
     }, pos);
 }
 
-pub fn parseExpression(self: *Self, bp: BindingPower) ParserError!ast.Expression {
+pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
 
     // first parse the NUD
@@ -67,12 +67,12 @@ pub fn parseExpression(self: *Self, bp: BindingPower) ParserError!ast.Expression
     return self.putExprPos(lhs, pos);
 }
 
-pub fn parseAssignmentExpression(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
+pub fn assignment(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
-    rhs.* = try parseExpression(self, bp);
+    rhs.* = try parse(self, bp);
 
     return self.putExprPos(.{
         .assignment = .{
@@ -83,7 +83,7 @@ pub fn parseAssignmentExpression(self: *Self, lhs: *const ast.Expression, bp: Bi
     }, pos);
 }
 
-pub fn parseMemberAccessExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+pub fn member(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
     _ = self.advance(); // consume dot
     const member_name = try self.expect(self.advance(), .ident, "member expression", "member name");
@@ -96,12 +96,12 @@ pub fn parseMemberAccessExpression(self: *Self, lhs: *const ast.Expression, _: B
     }, pos);
 }
 
-pub fn parsePrefixExpression(self: *Self) ParserError!ast.Expression {
+pub fn prefix(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
-    rhs.* = try parseExpression(self, .unary);
+    rhs.* = try parse(self, .unary);
 
     return self.putExprPos(.{
         .prefix = .{
@@ -111,17 +111,17 @@ pub fn parsePrefixExpression(self: *Self) ParserError!ast.Expression {
     }, pos);
 }
 
-pub fn parseGroupExpression(self: *Self) ParserError!ast.Expression {
+pub fn group(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
 
     try self.expect(self.advance(), Lexer.Token.open_paren, "group expression", "(");
-    const expr = try parseExpression(self, .default);
+    const expr = try parse(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_paren, "group expression", ")");
 
     return self.putExprPos(expr, pos);
 }
 
-pub fn parseStructInstantiationExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     const struct_name = switch (lhs.*) {
         .ident => |ident| ident,
         else => |other| return utils.printErr(
@@ -142,7 +142,7 @@ pub fn parseStructInstantiationExpression(self: *Self, lhs: *const ast.Expressio
     while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
         const member_name = try self.expect(self.advance(), Lexer.Token.ident, "struct instantiation", "struct member name");
         try self.expect(self.advance(), Lexer.Token.colon, "struct instantiation", ":");
-        const member_value = try parseExpression(self, .default);
+        const member_value = try parse(self, .default);
 
         try @"struct".members.put(member_name, member_value);
 
@@ -159,12 +159,12 @@ pub fn parseStructInstantiationExpression(self: *Self, lhs: *const ast.Expressio
     );
 }
 
-pub fn parseArrayInstantiationExpression(self: *Self) ParserError!ast.Expression {
+pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
 
     try self.expect(self.advance(), Lexer.Token.open_bracket, "array instantiation", "[");
     const length = try self.alloc.create(ast.Expression);
-    length.* = try parseExpression(self, .default);
+    length.* = try parse(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_bracket, "array instantiation", "]");
 
     var array: ast.Expression.ArrayInstantiation = .{
@@ -174,7 +174,7 @@ pub fn parseArrayInstantiationExpression(self: *Self) ParserError!ast.Expression
 
     try self.expect(self.advance(), Lexer.Token.open_brace, "array instantiation", "{");
     while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
-        try array.contents.append(self.alloc, try parseExpression(self, .logical));
+        try array.contents.append(self.alloc, try parse(self, .logical));
 
         if (self.currentTokenKind() != Lexer.Token.close_brace)
             try self.expect(self.advance(), Lexer.Token.comma, "array literal", ",");
@@ -184,7 +184,7 @@ pub fn parseArrayInstantiationExpression(self: *Self) ParserError!ast.Expression
     return self.putExprPos(.{ .array_instantiation = array }, pos);
 }
 
-pub fn parseCallExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     return self.putExprPos(.{
         .call = .{
             .callee = lhs,
@@ -193,14 +193,14 @@ pub fn parseCallExpression(self: *Self, lhs: *const ast.Expression, _: BindingPo
     }, try self.getExprPos(lhs.*));
 }
 
-pub fn parseIfExpression(self: *Self) ParserError!ast.Expression {
+pub fn @"if"(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     try self.expect(self.advance(), Lexer.Token.@"if", "if expression", "if");
 
     try self.expect(self.advance(), Lexer.Token.open_paren, "if expression", "(");
 
     const condition = try self.alloc.create(ast.Expression);
-    condition.* = try parseExpression(self, .default);
+    condition.* = try parse(self, .default);
 
     try self.expect(self.advance(), Lexer.Token.close_paren, "if expression", ")");
 
@@ -216,9 +216,9 @@ pub fn parseIfExpression(self: *Self) ParserError!ast.Expression {
 
     const body = try self.alloc.create(ast.Expression);
     body.* = if (self.currentTokenKind() == .open_brace)
-        try parseBlockExpression(self)
+        try block(self)
     else
-        try parseExpression(self, .default);
+        try parse(self, .default);
 
     var @"else": ?*ast.Expression = null;
     if (self.currentTokenKind() == Lexer.Token.@"else") {
@@ -226,9 +226,9 @@ pub fn parseIfExpression(self: *Self) ParserError!ast.Expression {
 
         @"else" = try self.alloc.create(ast.Expression);
         @"else".?.* = if (self.currentTokenKind() == .open_brace)
-            try parseBlockExpression(self)
+            try block(self)
         else
-            try parseExpression(self, .default);
+            try parse(self, .default);
     }
 
     return self.putExprPos(.{
@@ -241,16 +241,16 @@ pub fn parseIfExpression(self: *Self) ParserError!ast.Expression {
     }, pos);
 }
 
-pub fn parseBlockExpression(self: *Self) ParserError!ast.Expression {
+pub fn block(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     return self.putExprPos(.{ .block = try self.parseBlock() }, pos);
 }
 
-pub fn parseRangeExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     const token = self.advance(); // move past '..|..='
 
     const end = try self.alloc.create(ast.Expression);
-    end.* = try parseExpression(self, .default);
+    end.* = try parse(self, .default);
 
     return self.putExprPos(.{
         .range = .{
@@ -261,23 +261,23 @@ pub fn parseRangeExpression(self: *Self, lhs: *const ast.Expression, _: BindingP
     }, try self.getExprPos(lhs.*));
 }
 
-pub fn parseIndexExpression(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     _ = self.advance(); // move past '['
 
-    const index = try self.alloc.create(ast.Expression);
-    index.* = try parseExpression(self, .default);
+    const i = try self.alloc.create(ast.Expression);
+    i.* = try parse(self, .default);
 
     try self.expect(self.advance(), .close_bracket, "index expression", "]");
 
     return self.putExprPos(.{
         .index = .{
             .lhs = lhs,
-            .index = index,
+            .index = i,
         },
     }, try self.getExprPos(lhs.*));
 }
 
-pub fn parseReferenceExpression(self: *Self) ParserError!ast.Expression {
+pub fn reference(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     _ = self.advance(); // consume `&`
 
@@ -285,7 +285,7 @@ pub fn parseReferenceExpression(self: *Self) ParserError!ast.Expression {
     if (is_mut) _ = self.advance(); // consume `mut`
 
     const inner = try self.alloc.create(ast.Expression);
-    inner.* = try parseExpression(self, .default);
+    inner.* = try parse(self, .default);
 
     return self.putExprPos(.{
         .reference = .{

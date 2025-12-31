@@ -452,7 +452,6 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
 }
 
 fn appendToken(self: *Self, alloc: std.mem.Allocator, token: Token) !void {
-    std.debug.print("registering token {f} at {f}\n", .{ token, self.start_line_col });
     try self.tokens.append(alloc, token);
     try self.source_map.append(alloc, self.start_line_col);
 }

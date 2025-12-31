@@ -1,6 +1,6 @@
 const std = @import("std");
 const utils = @import("utils");
-const expression_handlers = @import("expression_handlers.zig");
+const expression = @import("expressions.zig");
 
 const Lexer = @import("Lexer");
 const Parser = @import("Parser.zig");
@@ -159,7 +159,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     if (self.parent_parser.currentTokenKind() != Lexer.Token.close_bracket) {
         size = try alloc.create(ast.Expression);
-        size.?.* = try expression_handlers.parseExpression(self.parent_parser, .default);
+        size.?.* = try expression.parse(self.parent_parser, .default);
     }
 
     try self.parent_parser.expect(

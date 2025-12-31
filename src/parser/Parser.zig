@@ -3,8 +3,8 @@ const pretty = @import("pretty");
 const utils = @import("utils");
 pub const ast = @import("ast.zig");
 
-const statement_handlers = @import("statement_handlers.zig");
-const expression_handlers = @import("expression_handlers.zig");
+const statements = @import("statements.zig");
+const expressions = @import("expressions.zig");
 
 const Lexer = @import("Lexer");
 const TypeParser = @import("TypeParser.zig");
@@ -163,80 +163,80 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
         .alloc = alloc,
     };
 
-    try self.led(Lexer.Token.equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.plus_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.minus_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.times_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.slash_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.mod_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.and_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.or_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.xor_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.shift_right_equals, .assignment, expression_handlers.parseAssignmentExpression);
-    try self.led(Lexer.Token.shift_left_equals, .assignment, expression_handlers.parseAssignmentExpression);
+    try self.led(.equals, .assignment, expressions.assignment);
+    try self.led(.plus_equals, .assignment, expressions.assignment);
+    try self.led(.minus_equals, .assignment, expressions.assignment);
+    try self.led(.times_equals, .assignment, expressions.assignment);
+    try self.led(.slash_equals, .assignment, expressions.assignment);
+    try self.led(.mod_equals, .assignment, expressions.assignment);
+    try self.led(.and_equals, .assignment, expressions.assignment);
+    try self.led(.or_equals, .assignment, expressions.assignment);
+    try self.led(.xor_equals, .assignment, expressions.assignment);
+    try self.led(.shift_right_equals, .assignment, expressions.assignment);
+    try self.led(.shift_left_equals, .assignment, expressions.assignment);
 
     // logical
-    try self.led(Lexer.Token.@"and", .logical, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.@"or", .logical, expression_handlers.parseBinaryExpression);
+    try self.led(.@"and", .logical, expressions.binary);
+    try self.led(.@"or", .logical, expressions.binary);
 
     // relational
-    try self.led(Lexer.Token.less, .relational, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.less_equals, .relational, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.greater, .relational, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.greater_equals, .relational, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.equals_equals, .relational, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.bang_equals, .relational, expression_handlers.parseBinaryExpression);
+    try self.led(.less, .relational, expressions.binary);
+    try self.led(.less_equals, .relational, expressions.binary);
+    try self.led(.greater, .relational, expressions.binary);
+    try self.led(.greater_equals, .relational, expressions.binary);
+    try self.led(.equals_equals, .relational, expressions.binary);
+    try self.led(.bang_equals, .relational, expressions.binary);
 
     // additive & multiplicative
-    try self.led(Lexer.Token.plus, .additive, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.dash, .additive, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.asterisk, .multiplicative, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.slash, .multiplicative, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.percent, .multiplicative, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.ampersand, .multiplicative, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.pipe, .additive, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.caret, .additive, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.pipe, .additive, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.caret, .additive, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.shift_left, .multiplicative, expression_handlers.parseBinaryExpression);
-    try self.led(Lexer.Token.shift_right, .multiplicative, expression_handlers.parseBinaryExpression);
+    try self.led(.plus, .additive, expressions.binary);
+    try self.led(.dash, .additive, expressions.binary);
+    try self.led(.asterisk, .multiplicative, expressions.binary);
+    try self.led(.slash, .multiplicative, expressions.binary);
+    try self.led(.percent, .multiplicative, expressions.binary);
+    try self.led(.ampersand, .multiplicative, expressions.binary);
+    try self.led(.pipe, .additive, expressions.binary);
+    try self.led(.caret, .additive, expressions.binary);
+    try self.led(.pipe, .additive, expressions.binary);
+    try self.led(.caret, .additive, expressions.binary);
+    try self.led(.shift_left, .multiplicative, expressions.binary);
+    try self.led(.shift_right, .multiplicative, expressions.binary);
 
     // literals & symbols
-    try self.nud(Lexer.Token.int, expression_handlers.parsePrimaryExpression);
-    try self.nud(Lexer.Token.float, expression_handlers.parsePrimaryExpression);
-    try self.nud(Lexer.Token.ident, expression_handlers.parsePrimaryExpression);
-    try self.nud(Lexer.Token.string, expression_handlers.parsePrimaryExpression);
-    try self.nud(Lexer.Token.dash, expression_handlers.parsePrefixExpression);
-    try self.nud(Lexer.Token.open_paren, expression_handlers.parseGroupExpression);
+    try self.nud(.int, expressions.primary);
+    try self.nud(.float, expressions.primary);
+    try self.nud(.ident, expressions.primary);
+    try self.nud(.string, expressions.primary);
+    try self.nud(.dash, expressions.prefix);
+    try self.nud(.open_paren, expressions.group);
 
     // Call/member expressions
-    try self.led(Lexer.Token.dot, .member, expression_handlers.parseMemberAccessExpression);
-    try self.led(Lexer.Token.open_brace, .call, expression_handlers.parseStructInstantiationExpression);
-    try self.led(Lexer.Token.open_paren, .call, expression_handlers.parseCallExpression);
-    try self.nud(Lexer.Token.open_bracket, expression_handlers.parseArrayInstantiationExpression);
+    try self.led(.dot, .member, expressions.member);
+    try self.led(.open_brace, .call, expressions.structInstantiation);
+    try self.led(.open_paren, .call, expressions.call);
+    try self.nud(.open_bracket, expressions.arrayInstantiation);
 
     // other expressions
-    try self.nud(Lexer.Token.open_brace, expression_handlers.parseBlockExpression);
-    try self.nud(Lexer.Token.@"if", expression_handlers.parseIfExpression);
-    try self.nud(Lexer.Token.ampersand, expression_handlers.parseReferenceExpression);
-    try self.led(Lexer.Token.dot_dot, .relational, expression_handlers.parseRangeExpression);
-    try self.led(Lexer.Token.dot_dot_equals, .relational, expression_handlers.parseRangeExpression);
-    try self.led(Lexer.Token.open_bracket, .call, expression_handlers.parseIndexExpression);
+    try self.nud(.open_brace, expressions.block);
+    try self.nud(.@"if", expressions.@"if");
+    try self.nud(.ampersand, expressions.reference);
+    try self.led(.dot_dot, .relational, expressions.range);
+    try self.led(.dot_dot_equals, .relational, expressions.range);
+    try self.led(.open_bracket, .call, expressions.index);
 
     // Statements
-    try self.statement(Lexer.Token.let, statement_handlers.parseVariableDeclarationStatement);
-    try self.statement(Lexer.Token.mut, statement_handlers.parseVariableDeclarationStatement);
-    try self.statement(Lexer.Token.@"struct", statement_handlers.parseStructDeclarationStatement);
-    try self.statement(Lexer.Token.@"enum", statement_handlers.parseEnumDeclarationStatement);
-    try self.statement(Lexer.Token.@"union", statement_handlers.parseUnionDeclarationStatement);
-    try self.statement(Lexer.Token.@"fn", statement_handlers.parseFunctionDefinition);
-    try self.statement(Lexer.Token.@"while", statement_handlers.parseWhileStatement);
-    try self.statement(Lexer.Token.@"return", statement_handlers.parseReturnStatement);
-    try self.statement(Lexer.Token.@"for", statement_handlers.parseForStatement);
-    try self.statement(Lexer.Token.@"if", statement_handlers.parseIfStatement);
+    try self.statement(.let, statements.variableDeclaration);
+    try self.statement(.mut, statements.variableDeclaration);
+    try self.statement(.@"struct", statements.structDeclaration);
+    try self.statement(.@"enum", statements.enumDeclaration);
+    try self.statement(.@"union", statements.unionDeclaration);
+    try self.statement(.@"fn", statements.functionDefinition);
+    try self.statement(.@"while", statements.@"while");
+    try self.statement(.@"return", statements.@"return");
+    try self.statement(.@"for", statements.@"for");
+    try self.statement(.@"if", statements.@"if");
 
     while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
-        try self.output.append(self.alloc, try statement_handlers.parseStatement(self));
+        try self.output.append(self.alloc, try statements.parse(self));
 
     return self;
 }
@@ -385,7 +385,7 @@ pub fn parseArguments(self: *Self) ParserError!ast.ArgumentList {
     if (self.currentTokenKind() == Lexer.Token.close_paren) {
         _ = self.advance();
     } else while (true) {
-        try args.append(self.alloc, try expression_handlers.parseExpression(self, .default));
+        try args.append(self.alloc, try expressions.parse(self, .default));
 
         self.expectSilent(self.currentToken(), .comma) catch {
             try self.expect(self.advance(), .close_paren, "argument list", ")");
@@ -404,7 +404,7 @@ pub fn parseBlock(self: *Self) !ast.Block {
     try self.expect(self.advance(), .open_brace, "block", "{");
 
     while (self.currentTokenKind() != .eof and self.currentTokenKind() != .close_brace)
-        try block.append(self.alloc, try statement_handlers.parseStatement(self));
+        try block.append(self.alloc, try statements.parse(self));
 
     try self.expect(self.advance(), .close_brace, "block", "}");
 
