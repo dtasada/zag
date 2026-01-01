@@ -47,7 +47,6 @@ pub const ParserError = error{
 
 pos: usize,
 lexer: *const Lexer,
-source_map: std.AutoHashMap(u64, utils.Position),
 alloc: std.mem.Allocator,
 output: ast.RootNode = .empty,
 
@@ -70,7 +69,6 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
         .led_lookup = .init(alloc),
         .statement_lookup = .init(alloc),
         .type_parser = try .init(alloc, self),
-        .source_map = .init(alloc),
         .alloc = alloc,
     };
 
@@ -354,35 +352,4 @@ pub fn parseParametersGeneric(self: *Self, type_is_optional: bool) ParserError!a
     }
 
     return params;
-}
-
-/// Puts expression's hash code into `source_map` with `pos` as value and then returns it back.
-pub inline fn putExprPos(self: *Self, expr: ast.Expression, pos: utils.Position) !ast.Expression {
-    var h = std.hash.Wyhash.init(0);
-    utils.hash(&h, expr, 0);
-    try self.source_map.put(h.final(), pos);
-    return expr;
-}
-
-/// Gets expression from `source_map` by hash code.
-/// `expr` must be an expression or a child of an expression. *const Expression will fail.
-pub inline fn getExprPos(self: *const Self, expr: ast.Expression) !utils.Position {
-    var h = std.hash.Wyhash.init(0);
-    utils.hash(&h, expr, 0);
-    return self.source_map.get(h.final()) orelse @panic("Expression not in map!\n");
-}
-
-/// Puts expression's hash code into `source_map` with `pos` as value and then returns it back.
-pub inline fn putStatementPos(self: *Self, stmt: ast.Statement, pos: utils.Position) !ast.Statement {
-    var h = std.hash.Wyhash.init(0);
-    utils.hash(&h, stmt, 0);
-    try self.source_map.put(h.final(), pos);
-    return stmt;
-}
-
-/// Gets expression from `source_map` by hash code.
-pub inline fn getStatementPos(self: *const Self, stmt: ast.Statement) !utils.Position {
-    var h = std.hash.Wyhash.init(0);
-    utils.hash(&h, stmt, 0);
-    return self.source_map.get(h.final()) orelse @panic("Statement not in map!\n");
 }

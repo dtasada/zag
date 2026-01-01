@@ -326,10 +326,10 @@ pub fn compileVariableSignature(
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
     return switch (expression) {
-        .int => |int| .{ .i64 = int },
-        .uint => |uint| .{ .u64 = uint },
-        .float => |float| .{ .f64 = float },
-        .char => |char| .{ .u8 = char },
+        .int => |int| .{ .i64 = int.int },
+        .uint => |uint| .{ .u64 = uint.uint },
+        .float => |float| .{ .f64 = float.float },
+        .char => |char| .{ .u8 = char.char },
         .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
             .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
         else => std.debug.panic("unimplemented comptime expression for {s}\n", .{@tagName(expression)}),

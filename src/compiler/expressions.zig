@@ -18,13 +18,13 @@ pub fn compile(
 ) CompilerError!void {
     switch (expression.*) {
         .assignment => |a| try assignment(self, file_writer, a),
-        .block => |block| try self.compileBlock(file_writer, block),
+        .block => |block| try self.compileBlock(file_writer, block.block),
         .binary => |b| try binary(self, file_writer, b),
-        .float => |float| try self.print(file_writer, "{}", .{float}),
-        .int => |int| try self.print(file_writer, "{}", .{int}),
-        .uint => |uint| try self.print(file_writer, "{}", .{uint}),
-        .string => |string| try self.print(file_writer, "\"{s}\"", .{string}),
-        .char => |char| try self.print(file_writer, "'{c}'", .{char}),
+        .float => |float| try self.print(file_writer, "{}", .{float.float}),
+        .int => |int| try self.print(file_writer, "{}", .{int.int}),
+        .uint => |uint| try self.print(file_writer, "{}", .{uint.uint}),
+        .string => |string| try self.print(file_writer, "\"{s}\"", .{string.string}),
+        .char => |char| try self.print(file_writer, "'{c}'", .{char.char}),
         .call => |c| try call(self, file_writer, c),
         .member => |m| try member(self, file_writer, m),
         .range => std.debug.print("illegal range expression\n", .{}),
@@ -35,13 +35,13 @@ pub fn compile(
             });
             try compile(self, file_writer, prefix.rhs, .{});
         },
-        .ident => |ident| if (self.getSymbolType(ident) catch null) |_|
-            try self.write(file_writer, ident)
+        .ident => |ident| if (self.getSymbolType(ident.ident) catch null) |_|
+            try self.write(file_writer, ident.ident)
         else
             return utils.printErr(
                 error.UnknownSymbol,
                 "comperr: Unknown symbol '{s}' at {f}.\n",
-                .{ ident, try self.parser.getExprPos(expression.*) },
+                .{ ident.ident, expression.getPosition() },
                 .red,
             ),
         .struct_instantiation => |struct_inst| {
@@ -98,7 +98,7 @@ pub fn compile(
             } else return utils.printErr(
                 error.MissingElseClause,
                 "comperr: If expression must contain an else clause ({f})\n",
-                .{try self.parser.getExprPos(.{ .@"if" = @"if" })},
+                .{@"if".pos},
                 .red,
             );
         },
@@ -128,7 +128,7 @@ fn member(
             } else return utils.printErr(
                 error.UndeclaredProperty,
                 "comperr: '{f}' has no member '{s}' ({f})\n",
-                .{ parent_type, expr.member_name, try self.parser.getExprPos(.{ .member = expr }) },
+                .{ parent_type, expr.member_name, expr.pos },
                 .red,
             );
         },
@@ -207,7 +207,7 @@ fn call(
         .member => |m| {
             var parent_reference_level: i32 = 0;
             var reference_is_mut = switch (m.parent.*) {
-                .ident => |ident| try self.getSymbolMutability(ident),
+                .ident => |ident| try self.getSymbolMutability(ident.ident),
                 else => false,
             };
 
@@ -230,7 +230,7 @@ fn call(
                         error.TooManyArguments,
                         "comperr: Too many arguments in method call at {f}. Expected {}, found {}\n",
                         .{
-                            try self.parser.getExprPos(call_expr.args.items[0]),
+                            call_expr.args.items[0].getPosition(),
                             expected_args,
                             received_args,
                         },
@@ -239,7 +239,7 @@ fn call(
                         error.MissingArguments,
                         "comperr: Missing arguments in method call at {f}. Expected {}, found {}\n",
                         .{
-                            try self.parser.getExprPos(call_expr.args.items[0]),
+                            call_expr.args.items[0].getPosition(),
                             expected_args,
                             received_args,
                         },
@@ -249,15 +249,12 @@ fn call(
                     for (method.params.items[1..], 0..) |param, i| {
                         const received_expr = call_expr.args.items[i];
                         const received_type: Type = try .infer(self, received_expr);
-                        if (!param.eq(&received_type)) {
-                            const pos = try self.parser.getExprPos(received_expr);
-                            return utils.printErr(
-                                error.TypeMismatch,
-                                "comperr: type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
-                                .{ pos, param, received_type },
-                                .red,
-                            );
-                        }
+                        if (!param.eq(&received_type)) return utils.printErr(
+                            error.TypeMismatch,
+                            "comperr: type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
+                            .{ received_expr.getPosition(), param, received_type },
+                            .red,
+                        );
                     }
 
                     const ref_level_diff = parent_reference_level - b2: {
@@ -316,7 +313,7 @@ fn call(
                         return utils.printErr(
                             error.TypeMismatch,
                             "comperr: Type doesn't match function signature at {f}. Expected '{f}', got '{f}'\n",
-                            .{ try self.parser.getExprPos(received_expr), param, received_type },
+                            .{ received_expr.getPosition(), param, received_type },
                             .red,
                         );
                     }
@@ -333,7 +330,7 @@ fn call(
             else => |other| return utils.printErr(
                 error.IllegalExpression,
                 "comperr: Expression of type '{f}' is not callable ({f})\n",
-                .{ other, try self.parser.getExprPos(call_expr.callee.*) },
+                .{ other, call_expr.callee.getPosition() },
                 .red,
             ),
         },

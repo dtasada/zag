@@ -42,58 +42,6 @@ However, there are two main areas where it could be improved:
     ```
     *   **Suggestion**: Add logic to detect a `/*` sequence. When found, the lexer should scan ahead, ignoring all characters until it finds a closing `*/` sequence. This would also need to handle nested block comments if that's a desired feature, which requires a counter. This would improve the ability to document code.
 
-### `src/parser/*`
-
-The parser is built using a Pratt (Top-Down Operator Precedence) parsing algorithm, which is an excellent choice for parsing expressions with different precedence levels. It's clean and extensible.
-
-The primary area for improvement is the mechanism used to track the source code location of AST nodes.
-
-1.  **Fragile AST Node Hashing**: The parser currently uses a complex hashing function (`Parser.hash`) to generate a key for each AST node and stores its position in a separate hash map (`source_map`).
-    ```zig
-    // in src/parser/Parser.zig
-    pub fn hash(context: anytype, key: anytype, depth: u32) void { ... }
-
-    pub inline fn putExprPos(self: *Self, expr: ast.Expression, pos: utils.Position) !ast.Expression {
-        var h = std.hash.Wyhash.init(0);
-        hash(&h, expr, 0);
-        try self.source_map.put(h.final(), pos);
-        return expr;
-    }
-
-    pub inline fn getExprPos(self: *const Self, expr: ast.Expression) !utils.Position {
-        var h = std.hash.Wyhash.init(0);
-        hash(&h, expr, 0);
-        return self.source_map.get(h.final()) orelse @panic("Expression not in map!\n");
-    }
-    ```
-    *   **Problems with this approach**:
-        *   **Complexity**: The `hash` function is long, recursive, and needs to be manually updated to support every field of every AST node. This is hard to maintain.
-        *   **Fragility**: If two different nodes produce the same hash (a hash collision), the system will fail or retrieve the wrong position. Hashing complex, recursive data structures is notoriously prone to this.
-        *   **Inefficiency**: Hashing the entire node structure on creation and then again on lookup is computationally expensive compared to a direct field access.
-        *   **No Position in AST**: The AST itself doesn't contain the location data, which makes debugging the parser and later compiler stages harder. You always need the parser's `source_map` to find out where a node came from.
-
-    *   **Suggestion**: A much more robust and standard solution is to store the position directly in the AST nodes.
-        1.  Add a `pos: utils.Position` field to the common part of your AST node structs/unions.
-        2.  For example, in `src/parser/ast.zig`, you could change `Expression.Binary` and other structs to include this field.
-
-        ```zig
-        // Example modification in src/parser/ast.zig
-        pub const Expression = union(enum) {
-            // ...
-            binary: Binary,
-            // ...
-
-            pub const Binary = struct {
-                pos: utils.Position, // <-- Add position here
-                lhs: *const Expression,
-                op: BinaryOperator,
-                rhs: *const Expression,
-            };
-            // ...
-        };
-        ```
-        This would eliminate the need for the entire hashing system (`hash`, `putExprPos`, `getExprPos`, `source_map`), simplifying the parser and making the AST a self-contained, more useful data structure.
-
 ### `src/compiler/*`
 
 The compiler is responsible for the C transpilation. The overall strategy of generating a `.c` file and a helper `zag.h` header is solid. The use of C macros in `zag.h` to implement language features like optionals is a clever approach.

@@ -8,6 +8,8 @@ pub const ArgumentList = std.ArrayList(Expression);
 pub const RootNode = std.ArrayList(Statement);
 pub const Block = std.ArrayList(Statement);
 
+const ast = @This();
+
 pub const BinaryOperator = enum {
     plus,
     dash,
@@ -66,15 +68,15 @@ pub const PrefixOperator = enum {
 };
 
 pub const Expression = union(enum) {
-    bad_node,
+    bad_node: struct { pos: utils.Position },
 
     // literals
-    ident: []const u8,
-    string: []const u8,
-    char: u8,
-    int: i64,
-    uint: u64,
-    float: f64,
+    ident: struct { pos: utils.Position, ident: []const u8 },
+    string: struct { pos: utils.Position, string: []const u8 },
+    char: struct { pos: utils.Position, char: u8 },
+    int: struct { pos: utils.Position, int: i64 },
+    uint: struct { pos: utils.Position, uint: u64 },
+    float: struct { pos: utils.Position, float: f64 },
 
     call: Call,
     member: Member,
@@ -83,62 +85,74 @@ pub const Expression = union(enum) {
     assignment: Assignment,
     struct_instantiation: StructInstantiation,
     array_instantiation: ArrayInstantiation,
-    block: Block,
+    block: Expression.Block,
     @"if": If,
     range: Range,
     index: Index,
     reference: Reference,
 
+    pub const Block = struct { pos: utils.Position, block: ast.Block };
+
     pub const Binary = struct {
+        pos: utils.Position,
         lhs: *const Expression,
         op: BinaryOperator,
         rhs: *const Expression,
     };
 
     pub const Member = struct {
+        pos: utils.Position,
         parent: *const Expression,
         member_name: []const u8,
     };
 
     pub const Call = struct {
+        pos: utils.Position,
         callee: *const Expression,
         args: ArgumentList,
     };
 
     pub const Prefix = struct {
+        pos: utils.Position,
         op: PrefixOperator,
         rhs: *const Expression,
     };
 
     pub const Assignment = struct {
+        pos: utils.Position,
         assignee: *const Expression,
         op: AssignmentOperator,
         value: *const Expression,
     };
 
     pub const StructInstantiation = struct {
+        pos: utils.Position,
         name: []const u8,
         members: std.StringHashMap(Expression),
     };
 
     pub const ArrayInstantiation = struct {
+        pos: utils.Position,
         length: *const Expression,
         type: Type,
         contents: std.ArrayList(Expression) = .empty,
     };
 
     const Range = struct {
+        pos: utils.Position,
         start: *const Expression,
         end: *const Expression,
         inclusive: bool,
     };
 
     const Reference = struct {
+        pos: utils.Position,
         inner: *const Expression,
         is_mut: bool,
     };
 
     const If = struct {
+        pos: utils.Position,
         condition: *const Expression,
         capture: ?[]const u8 = null,
         body: *const Expression,
@@ -146,29 +160,39 @@ pub const Expression = union(enum) {
     };
 
     const Index = struct {
+        pos: utils.Position,
         lhs: *const Expression,
         index: *const Expression,
     };
+
+    pub inline fn getPosition(self: *const Expression) utils.Position {
+        return switch (self.*) {
+            inline else => |some| some.pos,
+        };
+    }
 };
 
 pub const Statement = union(enum) {
-    @"return": ?Expression,
+    @"return": Return,
     expression: Expression,
     variable_definition: VariableDefinition,
     struct_declaration: StructDeclaration,
     enum_declaration: EnumDeclaration,
     union_declaration: UnionDeclaration,
     function_definition: FunctionDefinition,
-    block: Block,
+    block: ast.Expression.Block,
     @"if": If,
     @"while": While,
     @"for": For,
 
+    pub const Return = struct { pos: utils.Position, @"return": ?ast.Expression };
+
     pub const FunctionDefinition = struct {
+        pos: utils.Position,
         name: []const u8,
         parameters: ParameterList = .empty,
         return_type: Type,
-        body: Block,
+        body: ast.Block,
 
         pub fn getType(self: *const FunctionDefinition) Type {
             return .{
@@ -181,55 +205,69 @@ pub const Statement = union(enum) {
     };
 
     pub const VariableDefinition = struct {
+        pos: utils.Position,
         is_mut: bool,
         variable_name: []const u8,
         type: Type,
-        assigned_value: Expression,
+        assigned_value: ast.Expression,
     };
 
-    fn CompoundType(@"type": enum { @"struct", @"enum", @"union" }) type {
-        return struct {
-            const Field = switch (@"type") {
-                .@"struct" => struct {
-                    name: []const u8,
-                    type: Type,
-                    default_value: ?Expression = null,
-                },
-                .@"enum" => struct {
-                    name: []const u8,
-                    default_value: ?Expression = null,
-                },
-                .@"union" => struct {
-                    name: []const u8,
-                    type: ?Type,
-                },
-            };
-
+    pub const StructDeclaration = struct {
+        const Member = struct {
             name: []const u8,
-            generic_types: ?ParameterList = null, // only for structs and unions
-            members: std.ArrayList(Field) = .empty,
-            methods: std.ArrayList(FunctionDefinition) = .empty,
+            type: Type,
+            default_value: ?ast.Expression = null,
         };
-    }
 
-    pub const StructDeclaration = CompoundType(.@"struct");
-    pub const EnumDeclaration = CompoundType(.@"enum");
-    pub const UnionDeclaration = CompoundType(.@"union");
+        pos: utils.Position,
+        name: []const u8,
+        generic_types: ?ParameterList = null,
+        members: std.ArrayList(Member) = .empty,
+        methods: std.ArrayList(FunctionDefinition) = .empty,
+    };
+
+    pub const EnumDeclaration = struct {
+        const Member = struct {
+            name: []const u8,
+            value: ?ast.Expression = null,
+        };
+
+        pos: utils.Position,
+        name: []const u8,
+        members: std.ArrayList(Member) = .empty,
+        methods: std.ArrayList(FunctionDefinition) = .empty,
+    };
+
+    pub const UnionDeclaration = struct {
+        const Member = struct {
+            name: []const u8,
+            type: ?Type,
+        };
+
+        pos: utils.Position,
+        name: []const u8,
+        generic_types: ?ParameterList = null, // only for structs and unions
+        members: std.ArrayList(Member) = .empty,
+        methods: std.ArrayList(FunctionDefinition) = .empty,
+    };
 
     pub const While = struct {
-        condition: *const Expression,
+        pos: utils.Position,
+        condition: *const ast.Expression,
         capture: ?[]const u8 = null,
         body: *const Statement,
     };
 
     pub const For = struct {
-        iterator: *const Expression,
+        pos: utils.Position,
+        iterator: *const ast.Expression,
         capture: []const u8,
         body: *const Statement,
     };
 
     pub const If = struct {
-        condition: *const Expression,
+        pos: utils.Position,
+        condition: *const ast.Expression,
         capture: ?[]const u8 = null,
         body: *const Statement,
         @"else": ?*const Statement = null,

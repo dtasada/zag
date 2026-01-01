@@ -232,20 +232,20 @@ pub const Type = union(enum) {
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
-            .ident => |ident| compiler.getSymbolType(ident) catch return utils.printErr(
+            .ident => |ident| compiler.getSymbolType(ident.ident) catch return utils.printErr(
                 error.UnknownSymbol,
                 "comperr: Unknown symbol '{s}' at {f}\n",
-                .{ ident, try compiler.parser.getExprPos(expr) },
+                .{ ident.ident, expr.getPosition() },
                 .red,
             ),
             .string => .{ .reference = .{ .inner = &.u8, .is_mut = false } },
             .char => .u8,
-            .uint => |uint| if (uint <= std.math.maxInt(i32)) .i32 else .i64,
-            .int => |int| if (int <= std.math.maxInt(i32) and int >= std.math.minInt(i32))
+            .uint => |uint| if (uint.uint <= std.math.maxInt(i32)) .i32 else .i64,
+            .int => |int| if (int.int <= std.math.maxInt(i32) and int.int >= std.math.minInt(i32))
                 .i32
             else
                 .i64,
-            .float => |float| if (float == @as(f64, @floatCast(@as(f32, @floatCast(float)))))
+            .float => |float| if (float.float == @as(f64, @floatCast(@as(f32, @floatCast(float.float)))))
                 // if the float fits in an f32, then default to f32. if the float is too big,
                 // use f64
                 .f32
@@ -260,7 +260,7 @@ pub const Type = union(enum) {
                 if (!lhs.eq(&rhs)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression at {f}: left is {f}, right is {f}\n",
-                    .{ try compiler.parser.getExprPos(binary.lhs.*), lhs, rhs },
+                    .{ binary.lhs.getPosition(), lhs, rhs },
                     .red,
                 );
 
@@ -283,7 +283,7 @@ pub const Type = union(enum) {
             .struct_instantiation => |struct_inst| compiler.getSymbolType(struct_inst.name) catch return utils.printErr(
                 error.UnknownSymbol,
                 "comperr: Unknown symbol '{s}' at {f}\n",
-                .{ struct_inst.name, try compiler.parser.getExprPos(expr) },
+                .{ struct_inst.name, expr.getPosition() },
                 .red,
             ),
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
@@ -294,7 +294,7 @@ pub const Type = union(enum) {
                 if (!expected.eq(&received)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Type mismatch in if expression at {f}: {f} and {f} are not compatible",
-                    .{ try compiler.parser.getExprPos(.{ .@"if" = @"if" }), expected, received },
+                    .{ @"if".pos, expected, received },
                     .red,
                 );
 
@@ -302,7 +302,7 @@ pub const Type = union(enum) {
             } else return utils.printErr(
                 error.MissingElseClause,
                 "comperr: If expression must contain an else clause ({f})\n",
-                .{try compiler.parser.getExprPos(.{ .@"if" = @"if" })},
+                .{@"if".pos},
                 .red,
             ),
             .index => |index| switch (try Type.infer(compiler, index.lhs.*)) {
@@ -310,7 +310,7 @@ pub const Type = union(enum) {
                 else => |other| utils.printErr(
                     error.IllegalExpression,
                     "comperr: Illegal index expression on '{f}' at {f}.",
-                    .{ other, try compiler.parser.getExprPos(index.lhs.*) },
+                    .{ other, index.lhs.getPosition() },
                     .red,
                 ),
             },
@@ -336,7 +336,7 @@ pub const Type = union(enum) {
                 const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
                     error.UnknownSymbol,
                     "comperr: Unknown symbol '{s}' at {f}\n",
-                    .{ parent_expr_buf.items, try compiler.parser.getExprPos(.{ .member = m }) },
+                    .{ parent_expr_buf.items, m.pos },
                     .red,
                 );
 
@@ -361,7 +361,7 @@ pub const Type = union(enum) {
                 else => |t| utils.printErr(
                     error.IllegalExpression,
                     "comperr: Member expression on '{f}' is illegal ({f})\n",
-                    .{ t, try compiler.parser.getExprPos(.{ .call = call }) },
+                    .{ t, call.pos },
                     .red,
                 ),
             },
@@ -372,7 +372,7 @@ pub const Type = union(enum) {
         const t = try compiler.alloc.create(Type);
         t.* = try .fromAst(compiler, array.type);
 
-        const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident, "_"))
+        const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident.ident, "_"))
             array.contents.items.len
         else b: {
             const length = (try compiler.solveComptimeExpression(array.length.*)).u64;
@@ -381,20 +381,12 @@ pub const Type = union(enum) {
             if (expected_length < length) return utils.printErr(
                 error.MissingArguments,
                 "comperr: Too many items in array initializer list. Expected {}, received {} ({f})\n",
-                .{
-                    expected_length,
-                    length,
-                    try compiler.parser.getExprPos(.{ .array_instantiation = array }),
-                },
+                .{ expected_length, length, array.pos },
                 .red,
             ) else if (expected_length > length) return utils.printErr(
                 error.TooManyArguments,
                 "comperr: Missing items in array initializer list. Expected {}, received {} ({f})\n",
-                .{
-                    expected_length,
-                    length,
-                    try compiler.parser.getExprPos(.{ .array_instantiation = array }),
-                },
+                .{ expected_length, length, array.pos },
                 .red,
             );
 
@@ -416,7 +408,7 @@ pub const Type = union(enum) {
         const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
             error.UnknownSymbol,
             "comperr: Unknown symbol '{s}' at {f}\n",
-            .{ parent_expr_buf.items, try compiler.parser.getExprPos(.{ .member = member }) },
+            .{ parent_expr_buf.items, member.pos },
             .red,
         );
 
@@ -433,7 +425,7 @@ pub const Type = union(enum) {
                 } else return utils.printErr(
                     error.UndeclaredProperty,
                     "comperr: '{f}' has no member '{s}' ({f})\n",
-                    .{ parent_type, member.member_name, try compiler.parser.getExprPos(member.parent.*) },
+                    .{ parent_type, member.member_name, member.parent.getPosition() },
                     .red,
                 );
             },

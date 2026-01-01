@@ -26,7 +26,7 @@ pub fn compile(
         .@"if" => |if_stmt| try conditional(self, file_writer, .@"if", if_stmt),
         .@"while" => |while_stmt| try conditional(self, file_writer, .@"while", while_stmt),
         .@"for" => |for_stmt| try conditional(self, file_writer, .@"for", for_stmt),
-        .block => |block| try self.compileBlock(file_writer, block),
+        .block => |block| try self.compileBlock(file_writer, block.block),
         .enum_declaration => |enum_decl| try compoundTypeDeclaration(self, file_writer, .@"enum", enum_decl),
         .union_declaration => |union_decl| try compoundTypeDeclaration(self, file_writer, .@"union", union_decl),
     }
@@ -59,11 +59,7 @@ fn compoundTypeDeclaration(
         if (compound_type.getProperty(member.name)) |_| return utils.printErr(
             error.DuplicateMember,
             "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",
-            .{ member.name, type_decl.name, try self.parser.getStatementPos(switch (T) {
-                .@"struct" => .{ .struct_declaration = type_decl },
-                .@"union" => .{ .union_declaration = type_decl },
-                .@"enum" => .{ .enum_declaration = type_decl },
-            }) },
+            .{ member.name, type_decl.name, type_decl.pos },
             .red,
         );
 
@@ -173,10 +169,10 @@ fn compoundTypeDeclaration(
 fn returnStatement(
     self: *Self,
     file_writer: *std.ArrayList(u8),
-    r: ?ast.Expression,
+    r: ast.Statement.Return,
 ) CompilerError!void {
     try self.write(file_writer, "return");
-    if (r) |*expression| {
+    if (r.@"return") |*expression| {
         try self.write(file_writer, " ");
         try expressions.compile(self, file_writer, expression, .{});
     }
@@ -197,7 +193,7 @@ fn variableDefinition(
     if (!variable_type.eq(&received_type)) return utils.printErr(
         error.TypeMismatch,
         "comperr: Type of expression doesn't match explicit type. Expected: '{f}', received '{f}' ({f})\n",
-        .{ variable_type, received_type, try self.parser.getExprPos(v.assigned_value) },
+        .{ variable_type, received_type, v.assigned_value.getPosition() },
         .red,
     );
 
@@ -252,7 +248,7 @@ fn conditional(
                 else => |t| return utils.printErr(
                     error.IllegalExpression,
                     "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
-                    .{ t, try self.parser.getExprPos(statement.iterator.*) },
+                    .{ t, statement.iterator.getPosition() },
                     .red,
                 ),
             },
