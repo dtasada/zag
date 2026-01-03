@@ -209,6 +209,7 @@ export default grammar({
       "u16",
       "u32",
       "u64",
+      "usize",
       "f32",
       "f64",
       "void",
@@ -235,7 +236,7 @@ export default grammar({
     ),
 
     error_union: $ => prec.left(4, seq(
-      optional(field("error", $.type)),
+      optional(field("failure", $.type)),
       "!",
       field("success", $.type),
     )),

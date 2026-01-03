@@ -132,8 +132,8 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError
 pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
     _ = self.parent_parser.advance(); // consume '!'
 
-    const @"error" = try alloc.create(ast.Type);
-    @"error".* = lhs;
+    const failure = try alloc.create(ast.Type);
+    failure.* = lhs;
 
     const success = try alloc.create(ast.Type);
     success.* = try parseType(self, alloc, .default);
@@ -141,7 +141,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
     return .{
         .error_union = .{
             .success = success,
-            .@"error" = @"error",
+            .failure = failure,
         },
     };
 }

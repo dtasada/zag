@@ -61,13 +61,11 @@ pub const Type = union(enum) {
                 };
             }
 
-            pub fn eq(lhs: *const Struct, rhs: *const Struct) bool {
-                inline for (@typeInfo(Struct).@"struct".fields) |field| {
-                    const pa: *const field.type = @ptrCast(&@field(lhs.*, field.name));
-                    const pb: *const field.type = @ptrCast(&@field(rhs.*, field.name));
-                    if (!deepEqInternal(field.type, pa, pb)) return false;
-                }
-                return true;
+            pub fn eql(a: CompoundType(T), b: CompoundType(T)) bool {
+                return Type.eql(
+                    @unionInit(Type, @tagName(T), a),
+                    @unionInit(Type, @tagName(T), b),
+                );
             }
         };
     }
@@ -91,7 +89,7 @@ pub const Type = union(enum) {
 
     pub const ErrorUnion = struct {
         success: *const Self,
-        @"error": ?*const Self = null,
+        failure: *const Self,
     };
 
     i8,
@@ -104,7 +102,7 @@ pub const Type = union(enum) {
     u32,
     u64,
 
-    size,
+    usize,
 
     f32,
     f64,
@@ -141,8 +139,8 @@ pub const Type = union(enum) {
             .u32
         else if (std.mem.eql(u8, symbol, "u64"))
             .u64
-        else if (std.mem.eql(u8, symbol, "size"))
-            .size
+        else if (std.mem.eql(u8, symbol, "usize"))
+            .usize
         else if (std.mem.eql(u8, symbol, "f32"))
             .f32
         else if (std.mem.eql(u8, symbol, "f64"))
@@ -217,13 +215,13 @@ pub const Type = union(enum) {
                     const success = try compiler.alloc.create(Type);
                     success.* = try fromAst(compiler, error_union.success.*);
 
-                    var @"error": ?*Type = null;
-                    if (error_union.@"error") |err| {
-                        @"error" = try compiler.alloc.create(Type);
-                        @"error".?.* = try fromAst(compiler, err.*);
-                    }
+                    const failure: *Type = try compiler.alloc.create(Type);
+                    failure.* = if (error_union.failure) |err|
+                        try fromAst(compiler, err.*)
+                    else
+                        .{ .reference = .{ .inner = &.void, .is_mut = false } };
 
-                    break :b .{ .success = success, .@"error" = @"error" };
+                    break :b .{ .success = success, .failure = failure };
                 },
             },
             .inferred => unreachable,
@@ -257,7 +255,7 @@ pub const Type = union(enum) {
             .binary => |binary| {
                 const lhs: Type = try .infer(compiler, binary.lhs.*);
                 const rhs: Type = try .infer(compiler, binary.rhs.*);
-                if (!lhs.eq(&rhs)) return utils.printErr(
+                if (!lhs.eql(rhs)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression at {f}: left is {f}, right is {f}\n",
                     .{ binary.lhs.getPosition(), lhs, rhs },
@@ -279,7 +277,8 @@ pub const Type = union(enum) {
                 };
             },
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
-            .assignment, .range => @panic("invalid"),
+            .range => @panic("invalid"),
+            .assignment => .void,
             .struct_instantiation => |struct_inst| compiler.getSymbolType(struct_inst.name) catch return utils.printErr(
                 error.UnknownSymbol,
                 "comperr: Unknown symbol '{s}' at {f}\n",
@@ -291,7 +290,7 @@ pub const Type = union(enum) {
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
                 const expected: Type = try .infer(compiler, @"if".body.*);
                 const received: Type = try .infer(compiler, @"else".*);
-                if (!expected.eq(&received)) return utils.printErr(
+                if (!expected.eql(received)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Type mismatch in if expression at {f}: {f} and {f} are not compatible",
                     .{ @"if".pos, expected, received },
@@ -439,74 +438,33 @@ pub const Type = union(enum) {
         }
     }
 
-    /// Recursively compares two values of type T for deep equality.
-    /// - Handles structs, unions, enums, pointers, slices, arrays, primitives.
-    /// - Assumes no cycles in pointers.
-    /// - Works for arbitrary nested types.
-    pub fn eq(a: *const Self, b: *const Self) bool {
-        if (a == b) return true;
-
-        return deepEqInternal(Self, a, b);
+    pub fn eql(a: Type, b: Type) bool {
+        return Context.eql(.{}, a, b);
     }
 
-    fn deepEqInternal(comptime T: type, a: *const T, b: *const T) bool {
-        const info = @typeInfo(T);
+    pub fn hash(self: Type) u64 {
+        return Context.hash(.{}, self);
+    }
 
-        return switch (info) {
-            .int, .float, .bool, .comptime_int, .comptime_float => a.* == b.*,
-            .pointer => |pointer| {
-                if (a == b) return true;
-                return deepEqInternal(pointer.child, @ptrCast(a.*), @ptrCast(b.*));
+    /// Checks if a type is convertible to a destination type.
+    /// That means that a type can automatically be cast to another.
+    /// Examples are `i64` -> `i32` or `usize` -> `?usize`
+    pub fn convertsTo(src: Type, dst: Type) bool {
+        return switch (dst) {
+            .i8, .i16, .i32, .i64 => switch (src) {
+                .i8, .i16, .i32, .i64 => true,
+                else => false,
             },
-            .array => |array| {
-                for (0..array.len) |i| {
-                    if (!deepEqInternal(array.child, &a.*[i], &b.*[i])) return false;
-                }
-                return true;
+            .u8, .u16, .u32, .u64, .usize => switch (src) {
+                .u8, .u16, .u32, .u64, .usize => true,
+                else => false,
             },
-            .@"struct" => |@"struct"| {
-                inline for (@"struct".fields) |field| {
-                    const pa: *const field.type = @ptrCast(&@field(a.*, field.name));
-                    const pb: *const field.type = @ptrCast(&@field(b.*, field.name));
-                    if (!deepEqInternal(field.type, pa, pb)) return false;
-                }
-                return true;
+            .f32, .f64 => switch (src) {
+                .f32, .f64 => true,
+                else => false,
             },
-            .@"union" => |@"union"| {
-                if (std.meta.activeTag(a.*) != std.meta.activeTag(b.*)) return false;
-
-                const idx = @intFromEnum(std.meta.activeTag(a.*));
-
-                inline for (@"union".fields, 0..) |field, i| {
-                    if (idx == i) {
-                        const pa: *const field.type = @ptrCast(&@field(a.*, field.name));
-                        const pb: *const field.type = @ptrCast(&@field(b.*, field.name));
-                        return deepEqInternal(field.type, pa, pb);
-                    }
-                }
-
-                unreachable;
-            },
-            .@"enum" => a.* == b.*,
-            .void => true,
-            .@"opaque", .@"fn" => {
-                std.debug.print("checking type equality for unhandled types! generates ub", .{});
-                return false;
-            },
-            .optional => |opt| {
-                const a_val = a.*;
-                const b_val = b.*;
-
-                if (a_val == null and b_val == null) return true;
-                if (a_val == null or b_val == null) return false;
-
-                return deepEqInternal(opt.child, &a_val.?, &b_val.?);
-            },
-            else => comptime {
-                var buf: [128]u8 = undefined;
-                const err = std.fmt.bufPrint(&buf, "Type not supported for deep equality: {s}", .{@typeName(T)}) catch "error creating error message";
-                @compileError(err);
-            },
+            .optional => |inner| inner.eql(src),
+            else => src.eql(dst),
         };
     }
 
@@ -528,7 +486,7 @@ pub const Type = union(enum) {
                 try writer.print("{f}", .{array.inner});
             },
             .error_union => |error_union| {
-                if (error_union.@"error") |err| try writer.print("{f}", .{err});
+                try writer.print("{f}", .{error_union.failure});
                 try writer.print("!{f}", .{error_union.success});
             },
             .function => |function| {
@@ -542,4 +500,211 @@ pub const Type = union(enum) {
             else => _ = try writer.write(@tagName(self.*)),
         }
     }
+
+    pub const Context = struct {
+        pub fn hash(ctx: Context, t: Type) u64 {
+            var h = std.hash.Wyhash.init(0);
+
+            // hash the tag
+            const tag = std.meta.activeTag(t);
+            h.update(std.mem.asBytes(&tag));
+
+            switch (t) {
+                .i8,
+                .i16,
+                .i32,
+                .i64,
+                .u8,
+                .u16,
+                .u32,
+                .u64,
+                .usize,
+                .f32,
+                .f64,
+                .bool,
+                .void,
+                .type,
+                => {},
+
+                .optional => |inner| h.update(std.mem.asBytes(&ctx.hash(inner.*))),
+
+                .reference => |r| {
+                    h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
+                    h.update(std.mem.asBytes(&r.is_mut));
+                },
+
+                .array => |a| {
+                    h.update(std.mem.asBytes(&ctx.hash(a.inner.*)));
+                    h.update(std.mem.asBytes(&a.size));
+                },
+
+                .error_union => |e| {
+                    h.update(std.mem.asBytes(&ctx.hash(e.success.*)));
+                    h.update(std.mem.asBytes(&Context.hash(.{}, e.failure.*)));
+                },
+
+                .function => |f| {
+                    for (f.params.items) |p| {
+                        h.update(std.mem.asBytes(&ctx.hash(p.*)));
+                    }
+                    h.update(std.mem.asBytes(&ctx.hash(f.return_type.*)));
+                },
+
+                inline .@"struct", .@"union" => |ct| {
+                    h.update(ct.name);
+
+                    // members (order-independent)
+                    var mit = ct.members.iterator();
+                    while (mit.next()) |entry| {
+                        var eh = std.hash.Wyhash.init(0);
+                        eh.update(entry.key_ptr.*);
+                        switch (t) {
+                            inline .@"struct", .@"union" => eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.*.*))),
+                            else => unreachable,
+                        }
+
+                        const mixed = eh.final();
+                        h.update(std.mem.asBytes(&mixed));
+                    }
+
+                    // methods (order-independent)
+                    var it = ct.methods.iterator();
+                    while (it.next()) |entry| {
+                        var eh = std.hash.Wyhash.init(0);
+                        eh.update(entry.key_ptr.*);
+
+                        for (entry.value_ptr.params.items) |p| {
+                            eh.update(std.mem.asBytes(&ctx.hash(p.*)));
+                        }
+                        eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.return_type.*)));
+
+                        const mixed = eh.final();
+                        h.update(std.mem.asBytes(&mixed));
+                    }
+                },
+                .@"enum" => |ct| {
+                    h.update(ct.name);
+
+                    // members (order-independent)
+                    var mit = ct.members.iterator();
+                    while (mit.next()) |entry| {
+                        var eh = std.hash.Wyhash.init(0);
+                        eh.update(entry.key_ptr.*);
+                        eh.update(std.mem.asBytes(&entry.value_ptr.*));
+                        const mixed = eh.final();
+                        h.update(std.mem.asBytes(&mixed));
+                    }
+
+                    // methods (order-independent)
+                    var it = ct.methods.iterator();
+                    while (it.next()) |entry| {
+                        var eh = std.hash.Wyhash.init(0);
+                        eh.update(entry.key_ptr.*);
+
+                        for (entry.value_ptr.params.items) |p| {
+                            eh.update(std.mem.asBytes(&ctx.hash(p.*)));
+                        }
+                        eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.return_type.*)));
+
+                        const mixed = eh.final();
+                        h.update(std.mem.asBytes(&mixed));
+                    }
+                },
+            }
+
+            return h.final();
+        }
+
+        pub fn eql(ctx: Context, a: Type, b: Type) bool {
+            if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+
+            return switch (a) {
+                inline .@"struct", .@"union" => |ta| {
+                    if (!std.mem.eql(u8, ta.name, switch (b) {
+                        inline .@"struct", .@"union" => |t| t.name,
+                        else => unreachable,
+                    })) return false;
+
+                    if (ta.members.count() != switch (b) {
+                        inline .@"struct", .@"union" => |t| t.members.count(),
+                        else => unreachable,
+                    }) return false;
+
+                    var members = ta.members.iterator();
+                    while (members.next()) |entry| {
+                        const name = entry.key_ptr.*;
+                        const a_member = entry.value_ptr.*;
+                        switch (b) {
+                            inline .@"struct", .@"union" => |t| if (!ctx.eql(
+                                a_member.*,
+                                (t.members.get(name) orelse return false).*,
+                            )) return false,
+                            else => unreachable,
+                        }
+                    }
+
+                    var methods = ta.methods.iterator();
+                    while (methods.next()) |entry| {
+                        const name = entry.key_ptr.*;
+                        const a_method = entry.value_ptr.*;
+                        const b_method = switch (b) {
+                            inline .@"struct", .@"union" => |tb| tb.methods.get(name) orelse
+                                return false,
+                            else => unreachable,
+                        };
+
+                        for (0..a_method.params.items.len) |i|
+                            if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*))
+                                return false;
+
+                        return ctx.eql(a_method.return_type.*, b_method.return_type.*);
+                    }
+
+                    return true;
+                },
+                .@"enum" => |ta| {
+                    if (!std.mem.eql(u8, ta.name, b.@"enum".name)) return false;
+
+                    if (ta.members.count() != b.@"enum".members.count()) return false;
+
+                    var members = ta.members.iterator();
+                    while (members.next()) |entry| {
+                        const name = entry.key_ptr.*;
+                        const a_member = entry.value_ptr.*;
+                        if (a_member != (b.@"enum".members.get(name) orelse return false))
+                            return false;
+                    }
+
+                    var methods = ta.methods.iterator();
+                    while (methods.next()) |entry| {
+                        const name = entry.key_ptr.*;
+                        const a_method = entry.value_ptr.*;
+                        const b_method = b.@"enum".methods.get(name) orelse return false;
+
+                        for (0..a_method.params.items.len) |i| {
+                            if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*)) return false;
+                        }
+
+                        return ctx.eql(a_method.return_type.*, b_method.return_type.*);
+                    }
+
+                    return true;
+                },
+                .optional => |ta| ctx.eql(ta.*, b.optional.*),
+                .reference => |ta| ctx.eql(ta.inner.*, b.reference.inner.*) and ta.is_mut == b.reference.is_mut,
+                .array => |ta| ctx.eql(ta.inner.*, b.array.inner.*) and ta.size == b.array.size,
+                .error_union => |ta| ctx.eql(ta.success.*, b.error_union.success.*) and
+                    ctx.eql(ta.failure.*, b.error_union.failure.*),
+                .function => |ta| {
+                    for (0..ta.params.items.len) |i| {
+                        if (!ctx.eql(ta.params.items[i].*, b.function.params.items[i].*)) return false;
+                    }
+
+                    return ctx.eql(ta.return_type.*, b.function.return_type.*);
+                },
+
+                else => true, // primitive types
+            };
+        }
+    };
 };

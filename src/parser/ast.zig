@@ -295,7 +295,7 @@ pub const Type = union(enum) {
 
     const ErrorUnion = struct {
         success: *const Type,
-        @"error": ?*const Type = null,
+        failure: ?*const Type = null,
     };
 
     const Function = struct {

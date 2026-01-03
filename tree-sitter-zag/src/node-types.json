@@ -400,7 +400,7 @@
     "type": "error_union",
     "named": true,
     "fields": {
-      "error": {
+      "failure": {
         "multiple": false,
         "required": false,
         "types": [
@@ -1749,6 +1749,10 @@
   },
   {
     "type": "union",
+    "named": false
+  },
+  {
+    "type": "usize",
     "named": false
   },
   {

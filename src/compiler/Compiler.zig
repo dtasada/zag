@@ -42,7 +42,14 @@ parser: *const Parser,
 
 output: File,
 zag_header: File,
-zag_header_contents: std.ArrayList(struct { type: Type, inner_name: []const u8 }),
+
+/// maps a type to its inner name
+zag_header_contents: std.HashMap(
+    Type,
+    []const u8,
+    Type.Context,
+    std.hash_map.default_max_load_percentage,
+),
 
 indent_level: usize = 0,
 
@@ -67,6 +74,11 @@ const File = struct {
     }
 
     fn deinit(self: *File, alloc: std.mem.Allocator) void {
+        self.flush() catch |err| utils.print(
+            "Compiler error: failed to write to file: {}\n",
+            .{err},
+            .red,
+        );
         self.handler.close();
         alloc.free(self.buf);
     }
@@ -115,7 +127,17 @@ pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const 
 
     const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
     const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
-    _ = try zag_header_file.write( // TODO: dynamic
+
+    self.* = .{
+        .alloc = alloc,
+        .parser = parser,
+
+        .output = try .init(alloc, @".c", output_file),
+        .zag_header = try .init(alloc, zag_header_path, zag_header_file),
+        .zag_header_contents = .init(alloc), // TODO: will probably change in the future, when compiling files
+    };
+
+    try self.zag_header.write( // TODO: dynamic
         \\#ifndef ZAG_H
         \\#define ZAG_H
         \\
@@ -153,17 +175,7 @@ pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const 
         \\        } payload;                                                   \
         \\    } union_name;
         \\
-        \\#endif
     );
-
-    self.* = .{
-        .alloc = alloc,
-        .parser = parser,
-
-        .output = try .init(alloc, @".c", output_file),
-        .zag_header = try .init(alloc, zag_header_path, zag_header_file),
-        .zag_header_contents = .empty, // TODO: will probably change in the future, when compiling files
-    };
 
     var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
     defer @".zag-out/bin".close();
@@ -214,6 +226,9 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.output.write(file_writer.items);
     try self.output.flush();
+
+    try self.zag_header.write("\n#endif");
+    try self.zag_header.flush();
 
     const out_c_file_path = try std.fs.path.join(self.alloc, &.{ ".zag-out", self.output.path }); // .zag-out/src/main.zag.c
     defer self.alloc.free(out_c_file_path);
@@ -279,17 +294,39 @@ pub fn compileType(self: *Self, file_writer: *std.ArrayList(u8), t: Type) Compil
             try self.print(file_writer, " *{s}", .{if (reference.is_mut) "" else " const"});
         },
         .@"struct" => |s| try self.write(file_writer, try self.getInnerName(s.name)),
-        // .optional => |optional| {
-        //     var optional_already_exists = false;
-        //     for (self.zag_header_contents.items) |item| {
-        //         if (item.type.eq(optional)) optional_already_exists = true;
-        //     }
-        //
-        //     if (!optional_already_exists) {
-        //         self.zag_header.print("__ZAG_OPTIONAL_TYPE(__zag_Optional_)", .{});
-        //     }
-        // },
-        .error_union => std.debug.panic("unimplemented type: {any}\n", .{t}),
+        .optional => |optional| {
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                var inner_type: std.ArrayList(u8) = .empty;
+                try self.compileType(&inner_type, optional.*);
+                try self.zag_header.print("__ZAG_OPTIONAL_TYPE({s}, {s})\n", .{ type_name, inner_type.items });
+                try self.zag_header.flush();
+                try self.zag_header_contents.put(t, type_name);
+            }
+
+            try self.write(file_writer, type_name);
+        },
+
+        .error_union => |error_union| {
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                var success_type: std.ArrayList(u8) = .empty;
+                try self.compileType(&success_type, error_union.success.*);
+
+                var error_type: std.ArrayList(u8) = .empty;
+                try self.compileType(&error_type, error_union.failure.*);
+
+                try self.zag_header.print("__ZAG_ERROR_UNION_TYPE({s}, {s}, {s})\n", .{
+                    type_name,
+                    error_type.items,
+                    success_type.items,
+                });
+                try self.zag_header.flush();
+                try self.zag_header_contents.put(t, type_name);
+            }
+
+            try self.write(file_writer, type_name);
+        },
 
         // should be unreachable, array and function types are handled in `compileVariableSignature`
         .array, .function => unreachable,

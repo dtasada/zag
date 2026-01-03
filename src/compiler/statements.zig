@@ -190,12 +190,13 @@ fn variableDefinition(
         try .fromAst(self, v.type);
 
     const received_type: Type = try .infer(self, v.assigned_value);
-    if (!variable_type.eq(&received_type)) return utils.printErr(
-        error.TypeMismatch,
-        "comperr: Type of expression doesn't match explicit type. Expected: '{f}', received '{f}' ({f})\n",
-        .{ variable_type, received_type, v.assigned_value.getPosition() },
-        .red,
-    );
+    if (!variable_type.eql(received_type) and !received_type.convertsTo(variable_type))
+        return utils.printErr(
+            error.TypeMismatch,
+            "comperr: Type of expression doesn't match explicit type. Expected: '{f}', received '{f}' ({f})\n",
+            .{ variable_type, received_type, v.assigned_value.getPosition() },
+            .red,
+        );
 
     if (!v.is_mut) try self.write(file_writer, "const ");
 
@@ -205,7 +206,12 @@ fn variableDefinition(
 
     try self.registerSymbol(v.variable_name, variable_type, .{ .symbol = .{ .is_mut = v.is_mut } });
 
-    try expressions.compile(self, file_writer, &v.assigned_value, .{ .is_const = !v.is_mut });
+    try expressions.compile(
+        self,
+        file_writer,
+        &v.assigned_value,
+        .{ .is_const = !v.is_mut, .expected_type = variable_type },
+    );
 
     try self.write(file_writer, ";\n");
 }
@@ -239,7 +245,7 @@ fn conditional(
             },
             else => |other| switch (try Type.infer(self, other)) {
                 .array => |array| {
-                    try self.compileType(file_writer, .size);
+                    try self.compileType(file_writer, .usize);
                     try self.print(file_writer, " {s} = 0", .{statement.capture});
                     try self.print(file_writer, "; {s} < {}", .{ statement.capture, array.size orelse
                         @panic("unimplemented: arraylist size") });

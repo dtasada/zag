@@ -23,7 +23,7 @@
 (binary_expression op: _ @operator)
 (prefix_expression op: _ @operator)
 (assignment_operator) @operator
-[".." "..=" "&" "!" "="] @operator
+[".." "..=" "&" "!" "?" "="] @operator
 
 [";" "." "," ":"] @punctuation.delimiter
 

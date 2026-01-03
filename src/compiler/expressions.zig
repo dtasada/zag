@@ -14,9 +14,32 @@ pub fn compile(
     self: *Self,
     file_writer: *std.ArrayList(u8),
     expression: *const ast.Expression,
-    opts: struct { is_const: bool = false },
+    opts: struct {
+        is_const: bool = false,
+        expected_type: ?Type = null, // null means infer the type from the expression
+    },
 ) CompilerError!void {
-    switch (expression.*) {
+    if (opts.expected_type) |expected_type| {
+        const received_type: Type = try .infer(self, expression.*);
+
+        if (!expected_type.eql(received_type) and !received_type.convertsTo(expected_type))
+            return utils.printErr(
+                error.TypeMismatch,
+                "comperr: Expression of type '{f}' is not convertible to '{f}' ({f}).\n",
+                .{ expected_type, received_type, expression.getPosition() },
+                .red,
+            );
+
+        if (!expected_type.eql(received_type)) switch (expected_type) {
+            .optional => {
+                try self.print(file_writer, "({s}){{ .is_some = true, .payload = ", .{self.zag_header_contents.get(expected_type) orelse unreachable});
+                try compile(self, file_writer, expression, .{});
+                try self.write(file_writer, " }");
+            },
+            // else means other convertible types. incompatible types are unreachable.
+            else => try compile(self, file_writer, expression, .{ .is_const = opts.is_const }),
+        };
+    } else switch (expression.*) {
         .assignment => |a| try assignment(self, file_writer, a),
         .block => |block| try self.compileBlock(file_writer, block.block),
         .binary => |b| try binary(self, file_writer, b),
@@ -220,7 +243,7 @@ fn call(
                             .{ @"struct".name, @"struct".name },
                             .red,
                         ),
-                        .@"struct" => |param_arg| if (!param_arg.eq(&@"struct")) unreachable,
+                        .@"struct" => |param_arg| if (!param_arg.eql(@"struct")) unreachable,
                         else => unreachable,
                     }
 
@@ -249,7 +272,7 @@ fn call(
                     for (method.params.items[1..], 0..) |param, i| {
                         const received_expr = call_expr.args.items[i];
                         const received_type: Type = try .infer(self, received_expr);
-                        if (!param.eq(&received_type)) return utils.printErr(
+                        if (!param.eql(received_type)) return utils.printErr(
                             error.TypeMismatch,
                             "comperr: type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
                             .{ received_expr.getPosition(), param, received_type },
@@ -309,7 +332,7 @@ fn call(
                 for (function.params.items[1..], 0..) |param, i| {
                     const received_expr = call_expr.args.items[i];
                     const received_type: Type = try .infer(self, received_expr);
-                    if (!param.eq(&try .infer(self, call_expr.args.items[i]))) {
+                    if (!param.eql(try .infer(self, call_expr.args.items[i]))) {
                         return utils.printErr(
                             error.TypeMismatch,
                             "comperr: Type doesn't match function signature at {f}. Expected '{f}', got '{f}'\n",

@@ -965,6 +965,10 @@
         },
         {
           "type": "STRING",
+          "value": "usize"
+        },
+        {
+          "type": "STRING",
           "value": "f32"
         },
         {
@@ -1087,7 +1091,7 @@
             "members": [
               {
                 "type": "FIELD",
-                "name": "error",
+                "name": "failure",
                 "content": {
                   "type": "SYMBOL",
                   "name": "type"
