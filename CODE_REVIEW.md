@@ -63,11 +63,11 @@ The main areas for improvement are portability and feature completeness.
 2.  **Incomplete Type Compilation**: The compiler is not yet able to handle several of the language's own type features. The `compileType` function has panics for them.
     ```zig
     // in src/compiler/Compiler.zig
-    pub fn compileType(self: *Self, file_writer: *std.ArrayList(u8), t: Type) CompilerError!void {
+    pub fn compileType(self: *Self,  t: Type) CompilerError!void {
         return switch (t) {
             // ...
             .optional, .array, .error_union, .function => std.debug.panic("unimplemented type: {any}\n", .{t}),
-            else => |primitive| try self.write(file_writer, @tagName(primitive)),
+            else => |primitive| try self.write( @tagName(primitive)),
         };
     }
     ```

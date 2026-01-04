@@ -11,30 +11,28 @@ const CompilerError = Self.CompilerError;
 
 pub fn compile(
     self: *Self,
-    file_writer: *std.ArrayList(u8),
     statement: *const ast.Statement,
 ) CompilerError!void {
     switch (statement.*) {
-        .function_definition => |fn_def| try functionDefinition(self, file_writer, fn_def),
-        .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, file_writer, .@"struct", struct_decl),
-        .@"return" => |return_expr| try @"return"(self, file_writer, return_expr),
-        .variable_definition => |var_decl| try variableDefinition(self, file_writer, var_decl),
+        .function_definition => |fn_def| try functionDefinition(self, fn_def),
+        .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
+        .@"return" => |return_expr| try @"return"(self, return_expr),
+        .variable_definition => |var_decl| try variableDefinition(self, var_decl),
         .expression => |*expr| {
-            try expressions.compile(self, file_writer, expr, .{});
-            try self.write(file_writer, ";\n");
+            try expressions.compile(self, expr, .{});
+            try self.write(";\n");
         },
-        .@"if" => |if_stmt| try conditional(self, file_writer, .@"if", if_stmt),
-        .@"while" => |while_stmt| try conditional(self, file_writer, .@"while", while_stmt),
-        .@"for" => |for_stmt| try conditional(self, file_writer, .@"for", for_stmt),
-        .block => |block| try self.compileBlock(file_writer, block.block, .{}),
-        .enum_declaration => |enum_decl| try compoundTypeDeclaration(self, file_writer, .@"enum", enum_decl),
-        .union_declaration => |union_decl| try compoundTypeDeclaration(self, file_writer, .@"union", union_decl),
+        .@"if" => |if_stmt| try conditional(self, .@"if", if_stmt),
+        .@"while" => |while_stmt| try conditional(self, .@"while", while_stmt),
+        .@"for" => |for_stmt| try conditional(self, .@"for", for_stmt),
+        .block => |block| try self.compileBlock(block.block, .{}),
+        .enum_declaration => |enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl),
+        .union_declaration => |union_decl| try compoundTypeDeclaration(self, .@"union", union_decl),
     }
 }
 
 fn compoundTypeDeclaration(
     self: *Self,
-    file_writer: *std.ArrayList(u8),
     comptime T: enum { @"struct", @"union", @"enum" },
     type_decl: switch (T) {
         .@"struct" => ast.Statement.StructDeclaration,
@@ -109,7 +107,7 @@ fn compoundTypeDeclaration(
         });
     }
 
-    try self.print(file_writer, "typedef {s} {{\n", .{switch (T) {
+    try self.print("typedef {s} {{\n", .{switch (T) {
         .@"struct" => "struct",
         .@"union" => "union",
         .@"enum" => "enum",
@@ -118,26 +116,24 @@ fn compoundTypeDeclaration(
 
     var members = compound_type.members.iterator();
     while (members.next()) |member| {
-        try self.indent(file_writer);
+        try self.indent();
         switch (T) {
             .@"struct" => {
                 try self.compileVariableSignature(
-                    file_writer,
                     member.key_ptr.*,
                     member.value_ptr.*.*,
                 );
-                try self.write(file_writer, ";\n");
+                try self.write(";\n");
             },
             .@"union" => {
                 try self.compileVariableSignature(
-                    file_writer,
                     member.key_ptr.*,
                     member.value_ptr.*.*,
                 );
-                try self.write(file_writer, ";\n");
+                try self.write(";\n");
             },
             .@"enum" => {
-                try self.print(file_writer, "{s},\n", .{member.key_ptr.*});
+                try self.print("{s},\n", .{member.key_ptr.*});
                 if (member.value_ptr.*) |_|
                     std.debug.print("unimplemented explicit enum member values\n", .{});
             },
@@ -145,30 +141,30 @@ fn compoundTypeDeclaration(
     }
 
     self.indent_level -= 1;
-    try self.print(file_writer, "}} {s};\n\n", .{type_decl.name});
+    try self.print("}} {s};\n\n", .{type_decl.name});
 
     for (type_decl.methods.items) |method| {
-        try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .{ .symbol = .{} });
         try self.pushScope();
         defer self.popScope();
 
-        try self.compileType(file_writer, try .fromAst(self, method.return_type));
-        try self.print(file_writer, " __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
+        try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .{ .symbol = .{} });
+
+        try self.compileType(try .fromAst(self, method.return_type));
+        try self.print(" __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type: Type = try .fromAst(self, parameter.type);
             try self.registerSymbol(parameter.name, parameter_type, .{ .symbol = .{} });
-            try self.compileVariableSignature(file_writer, parameter.name, parameter_type);
-            if (i < method.parameters.items.len) try self.write(file_writer, ", ");
+            try self.compileVariableSignature(parameter.name, parameter_type);
+            if (i < method.parameters.items.len) try self.write(", ");
         }
-        try self.write(file_writer, ") ");
+        try self.write(") ");
 
-        try self.compileBlock(file_writer, method.body, .{});
+        try self.compileBlock(method.body, .{});
     }
 }
 
 fn @"return"(
     self: *Self,
-    file_writer: *std.ArrayList(u8),
     r: ast.Statement.Return,
 ) CompilerError!void {
     const expected_type: Type = b: {
@@ -206,17 +202,16 @@ fn @"return"(
         );
     };
 
-    try self.write(file_writer, "return");
+    try self.write("return");
     if (r.@"return") |*expression| {
-        try self.write(file_writer, " ");
-        try expressions.compile(self, file_writer, expression, .{ .expected_type = expected_type });
+        try self.write(" ");
+        try expressions.compile(self, expression, .{ .expected_type = expected_type });
     }
-    try self.write(file_writer, ";\n");
+    try self.write(";\n");
 }
 
 fn variableDefinition(
     self: *Self,
-    file_writer: *std.ArrayList(u8),
     v: ast.Statement.VariableDefinition,
 ) CompilerError!void {
     const received_type: Type = try .infer(self, v.assigned_value);
@@ -232,35 +227,30 @@ fn variableDefinition(
             .red,
         );
 
-    if (!v.is_mut) try self.write(file_writer, "const ");
+    if (!v.is_mut and received_type != .function) try self.write("const ");
 
-    try self.compileVariableSignature(
-        file_writer,
-        v.variable_name,
-        expected_type orelse received_type,
-    );
+    try self.compileVariableSignature(v.variable_name, expected_type orelse received_type);
 
-    try self.write(file_writer, " = ");
+    if (v.assigned_value != .ident and std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
+        try self.write(" = ");
 
-    try self.registerSymbol(
-        v.variable_name,
-        expected_type orelse received_type,
-        .{ .symbol = .{ .is_mut = v.is_mut } },
-    );
+        try self.registerSymbol(
+            v.variable_name,
+            expected_type orelse received_type,
+            .{ .symbol = .{ .is_mut = v.is_mut } },
+        );
 
-    try expressions.compile(
-        self,
-        file_writer,
-        &v.assigned_value,
-        .{ .is_const = !v.is_mut, .expected_type = expected_type },
-    );
+        try expressions.compile(self, &v.assigned_value, .{
+            .is_const = !v.is_mut,
+            .expected_type = expected_type,
+        });
+    }
 
-    try self.write(file_writer, ";\n");
+    try self.write(";\n");
 }
 
 fn conditional(
     self: *Self,
-    file_writer: *std.ArrayList(u8),
     comptime T: enum { @"if", @"while", @"for" },
     statement: switch (T) {
         .@"if" => ast.Statement.If,
@@ -268,7 +258,7 @@ fn conditional(
         .@"for" => ast.Statement.For,
     },
 ) CompilerError!void {
-    try self.print(file_writer, "{s} (", .{switch (T) {
+    try self.print("{s} (", .{switch (T) {
         .@"if" => "if",
         .@"for" => "for",
         .@"while" => "while",
@@ -285,7 +275,7 @@ fn conditional(
 
     switch (T) {
         .@"if", .@"while" => switch (try Type.infer(self, statement.condition.*)) {
-            .bool, .optional => try expressions.compile(self, file_writer, statement.condition, .{}),
+            .bool, .optional => try expressions.compile(self, statement.condition, .{}),
             else => |t| return utils.printErr(
                 error.IllegalExpression,
                 "comperr: Illegal expression: {s} statement condition must be a boolean or an optional, received {f} ({f}).\n",
@@ -299,20 +289,20 @@ fn conditional(
 
             switch (statement.iterator.*) {
                 .range => |range| {
-                    try self.compileType(file_writer, try .infer(self, range.start.*));
-                    try self.print(file_writer, " {s} = ", .{capture});
-                    try expressions.compile(self, file_writer, range.start, .{});
-                    try self.print(file_writer, "; {s} < ", .{capture});
-                    try expressions.compile(self, file_writer, range.end, .{});
-                    try self.print(file_writer, "; {s}++", .{capture});
+                    try self.compileType(try .infer(self, range.start.*));
+                    try self.print(" {s} = ", .{capture});
+                    try expressions.compile(self, range.start, .{});
+                    try self.print("; {s} < ", .{capture});
+                    try expressions.compile(self, range.end, .{});
+                    try self.print("; {s}++", .{capture});
                 },
                 else => |other| switch (try Type.infer(self, other)) {
                     .array => |array| {
-                        try self.compileType(file_writer, .usize);
-                        try self.print(file_writer, " {s} = 0", .{capture});
-                        try self.print(file_writer, "; {s} < {}", .{ capture, array.size orelse
+                        try self.compileType(.usize);
+                        try self.print(" {s} = 0", .{capture});
+                        try self.print("; {s} < {}", .{ capture, array.size orelse
                             @panic("unimplemented: arraylist size") });
-                        try self.print(file_writer, "; {s}++", .{capture});
+                        try self.print("; {s}++", .{capture});
                     },
                     else => |t| return utils.printErr(
                         error.IllegalExpression,
@@ -324,10 +314,9 @@ fn conditional(
             }
         },
     }
-    try self.write(file_writer, ") ");
+    try self.write(") ");
 
     try self.compileBlock(
-        file_writer,
         switch (statement.body.*) {
             .block => |block| block.block,
             else => b: {
@@ -343,9 +332,9 @@ fn conditional(
 
     switch (T) {
         .@"if" => if (statement.@"else") |@"else"| {
-            try self.indent(file_writer);
-            try self.write(file_writer, "else ");
-            try compile(self, file_writer, @"else");
+            try self.indent();
+            try self.write("else ");
+            try compile(self, @"else");
         },
         else => {},
     }
@@ -353,7 +342,6 @@ fn conditional(
 
 fn functionDefinition(
     self: *Self,
-    file_writer: *std.ArrayList(u8),
     function_def: ast.Statement.FunctionDefinition,
 ) CompilerError!void {
     try self.registerSymbol(function_def.name, try .fromAst(self, function_def.getType()), .{ .symbol = .{} });
@@ -361,15 +349,15 @@ fn functionDefinition(
     try self.pushScope();
     defer self.popScope();
 
-    try self.compileType(file_writer, try .fromAst(self, function_def.return_type));
-    try self.print(file_writer, " {s}(", .{function_def.name});
+    try self.compileType(try .fromAst(self, function_def.return_type));
+    try self.print(" {s}(", .{function_def.name});
     for (function_def.parameters.items, 1..) |parameter, i| {
-        try self.compileVariableSignature(file_writer, parameter.name, try .fromAst(self, parameter.type));
-        if (i < function_def.parameters.items.len) try self.write(file_writer, ", ");
+        try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type));
+        if (i < function_def.parameters.items.len) try self.write(", ");
 
         try self.registerSymbol(parameter.name, try .fromAst(self, parameter.type), .{ .symbol = .{} });
     }
-    try self.write(file_writer, ") ");
+    try self.write(") ");
 
-    try self.compileBlock(file_writer, function_def.body, .{});
+    try self.compileBlock(function_def.body, .{});
 }

@@ -11,16 +11,16 @@ const TypeParser = @import("TypeParser.zig");
 
 const Self = @This();
 
+/// Function signature for a statement handler.
 const StatementHandler = *const fn (*Self) ParserError!ast.Statement;
+
+/// Function signature for a nud handler.
 const NudHandler = *const fn (*Self) ParserError!ast.Expression;
+
+/// Function signature for a led handler.
 const LedHandler = *const fn (*Self, *const ast.Expression, BindingPower) ParserError!ast.Expression;
 
-const StatementLookup = std.AutoHashMap(Lexer.TokenKind, StatementHandler);
-const NudLookup = std.AutoHashMap(Lexer.TokenKind, NudHandler);
-const LedLookup = std.AutoHashMap(Lexer.TokenKind, LedHandler);
-const BpLookup = std.AutoHashMap(Lexer.TokenKind, BindingPower);
-
-/// Binding power. please keep order of enum
+/// Binding power. Order of this enum is functional, so don't change it.
 pub const BindingPower = enum {
     default,
     comma,
@@ -45,17 +45,32 @@ pub const ParserError = error{
     StatementNotInMap,
 };
 
+/// Parser state: the current reading position in the lexer token list.
 pos: usize,
+
+/// Input tokens, and maps the tokens to the source code.
 lexer: *const Lexer,
+
 alloc: std.mem.Allocator,
+
+/// Parser output: the root AST object.
 output: ast.RootNode = .empty,
 
 /// pratt parsing helpers
 type_parser: TypeParser,
-bp_lookup: BpLookup,
-nud_lookup: NudLookup,
-led_lookup: LedLookup,
-statement_lookup: StatementLookup,
+
+/// Maps a `Token` to its corresponding binding power.
+bp_lookup: std.AutoHashMap(Lexer.TokenKind, BindingPower),
+
+/// Maps a `Token` to a corresponding nud handler.
+nud_lookup: std.AutoHashMap(Lexer.TokenKind, NudHandler),
+
+/// Maps a `Token` to a corresponding led handler.
+led_lookup: std.AutoHashMap(Lexer.TokenKind, LedHandler),
+
+/// Maps a `Token` to a corresponding statement handler.
+statement_lookup: std.AutoHashMap(Lexer.TokenKind, StatementHandler),
+
 // errors: std.ArrayList(ParserError) = .empty,
 
 /// Initializes and runs parser. Populates `output`.
@@ -72,54 +87,52 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
         .alloc = alloc,
     };
 
-    try self.led(.equals, .assignment, expressions.assignment);
-    try self.led(.plus_equals, .assignment, expressions.assignment);
-    try self.led(.minus_equals, .assignment, expressions.assignment);
-    try self.led(.times_equals, .assignment, expressions.assignment);
-    try self.led(.slash_equals, .assignment, expressions.assignment);
-    try self.led(.mod_equals, .assignment, expressions.assignment);
-    try self.led(.and_equals, .assignment, expressions.assignment);
-    try self.led(.or_equals, .assignment, expressions.assignment);
-    try self.led(.xor_equals, .assignment, expressions.assignment);
-    try self.led(.shift_right_equals, .assignment, expressions.assignment);
-    try self.led(.shift_left_equals, .assignment, expressions.assignment);
+    try self.led(.@"=", .assignment, expressions.assignment);
+    try self.led(.@"+=", .assignment, expressions.assignment);
+    try self.led(.@"-=", .assignment, expressions.assignment);
+    try self.led(.@"*=", .assignment, expressions.assignment);
+    try self.led(.@"/=", .assignment, expressions.assignment);
+    try self.led(.@"%=", .assignment, expressions.assignment);
+    try self.led(.@"&=", .assignment, expressions.assignment);
+    try self.led(.@"|=", .assignment, expressions.assignment);
+    try self.led(.@"^=", .assignment, expressions.assignment);
+    try self.led(.@">>=", .assignment, expressions.assignment);
+    try self.led(.@"<<=", .assignment, expressions.assignment);
 
     // logical
     try self.led(.@"and", .logical, expressions.binary);
     try self.led(.@"or", .logical, expressions.binary);
 
     // relational
-    try self.led(.less, .relational, expressions.binary);
-    try self.led(.less_equals, .relational, expressions.binary);
-    try self.led(.greater, .relational, expressions.binary);
-    try self.led(.greater_equals, .relational, expressions.binary);
-    try self.led(.equals_equals, .relational, expressions.binary);
-    try self.led(.bang_equals, .relational, expressions.binary);
+    try self.led(.@"<", .relational, expressions.binary);
+    try self.led(.@"<=", .relational, expressions.binary);
+    try self.led(.@">", .relational, expressions.binary);
+    try self.led(.@">=", .relational, expressions.binary);
+    try self.led(.@"==", .relational, expressions.binary);
+    try self.led(.@"!=", .relational, expressions.binary);
 
     // additive & multiplicative
-    try self.led(.plus, .additive, expressions.binary);
-    try self.led(.dash, .additive, expressions.binary);
-    try self.led(.asterisk, .multiplicative, expressions.binary);
-    try self.led(.slash, .multiplicative, expressions.binary);
-    try self.led(.percent, .multiplicative, expressions.binary);
-    try self.led(.ampersand, .multiplicative, expressions.binary);
-    try self.led(.pipe, .additive, expressions.binary);
-    try self.led(.caret, .additive, expressions.binary);
-    try self.led(.pipe, .additive, expressions.binary);
-    try self.led(.caret, .additive, expressions.binary);
-    try self.led(.shift_left, .multiplicative, expressions.binary);
-    try self.led(.shift_right, .multiplicative, expressions.binary);
+    try self.led(.@"+", .additive, expressions.binary);
+    try self.led(.@"-", .additive, expressions.binary);
+    try self.led(.@"*", .multiplicative, expressions.binary);
+    try self.led(.@"/", .multiplicative, expressions.binary);
+    try self.led(.@"*", .multiplicative, expressions.binary);
+    try self.led(.@"&", .multiplicative, expressions.binary);
+    try self.led(.@"|", .additive, expressions.binary);
+    try self.led(.@"^", .additive, expressions.binary);
+    try self.led(.@"<<", .multiplicative, expressions.binary);
+    try self.led(.@">>", .multiplicative, expressions.binary);
 
     // literals & symbols
     try self.nud(.int, expressions.primary);
     try self.nud(.float, expressions.primary);
     try self.nud(.ident, expressions.primary);
     try self.nud(.string, expressions.primary);
-    try self.nud(.dash, expressions.prefix);
+    try self.nud(.@"-", expressions.prefix);
     try self.nud(.open_paren, expressions.group);
 
     // Call/member expressions
-    try self.led(.dot, .member, expressions.member);
+    try self.led(.@".", .member, expressions.member);
     try self.led(.open_brace, .call, expressions.structInstantiation);
     try self.led(.open_paren, .call, expressions.call);
     try self.nud(.open_bracket, expressions.arrayInstantiation);
@@ -127,7 +140,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     // other expressions
     try self.nud(.open_brace, expressions.block);
     try self.nud(.@"if", expressions.@"if");
-    try self.nud(.ampersand, expressions.reference);
+    try self.nud(.@"&", expressions.reference);
     try self.led(.dot_dot, .relational, expressions.range);
     try self.led(.dot_dot_equals, .relational, expressions.range);
     try self.led(.open_bracket, .call, expressions.index);
@@ -150,6 +163,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     return self;
 }
 
+/// Cleans up resources
 pub fn deinit(self: *Self) void {
     self.bp_lookup.deinit();
     self.nud_lookup.deinit();
@@ -157,6 +171,7 @@ pub fn deinit(self: *Self) void {
     self.statement_lookup.deinit();
 }
 
+/// Returns the line and column in the source file corresponding to what is being parsed.
 pub inline fn currentPosition(self: *const Self) utils.Position {
     const pos = std.math.clamp(self.pos, 0, self.lexer.source_map.items.len - 1);
     return self.lexer.source_map.items[pos];
@@ -169,10 +184,12 @@ pub inline fn advance(self: *Self) Lexer.Token {
     return current_token;
 }
 
+/// Returns token at the current position.
 pub inline fn currentToken(self: *const Self) Lexer.Token {
     return self.lexer.tokens.items[self.pos];
 }
 
+/// Returns the tag of the token at the current position.
 pub inline fn currentTokenKind(self: *const Self) Lexer.TokenKind {
     return std.meta.activeTag(self.currentToken());
 }
@@ -192,6 +209,7 @@ fn led(self: *Self, kind: Lexer.TokenKind, bp: BindingPower, led_fn: LedHandler)
     try self.led_lookup.put(kind, led_fn);
 }
 
+/// Statements are standalone objects that begin with a token and don't rely on any other state.
 fn statement(self: *Self, kind: Lexer.TokenKind, statment_fn: StatementHandler) !void {
     try self.bp_lookup.put(kind, .default);
     try self.statement_lookup.put(kind, statment_fn);
@@ -277,11 +295,13 @@ pub inline fn getHandler(
     );
 }
 
-/// parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
+/// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
 pub fn parseParameters(self: *Self) !ast.ParameterList {
     return try self.parseParametersGeneric(false);
 }
 
+/// Parses generic parameter list.
+/// Equivalent to a normal parameter list but the explicit type is optional.
 pub fn parseGenericParameters(self: *Self) ParserError!ast.ParameterList {
     return try self.parseParametersGeneric(true);
 }

@@ -54,7 +54,7 @@ pub const Token = union(enum) {
     semicolon,
     colon,
     comma,
-    dot,
+    @".",
 
     // keywords
     let,
@@ -77,41 +77,39 @@ pub const Token = union(enum) {
     dot_dot_equals,
 
     // unary operators
-    bang,
-    question,
+    @"!",
+    @"?",
 
-    plus,
-    dash,
-    asterisk,
-    slash,
-    percent,
+    @"+",
+    @"-",
+    @"*",
+    @"/",
+    @"%",
 
-    plus_equals,
-    minus_equals,
-    times_equals,
-    slash_equals,
-    mod_equals,
-    and_equals,
-    or_equals,
-    xor_equals,
-    shift_right_equals,
-    shift_left_equals,
+    @"+=",
+    @"-=",
+    @"*=",
+    @"/=",
+    @"%=",
+    @"&=",
+    @"|=",
+    @"^=",
+    @">>=",
+    @"<<=",
 
-    equals,
-    equals_equals,
-    greater,
-    less,
-    greater_equals,
-    less_equals,
-    bang_equals,
+    @"=",
+    @"==",
+    @">",
+    @"<",
+    @">=",
+    @"<=",
+    @"!=",
 
-    ampersand,
-    pipe,
-    caret,
-    shift_right,
-    shift_left,
-    logical_and,
-    logical_or,
+    @"&",
+    @"|",
+    @"^",
+    @">>",
+    @"<<",
 
     pub fn format(
         self: *const Token,
@@ -142,12 +140,14 @@ pub fn init(input: []const u8, alloc: std.mem.Allocator) !*Self {
     return self;
 }
 
+/// Frees resources
 pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
     self.tokens.deinit(alloc);
     self.source_map.deinit(alloc);
     alloc.destroy(self);
 }
 
+/// Returns characer at the current position
 inline fn currentChar(self: *const Self) u8 {
     return self.input[self.pos];
 }
@@ -166,7 +166,8 @@ inline fn updatePosBackup(self: *Self) void {
     self.start_line_col = self.line_col;
 }
 
-inline fn advanceN(self: *Self, n: usize) void {
+/// Skips forward `n` characters.
+fn advanceN(self: *Self, n: usize) void {
     self.pos += n;
 
     if (self.line_col.col + n <= self.current_line_len + 1) {
@@ -250,7 +251,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
                 ';' => try self.appendAndNext(alloc, .semicolon),
                 ':' => try self.appendAndNext(alloc, .colon),
                 ',' => try self.appendAndNext(alloc, .comma),
-                '?' => try self.appendAndNext(alloc, .question),
+                '?' => try self.appendAndNext(alloc, .@"?"),
                 '\'' => {
                     _ = self.advance();
                     try self.appendAndNext(alloc, .{ .char = self.advance() });
@@ -279,7 +280,6 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
 
     if (self.pos + 2 <= self.input.len and std.mem.eql(u8, self.input[self.pos .. self.pos + 2], "//")) {
         const end_line_pos = std.mem.indexOfScalar(u8, self.input[self.pos..], '\n') orelse
-            std.mem.indexOfScalar(u8, self.input[self.pos..], '\n') orelse
             self.input.len - self.pos;
 
         self.advanceN(end_line_pos);
@@ -287,19 +287,19 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
     }
 
     const first_token: Token = switch (first_token_char) {
-        '=' => .equals,
-        '!' => .bang,
-        '>' => .greater,
-        '<' => .less,
-        '+' => .plus,
-        '-' => .dash,
-        '*' => .asterisk,
-        '/' => .slash,
-        '%' => .percent,
-        '&' => .ampersand,
-        '|' => .pipe,
-        '^' => .caret,
-        '.' => .dot,
+        '=' => .@"=",
+        '!' => .@"!",
+        '>' => .@">",
+        '<' => .@"<",
+        '+' => .@"+",
+        '-' => .@"-",
+        '*' => .@"*",
+        '/' => .@"/",
+        '%' => .@"%",
+        '&' => .@"&",
+        '|' => .@"|",
+        '^' => .@"^",
+        '.' => .@".",
         else => unreachable,
     };
 
@@ -309,39 +309,39 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
             '=' => blk: {
                 _ = self.advance();
                 break :blk switch (first_token) {
-                    .equals => .equals_equals,
-                    .bang => .bang_equals,
-                    .greater => .greater_equals,
-                    .less => .less_equals,
-                    .plus => .plus_equals,
-                    .dash => .minus_equals,
-                    .asterisk => .times_equals,
-                    .slash => .slash_equals,
-                    .percent => .mod_equals,
-                    .ampersand => .and_equals,
-                    .pipe => .or_equals,
-                    .caret => .xor_equals,
+                    .@"=" => .@"==",
+                    .@"!" => .@"!=",
+                    .@">" => .@">=",
+                    .@"<" => .@"<=",
+                    .@"+" => .@"+=",
+                    .@"-" => .@"-=",
+                    .@"*" => .@"*=",
+                    .@"/" => .@"/=",
+                    .@"%" => .@"%=",
+                    .@"&" => .@"&=",
+                    .@"|" => .@"|=",
+                    .@"^" => .@"^=",
                     else => unreachable,
                 };
             },
             '>' => blk: {
                 _ = self.advance();
                 break :blk switch (first_token) {
-                    .greater => .shift_right,
+                    .@">" => .@">>",
                     else => first_token,
                 };
             },
             '<' => blk: {
                 _ = self.advance();
                 break :blk switch (first_token) {
-                    .less => .shift_left,
+                    .@"<" => .@"<<",
                     else => first_token,
                 };
             },
             '.' => blk: {
                 _ = self.advance();
                 break :blk switch (first_token) {
-                    .dot => .dot_dot,
+                    .@"." => .dot_dot,
                     else => first_token,
                 };
             },
@@ -353,8 +353,8 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
             '=' => blk: {
                 _ = self.advance();
                 break :blk switch (double_token) {
-                    .shift_right => .shift_right_equals,
-                    .shift_left => .shift_left_equals,
+                    .@">>" => .@">>=",
+                    .@"<<" => .@"<<=",
                     else => double_token,
                 };
             },
@@ -371,6 +371,7 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
     try self.appendToken(alloc, triple_token);
 }
 
+/// Appends token and then advances one character. Used for readability
 inline fn appendAndNext(self: *Self, alloc: std.mem.Allocator, token: Token) !void {
     try self.appendToken(alloc, token);
     _ = self.advance();
@@ -451,6 +452,8 @@ fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
     });
 }
 
+/// Appends token to output arraylist `self.tokens` and registers the token's position in
+/// `self.source_map`
 fn appendToken(self: *Self, alloc: std.mem.Allocator, token: Token) !void {
     try self.tokens.append(alloc, token);
     try self.source_map.append(alloc, self.start_line_col);

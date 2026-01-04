@@ -15,14 +15,10 @@ const Self = @This();
 const NudHandler = *const fn (*Self, std.mem.Allocator) ParserError!ast.Type;
 const LedHandler = *const fn (*Self, std.mem.Allocator, ast.Type, BindingPower) ParserError!ast.Type;
 
-const NudLookup = std.AutoHashMap(Lexer.TokenKind, NudHandler);
-const LedLookup = std.AutoHashMap(Lexer.TokenKind, LedHandler);
-const BpLookup = std.AutoHashMap(Lexer.TokenKind, BindingPower);
-
 parent_parser: *Parser,
-bp_lookup: BpLookup,
-nud_lookup: NudLookup,
-led_lookup: LedLookup,
+bp_lookup: std.AutoHashMap(Lexer.TokenKind, BindingPower),
+nud_lookup: std.AutoHashMap(Lexer.TokenKind, NudHandler),
+led_lookup: std.AutoHashMap(Lexer.TokenKind, LedHandler),
 
 /// A token which has a NUD handler means it expects nothing to its left
 /// Common examples of this type of token are prefix & unary expressions.
@@ -49,11 +45,11 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
 
     try self.nud(Lexer.Token.ident, parseSymbolType);
     try self.nud(Lexer.Token.open_bracket, parseArrayType);
-    try self.nud(Lexer.Token.ampersand, parseReferenceType);
-    try self.nud(Lexer.Token.question, parseOptionalType);
-    try self.nud(Lexer.Token.bang, parseInferredErrorType);
+    try self.nud(Lexer.Token.@"&", parseReferenceType);
+    try self.nud(Lexer.Token.@"?", parseOptionalType);
+    try self.nud(Lexer.Token.@"!", parseInferredErrorType);
     try self.nud(Lexer.Token.open_paren, parseGroupType);
-    try self.led(Lexer.Token.bang, .logical, parseErrorType);
+    try self.led(Lexer.Token.@"!", .logical, parseErrorType);
     return self;
 }
 

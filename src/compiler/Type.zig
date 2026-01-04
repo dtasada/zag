@@ -194,11 +194,10 @@ pub const Type = union(enum) {
                         array_type.* = try fromAst(compiler, array.inner.*);
                         break :b array_type;
                     },
-
-                    .size = (try compiler.solveComptimeExpression(if (array.size) |s|
-                        s.*
+                    .size = if (array.size) |s|
+                        (try compiler.solveComptimeExpression(s.*)).u64
                     else
-                        @panic("can't infer array size"))).u64,
+                        null,
                 },
             },
             .optional => |optional| .{
@@ -255,20 +254,20 @@ pub const Type = union(enum) {
                 const rhs: Type = try .infer(compiler, binary.rhs.*);
                 if (!lhs.eql(rhs)) return utils.printErr(
                     error.TypeMismatch,
-                    "comperr: Mismatched types in binary expression at {f}: left is {f}, right is {f}\n",
-                    .{ binary.lhs.getPosition(), lhs, rhs },
+                    "comperr: Mismatched types in binary expression: {f} {s} {f} ({f})\n",
+                    .{ lhs, @tagName(binary.op), rhs, binary.lhs.getPosition() },
                     .red,
                 );
 
                 return switch (binary.op) {
-                    .equals_equals,
-                    .greater,
-                    .less,
-                    .greater_equals,
-                    .less_equals,
-                    .bang_equals,
-                    .logical_and,
-                    .logical_or,
+                    .@"==",
+                    .@">",
+                    .@"<",
+                    .@">=",
+                    .@"<=",
+                    .@"!=",
+                    .@"and",
+                    .@"or",
                     => .bool,
 
                     else => lhs,
@@ -327,31 +326,14 @@ pub const Type = union(enum) {
 
     fn inferCallExpression(compiler: *Compiler, call: ast.Expression.Call) !Self {
         return switch (call.callee.*) {
-            .member => |m| {
-                var parent_expr_buf: std.ArrayList(u8) = .empty;
-                try expressions.compile(compiler, &parent_expr_buf, m.parent, .{}); // TODO fix bug
-                const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
-                    error.UnknownSymbol,
-                    "comperr: Unknown symbol '{s}' at {f}\n",
-                    .{ parent_expr_buf.items, m.pos },
+            .member => |m| switch (try inferMemberExpression(compiler, m)) {
+                .function => |function| function.return_type.*,
+                else => |other| utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Member expression on '{f}' is illegal ({f})\n",
+                    .{ other, call.pos },
                     .red,
-                );
-
-                b: switch (parent_type) {
-                    .@"struct" => |@"struct"| {
-                        if (@"struct".methods.get(m.member_name)) |method| {
-                            return method.return_type.*;
-                        } else std.debug.panic("comperr: '{s}.{s}' is not a method\n", .{
-                            @"struct".name,
-                            m.member_name,
-                        });
-                    },
-                    .reference => |reference| continue :b reference.inner.*,
-                    else => |other| std.debug.panic(
-                        "comperr: Member expression on {f} is illegal\n",
-                        .{other},
-                    ),
-                }
+                ),
             },
             else => switch (try infer(compiler, call.callee.*)) {
                 .function => |function| function.return_type.*,
@@ -399,16 +381,7 @@ pub const Type = union(enum) {
     }
 
     fn inferMemberExpression(compiler: *Compiler, member: ast.Expression.Member) !Self {
-        // TODO: this is bad
-        var parent_expr_buf: std.ArrayList(u8) = .empty;
-        try expressions.compile(compiler, &parent_expr_buf, member.parent, .{});
-        const parent_type = compiler.getSymbolType(parent_expr_buf.items) catch return utils.printErr(
-            error.UnknownSymbol,
-            "comperr: Unknown symbol '{s}' at {f}\n",
-            .{ parent_expr_buf.items, member.pos },
-            .red,
-        );
-
+        const parent_type = try infer(compiler, member.parent.*);
         b: switch (parent_type) {
             .@"struct" => |@"struct"| {
                 if (@"struct".getProperty(member.member_name)) |property| switch (property) {
@@ -427,10 +400,10 @@ pub const Type = union(enum) {
                 );
             },
             .reference => |reference| continue :b reference.inner.*,
-            else => return utils.printErr(
+            else => |other| return utils.printErr(
                 error.IllegalExpression,
-                "comperr: Member expression on '{f}' is illegal\n",
-                .{parent_type},
+                "comperr: Member expression on '{f}' is illegal ({f})\n",
+                .{ other, member.pos },
                 .red,
             ),
         }

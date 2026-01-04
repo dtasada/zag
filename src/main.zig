@@ -17,6 +17,7 @@ const BuildError = error{
     CompilationError,
 };
 
+/// lexes, parses and compiles a single file.
 fn build(alloc: std.mem.Allocator) !void {
     const file_path = try std.fs.path.join(alloc, &.{ "src", "main.zag" });
     defer alloc.free(file_path);
@@ -57,7 +58,7 @@ fn build(alloc: std.mem.Allocator) !void {
 
     // try pretty.print(alloc, .{parser.output}, .{ .max_depth = 100 });
 
-    var compiler = Compiler.init(arena, parser, file_path) catch |err|
+    var compiler = Compiler.init(arena, parser.output.items, file_path) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",
@@ -75,6 +76,7 @@ fn build(alloc: std.mem.Allocator) !void {
         );
 }
 
+/// program entry point. sets up the cli app.
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
     defer _ = gpa.deinit();

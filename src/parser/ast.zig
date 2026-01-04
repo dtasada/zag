@@ -1,3 +1,5 @@
+//! Declarative description of the AST.
+
 const std = @import("std");
 const utils = @import("utils");
 
@@ -11,26 +13,26 @@ pub const Block = std.ArrayList(Statement);
 const ast = @This();
 
 pub const BinaryOperator = enum {
-    plus,
-    dash,
-    asterisk,
-    slash,
-    percent,
+    @"+",
+    @"-",
+    @"*",
+    @"/",
+    @"%",
 
-    equals_equals,
-    greater,
-    less,
-    greater_equals,
-    less_equals,
-    bang_equals,
+    @"==",
+    @">",
+    @"<",
+    @">=",
+    @"<=",
+    @"!=",
 
-    ampersand,
-    pipe,
-    caret,
-    logical_and,
-    logical_or,
-    shift_right,
-    shift_left,
+    @"&",
+    @"|",
+    @"^",
+    @"and",
+    @"or",
+    @">>",
+    @"<<",
 
     pub fn fromLexerToken(t: LexerToken) BinaryOperator {
         return std.meta.stringToEnum(BinaryOperator, @tagName(std.meta.activeTag(t))) orelse
@@ -39,17 +41,17 @@ pub const BinaryOperator = enum {
 };
 
 pub const AssignmentOperator = enum {
-    equals,
-    plus_equals,
-    minus_equals,
-    times_equals,
-    slash_equals,
-    mod_equals,
-    and_equals,
-    or_equals,
-    xor_equals,
-    shift_right_equals,
-    shift_left_equals,
+    @"=",
+    @"+=",
+    @"-=",
+    @"*=",
+    @"/=",
+    @"%=",
+    @"&=",
+    @"|=",
+    @"^=",
+    @">>=",
+    @"<<=",
 
     pub fn fromLexerToken(t: LexerToken) AssignmentOperator {
         return std.meta.stringToEnum(AssignmentOperator, @tagName(std.meta.activeTag(t))) orelse
@@ -58,8 +60,8 @@ pub const AssignmentOperator = enum {
 };
 
 pub const PrefixOperator = enum {
-    dash,
-    bang,
+    @"-",
+    @"!",
 
     pub fn fromLexerToken(t: LexerToken) PrefixOperator {
         return std.meta.stringToEnum(PrefixOperator, @tagName(std.meta.activeTag(t))) orelse

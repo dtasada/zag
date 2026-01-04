@@ -15,15 +15,15 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-typedef size_t size;
+typedef size_t usize;
 
 typedef float  f32;
 typedef double f64;
 
-#define __ZAG_OPTIONAL_TYPE(union_name, inner_type) \
-    typedef struct {                                \
-        bool       is_some;                         \
-        inner_type payload;                         \
+#define __ZAG_OPTIONAL_TYPE(union_name, T) \
+    typedef struct {                       \
+        bool is_some;                      \
+        T    payload;                      \
     } union_name;
 
 #define __ZAG_ERROR_UNION_TYPE(union_name, error_type, success_type) \
@@ -34,5 +34,39 @@ typedef double f64;
             error_type   error;                                      \
         } payload;                                                   \
     } union_name;
+
+#define __ZAG_ARRAYLIST_DEF(name, T) \
+    typedef struct {                 \
+        T    *items;                 \
+        usize capacity;              \
+        usize len;                   \
+    } name;
+
+#define __ZAG_ARRAYLIST_IMPL(name, T)                                  \
+    name name##_create(void) {                                         \
+        return (name){                                                 \
+            .items    = NULL,                                          \
+            .capacity = 0,                                             \
+            .len      = 0,                                             \
+        };                                                             \
+    }                                                                  \
+                                                                       \
+    void name##_destroy(name *self) {                                  \
+        free(self->items);                                             \
+        self->items    = NULL;                                         \
+        self->capacity = 0;                                            \
+        self->len      = 0;                                            \
+    }                                                                  \
+                                                                       \
+    void name##_append(name *self, T item) {                           \
+        if (self->len == self->capacity) {                             \
+            usize new_cap = self->capacity ? self->capacity * 2 : 16;  \
+            void *ptr     = realloc(self->items, new_cap * sizeof(T)); \
+            if (!ptr) abort();                                         \
+            self->items    = ptr;                                      \
+            self->capacity = new_cap;                                  \
+        }                                                              \
+        self->items[self->len++] = item;                               \
+    }
 
 #endif

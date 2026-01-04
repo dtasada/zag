@@ -19,8 +19,7 @@ fn add(lhs: i32, rhs: i32) i32 {
 }
 
 fn main() i32 {
-    // let a: ?u8 = 22;
-    let mut my_string = "some text";
+    let arraylist: []i32 = undefined;
 
     // return "asd";
 }

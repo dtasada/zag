@@ -203,10 +203,10 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
     try self.expect(self.advance(), Lexer.Token.close_paren, "if expression", ")");
 
     const capture: ?[]const u8 = switch (self.currentToken()) {
-        .pipe => blk: {
+        .@"|" => blk: {
             _ = self.advance(); // consume opening pipe
             const capture_name = try self.expect(self.advance(), Lexer.Token.ident, "capture", "capture name");
-            try self.expect(self.advance(), Lexer.Token.pipe, "capture", "|"); // consume closing pipe
+            try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
             break :blk capture_name;
         },
         else => null,

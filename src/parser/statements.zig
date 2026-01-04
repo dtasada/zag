@@ -44,12 +44,7 @@ pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
         @"type" = try self.type_parser.parseType(self.alloc, .default);
     }
 
-    try self.expect(
-        self.advance(),
-        Lexer.Token.equals,
-        "variable declaration statement",
-        "=",
-    );
+    try self.expect(self.advance(), .@"=", "variable declaration statement", "=");
 
     const assigned_value = try expressions.parse(self, .assignment);
 
@@ -130,7 +125,7 @@ pub fn compoundTypeDeclaration(
 
                 const default_value: ?ast.Expression =
                     switch (T) {
-                        .@"struct", .@"enum" => if (self.currentTokenKind() == Lexer.Token.equals) blk: {
+                        .@"struct", .@"enum" => if (self.currentTokenKind() == .@"=") blk: {
                             _ = self.advance();
                             break :blk try expressions.parse(self, .default);
                         } else null,
@@ -226,9 +221,9 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     iterator.* = try expressions.parse(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_paren, "for statement iterator", ")");
 
-    try self.expect(self.advance(), Lexer.Token.pipe, "for statement capture", "|");
+    try self.expect(self.advance(), .@"|", "for statement capture", "|");
     const capture = try self.expect(self.advance(), Lexer.Token.ident, "for statement capture", "for statement capture identifier");
-    try self.expect(self.advance(), Lexer.Token.pipe, "for statement capture", "|");
+    try self.expect(self.advance(), .@"|", "for statement capture", "|");
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentTokenKind() == .open_brace)
@@ -271,10 +266,10 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
     try self.expect(self.advance(), Lexer.Token.close_paren, context, ")");
 
     const capture: ?[]const u8 = switch (self.currentToken()) {
-        .pipe => blk: {
+        .@"|" => blk: {
             _ = self.advance(); // consume opening pipe
             const capture_name = try self.expect(self.advance(), Lexer.Token.ident, "capture", "capture name");
-            try self.expect(self.advance(), Lexer.Token.pipe, "capture", "|"); // consume closing pipe
+            try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
             break :blk if (std.mem.eql(u8, capture_name, "_")) null else capture_name;
         },
         else => null,
