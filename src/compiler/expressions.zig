@@ -257,16 +257,18 @@ fn call(
                 else => false,
             };
 
-            b: switch (try Type.infer(self, m.parent.*)) {
+            const parent: Type = try .infer(self, m.parent.*);
+            b: switch (parent) {
                 .@"struct" => |@"struct"| if (@"struct".methods.get(m.member_name)) |method| {
-                    switch (method.params.items[0].*) {
+                    const param_type = method.params.items[0].*;
+                    switch (param_type) {
                         .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
                             error.BadMutability,
                             "comperr: method requires &mut {s}, but &{s} was passed.",
                             .{ @"struct".name, @"struct".name },
                             .red,
                         ),
-                        .@"struct" => |param_arg| if (!param_arg.eql(@"struct")) unreachable,
+                        .@"struct" => if (!param_type.eql(parent)) unreachable,
                         else => unreachable,
                     }
 

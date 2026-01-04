@@ -129,13 +129,14 @@ pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const 
     const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
     const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
 
+    var visited: std.ArrayList(Type.Context.Visited) = try .initCapacity(alloc, 128);
     self.* = .{
         .alloc = alloc,
         .parser = parser,
 
         .output = try .init(alloc, @".c", output_file),
         .zag_header = try .init(alloc, zag_header_path, zag_header_file),
-        .zag_header_contents = .init(alloc), // TODO: will probably change in the future, when compiling files
+        .zag_header_contents = .initContext(alloc, .{ .visited = &visited }), // TODO: will probably change in the future, when compiling files
     };
 
     try self.zag_header.write( // TODO: dynamic

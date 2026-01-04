@@ -60,13 +60,6 @@ pub const Type = union(enum) {
                     .methods = methods,
                 };
             }
-
-            pub fn eql(a: CompoundType(T), b: CompoundType(T)) bool {
-                return Type.eql(
-                    @unionInit(Type, @tagName(T), a),
-                    @unionInit(Type, @tagName(T), b),
-                );
-            }
         };
     }
 
@@ -444,11 +437,17 @@ pub const Type = union(enum) {
     }
 
     pub fn eql(a: Type, b: Type) bool {
-        return Context.eql(.{}, a, b);
+        var buf: [128]Context.Visited = undefined;
+        var list: std.ArrayList(Context.Visited) = .initBuffer(&buf);
+        var ctx: Context = .{ .visited = &list };
+        return ctx.eql(a, b);
     }
 
     pub fn hash(self: Type) u64 {
-        return Context.hash(.{}, self);
+        var buf: [128]Context.Visited = undefined;
+        var list: std.ArrayList(Context.Visited) = .initBuffer(&buf);
+        var ctx: Context = .{ .visited = &list };
+        return ctx.hash(self);
     }
 
     /// Checks if a type is convertible to a destination type.
@@ -507,6 +506,9 @@ pub const Type = union(enum) {
     }
 
     pub const Context = struct {
+        pub const Visited = struct { *const anyopaque, *const anyopaque };
+        visited: *std.ArrayList(Visited),
+
         pub fn hash(ctx: Context, t: Type) u64 {
             var h = std.hash.Wyhash.init(0);
 
@@ -611,20 +613,34 @@ pub const Type = union(enum) {
 
             return switch (a) {
                 inline .@"struct", .@"union" => |ta| {
-                    if (!std.mem.eql(u8, ta.name, switch (b) {
+                    const b_members = switch (b) {
+                        inline .@"struct", .@"union" => |t| t.members,
+                        else => unreachable,
+                    };
+                    const b_methods = switch (b) {
+                        inline .@"struct", .@"union" => |t| t.methods,
+                        else => unreachable,
+                    };
+                    const b_name = switch (b) {
                         inline .@"struct", .@"union" => |t| t.name,
                         else => unreachable,
-                    })) return false;
+                    };
 
-                    if (ta.members.count() != switch (b) {
-                        inline .@"struct", .@"union" => |t| t.members.count(),
-                        else => unreachable,
-                    }) return false;
+                    for (ctx.visited.items) |visit| {
+                        if (visit.@"0" == @as(*const anyopaque, @ptrCast(ta.members)) and
+                            visit.@"1" == @as(*const anyopaque, @ptrCast(b_members)) or
+                            visit.@"1" == @as(*const anyopaque, @ptrCast(ta.members)) and
+                                visit.@"0" == @as(*const anyopaque, @ptrCast(b_members)))
+                            return true;
+                    }
 
-                    if (ta.methods.count() != switch (b) {
-                        inline .@"struct", .@"union" => |t| t.methods.count(),
-                        else => unreachable,
-                    }) return false;
+                    if (!std.mem.eql(u8, ta.name, b_name)) return false;
+
+                    if (ta.members.count() != b_members.count()) return false;
+                    if (ta.methods.count() != b_methods.count()) return false;
+
+                    ctx.visited.appendAssumeCapacity(.{ ta.members, b_members });
+                    defer _ = ctx.visited.pop();
 
                     var members = ta.members.iterator();
                     while (members.next()) |entry| {
@@ -643,11 +659,7 @@ pub const Type = union(enum) {
                     while (methods.next()) |entry| {
                         const name = entry.key_ptr.*;
                         const a_method = entry.value_ptr.*;
-                        const b_method = switch (b) {
-                            inline .@"struct", .@"union" => |tb| tb.methods.get(name) orelse
-                                return false,
-                            else => unreachable,
-                        };
+                        const b_method = b_methods.get(name) orelse return false;
 
                         for (0..a_method.params.items.len) |i|
                             if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*))
