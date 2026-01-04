@@ -20,6 +20,9 @@ fn add(lhs: i32, rhs: i32) i32 {
 
 fn main() i32 {
     let arraylist: []i32 = undefined;
+    for (arraylist) |i| {
+
+    }
 
     // return "asd";
 }

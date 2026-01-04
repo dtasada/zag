@@ -234,17 +234,17 @@ fn variableDefinition(
     if (v.assigned_value != .ident and std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
         try self.write(" = ");
 
-        try self.registerSymbol(
-            v.variable_name,
-            expected_type orelse received_type,
-            .{ .symbol = .{ .is_mut = v.is_mut } },
-        );
-
         try expressions.compile(self, &v.assigned_value, .{
             .is_const = !v.is_mut,
             .expected_type = expected_type,
         });
     }
+
+    try self.registerSymbol(
+        v.variable_name,
+        expected_type orelse received_type,
+        .{ .symbol = .{ .is_mut = v.is_mut } },
+    );
 
     try self.write(";\n");
 }
@@ -273,6 +273,7 @@ fn conditional(
                 .red,
             );
 
+    var capture_ident: []const u8 = undefined;
     switch (T) {
         .@"if", .@"while" => switch (try Type.infer(self, statement.condition.*)) {
             .bool, .optional => try expressions.compile(self, statement.condition, .{}),
@@ -284,25 +285,33 @@ fn conditional(
             ),
         },
         .@"for" => {
-            const capture = statement.capture orelse
-                try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
-
             switch (statement.iterator.*) {
                 .range => |range| {
+                    capture_ident = statement.capture orelse
+                        try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+
                     try self.compileType(try .infer(self, range.start.*));
-                    try self.print(" {s} = ", .{capture});
+                    try self.print(" {s} = ", .{capture_ident});
                     try expressions.compile(self, range.start, .{});
-                    try self.print("; {s} < ", .{capture});
+                    try self.print("; {s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
                     try expressions.compile(self, range.end, .{});
-                    try self.print("; {s}++", .{capture});
+                    try self.print("; {s}++", .{capture_ident});
                 },
                 else => |other| switch (try Type.infer(self, other)) {
                     .array => |array| {
+                        capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+
                         try self.compileType(.usize);
-                        try self.print(" {s} = 0", .{capture});
-                        try self.print("; {s} < {}", .{ capture, array.size orelse
-                            @panic("unimplemented: arraylist size") });
-                        try self.print("; {s}++", .{capture});
+                        try self.print(" {s} = 0", .{capture_ident});
+                        try self.print("; {s} < ", .{capture_ident});
+                        if (array.size) |size| {
+                            try self.print("{}", .{size});
+                        } else {
+                            try self.write("(");
+                            try expressions.compile(self, statement.iterator, .{});
+                            try self.write(").len");
+                        }
+                        try self.print("; {s}++", .{capture_ident});
                     },
                     else => |t| return utils.printErr(
                         error.IllegalExpression,
@@ -324,10 +333,21 @@ fn conditional(
                 break :b ast.Block.fromOwnedSlice(&slice);
             },
         },
-        .{ .capture = if (T != .@"for" and statement.capture != null) .{
-            .condition = statement.condition,
-            .name = statement.capture.?,
-        } else null },
+        switch (T) {
+            .@"for" => .{
+                .iterator = if (statement.capture) |c| .{
+                    .iter_expr = statement.iterator,
+                    .capture_name = c,
+                    .index = capture_ident,
+                } else null,
+            },
+            else => .{
+                .capture = if (statement.capture) |c| .{
+                    .condition = statement.condition,
+                    .name = c,
+                } else null,
+            },
+        },
     );
 
     switch (T) {
