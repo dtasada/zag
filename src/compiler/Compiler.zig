@@ -18,6 +18,7 @@ pub const CompilerError = error{
     BadMutability,
     DuplicateMember,
     IllegalExpression,
+    IllegalStatement,
     MemberExpressionOnPrimitiveType,
     MemberIsNotAMethod,
     MissingArguments,
@@ -55,6 +56,19 @@ indent_level: usize = 0,
 
 /// stack of scopes.
 scopes: std.ArrayList(Scope) = .empty,
+
+/// maps a symbol name to the symbol's type
+const Scope = std.StringHashMap(union(enum) {
+    symbol: struct {
+        type: Type,
+        is_mut: bool,
+        inner_name: []const u8,
+    },
+    type: struct {
+        type: Type,
+        inner_name: []const u8,
+    },
+});
 
 const File = struct {
     handler: std.fs.File,
@@ -95,19 +109,6 @@ const File = struct {
         try self.writer.interface.flush();
     }
 };
-
-/// maps a symbol name to the symbol's type
-const Scope = std.StringHashMap(union(enum) {
-    symbol: struct {
-        type: Type,
-        is_mut: bool,
-        inner_name: []const u8,
-    },
-    type: struct {
-        type: Type,
-        inner_name: []const u8,
-    },
-});
 
 pub fn init(alloc: std.mem.Allocator, parser: *const Parser, file_path: []const u8) !*Self {
     const self = try alloc.create(Self);

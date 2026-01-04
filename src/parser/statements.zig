@@ -105,7 +105,7 @@ pub fn compoundTypeDeclaration(
             inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
             .@"enum" => return utils.printErr(
                 error.UnexpectedToken,
-                "Parser error: enum declaration can't have generic parameters ({f}).",
+                "Parser error: enum declaration can't have generic parameters ({f}).\n",
                 .{self.lexer.source_map.items[self.pos]},
                 .red,
             ),

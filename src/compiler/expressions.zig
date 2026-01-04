@@ -185,6 +185,17 @@ fn assignment(
     file_writer: *std.ArrayList(u8),
     expr: ast.Expression.Assignment,
 ) CompilerError!void {
+    const expected_type: Type = try .infer(self, expr.assignee.*);
+    const received_type: Type = try .infer(self, expr.value.*);
+    if (!expected_type.eql(received_type) and
+        !received_type.convertsTo(expected_type))
+        return utils.printErr(
+            error.TypeMismatch,
+            "comperr: Type of expression doesn't match explicit type. Expected: '{f}', received '{f}' ({f}).\n",
+            .{ expected_type, received_type, expr.value.getPosition() },
+            .red,
+        );
+
     try compile(self, file_writer, expr.assignee, .{});
     try self.print(file_writer, " {s} ", .{switch (expr.op) {
         .and_equals => "&=",
@@ -199,7 +210,7 @@ fn assignment(
         .xor_equals => "^=",
         .equals => "=",
     }});
-    try compile(self, file_writer, expr.value, .{});
+    try compile(self, file_writer, expr.value, .{ .expected_type = expected_type });
 }
 
 fn binary(

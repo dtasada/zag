@@ -17,7 +17,7 @@ pub fn compile(
     switch (statement.*) {
         .function_definition => |fn_def| try functionDefinition(self, file_writer, fn_def),
         .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, file_writer, .@"struct", struct_decl),
-        .@"return" => |return_expr| try returnStatement(self, file_writer, return_expr),
+        .@"return" => |return_expr| try @"return"(self, file_writer, return_expr),
         .variable_definition => |var_decl| try variableDefinition(self, file_writer, var_decl),
         .expression => |*expr| {
             try expressions.compile(self, file_writer, expr, .{});
@@ -166,15 +166,50 @@ fn compoundTypeDeclaration(
     }
 }
 
-fn returnStatement(
+fn @"return"(
     self: *Self,
     file_writer: *std.ArrayList(u8),
     r: ast.Statement.Return,
 ) CompilerError!void {
+    const expected_type: Type = b: {
+        var scopes = std.mem.reverseIterator(self.scopes.items);
+        while (scopes.next()) |scope| {
+            var symbols = scope.iterator();
+            while (symbols.next()) |symbol|
+                switch (symbol.value_ptr.*) {
+                    .symbol => |f| switch (f.type) {
+                        .function => |function| {
+                            const expected_type: Type = function.return_type.*;
+                            const received_type: Type = if (r.@"return") |t| try .infer(self, t) else .void;
+
+                            if (!expected_type.eql(received_type) and !received_type.convertsTo(expected_type))
+                                return utils.printErr(
+                                    error.TypeMismatch,
+                                    "comperr: Expected '{f}', received '{f}' ({f}).\n",
+                                    .{ expected_type, received_type, r.pos },
+                                    .red,
+                                );
+
+                            break :b expected_type;
+                        },
+                        else => continue,
+                    },
+                    .type => continue,
+                };
+        }
+
+        return utils.printErr(
+            error.IllegalStatement,
+            "comperr: return statement not in a function ({f}).\n",
+            .{r.pos},
+            .red,
+        );
+    };
+
     try self.write(file_writer, "return");
     if (r.@"return") |*expression| {
         try self.write(file_writer, " ");
-        try expressions.compile(self, file_writer, expression, .{});
+        try expressions.compile(self, file_writer, expression, .{ .expected_type = expected_type });
     }
     try self.write(file_writer, ";\n");
 }
@@ -253,7 +288,7 @@ fn conditional(
             .bool, .optional => try expressions.compile(self, file_writer, statement.condition, .{}),
             else => |t| return utils.printErr(
                 error.IllegalExpression,
-                "comperr: Illegal expression: {s} statement condition must be a boolean or an optional, received {f} ({f}).",
+                "comperr: Illegal expression: {s} statement condition must be a boolean or an optional, received {f} ({f}).\n",
                 .{ @tagName(T), t, statement.pos },
                 .red,
             ),

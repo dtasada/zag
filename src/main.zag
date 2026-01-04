@@ -22,11 +22,5 @@ fn main() i32 {
     // let a: ?u8 = 22;
     let mut my_string = "some text";
 
-    let mut ms = MyStruct {x: 1, y: 1};
-    ms.set_x(my_string);
-
-    // if (a) |o|
-    //     let b = 0;
-
     // return "asd";
 }

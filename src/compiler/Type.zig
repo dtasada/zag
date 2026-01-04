@@ -529,7 +529,7 @@ pub const Type = union(enum) {
 
                 .error_union => |e| {
                     h.update(std.mem.asBytes(&ctx.hash(e.success.*)));
-                    h.update(std.mem.asBytes(&Context.hash(.{}, e.failure.*)));
+                    h.update(std.mem.asBytes(&ctx.hash(e.failure.*)));
                 },
 
                 .function => |f| {
@@ -621,6 +621,11 @@ pub const Type = union(enum) {
                         else => unreachable,
                     }) return false;
 
+                    if (ta.methods.count() != switch (b) {
+                        inline .@"struct", .@"union" => |t| t.methods.count(),
+                        else => unreachable,
+                    }) return false;
+
                     var members = ta.members.iterator();
                     while (members.next()) |entry| {
                         const name = entry.key_ptr.*;
@@ -648,7 +653,8 @@ pub const Type = union(enum) {
                             if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*))
                                 return false;
 
-                        return ctx.eql(a_method.return_type.*, b_method.return_type.*);
+                        if (!ctx.eql(a_method.return_type.*, b_method.return_type.*))
+                            return false;
                     }
 
                     return true;
@@ -676,7 +682,7 @@ pub const Type = union(enum) {
                             if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*)) return false;
                         }
 
-                        return ctx.eql(a_method.return_type.*, b_method.return_type.*);
+                        if (!ctx.eql(a_method.return_type.*, b_method.return_type.*)) return false;
                     }
 
                     return true;
@@ -687,6 +693,8 @@ pub const Type = union(enum) {
                 .error_union => |ta| ctx.eql(ta.success.*, b.error_union.success.*) and
                     ctx.eql(ta.failure.*, b.error_union.failure.*),
                 .function => |ta| {
+                    if (ta.params.items.len != b.function.params.items.len) return false;
+
                     for (0..ta.params.items.len) |i| {
                         if (!ctx.eql(ta.params.items[i].*, b.function.params.items[i].*)) return false;
                     }
