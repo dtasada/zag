@@ -62,7 +62,12 @@ pub fn compile(
         .char => |char| try self.print("'{c}'", .{char.char}),
         .call => |c| try call(self, c),
         .member => |m| try member(self, m),
-        .range => std.debug.print("illegal range expression\n", .{}),
+        .range => |range| return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Illegal range expression at {f}.\n",
+            .{range.pos},
+            .red,
+        ),
         .prefix => |prefix| {
             try self.write(switch (prefix.op) {
                 .@"-" => "-",

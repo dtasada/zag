@@ -20,7 +20,7 @@ pub const Type = union(enum) {
         return struct {
             pub const MemberType = switch (T) {
                 .@"struct", .@"union" => *const Self,
-                .@"enum" => ?usize,
+                .@"enum" => usize,
             };
 
             const Method = struct {

@@ -54,6 +54,7 @@ fn compoundTypeDeclaration(
         .@"enum" => .{ .@"enum" = compound_type },
     }, .type);
 
+    var enum_last_value: usize = 0;
     for (type_decl.members.items) |member| {
         if (compound_type.getProperty(member.name)) |_| return utils.printErr(
             error.DuplicateMember,
@@ -77,9 +78,13 @@ fn compoundTypeDeclaration(
                     .void;
                 break :b member_type;
             },
-            .@"enum" => b: {
-                std.debug.print("unimplemented enum explicit values\n", .{});
-                break :b null;
+            .@"enum" => if (member.value) |value| b: {
+                enum_last_value = (try self.solveComptimeExpression(value)).u64;
+                break :b enum_last_value;
+            } else b: {
+                const val = enum_last_value + 1;
+                enum_last_value += 1;
+                break :b val;
             },
         });
     }
@@ -135,11 +140,7 @@ fn compoundTypeDeclaration(
                 );
                 try self.write(";\n");
             },
-            .@"enum" => {
-                try self.print("{s},\n", .{member.key_ptr.*});
-                if (member.value_ptr.*) |_|
-                    std.debug.print("unimplemented explicit enum member values\n", .{});
-            },
+            .@"enum" => try self.print("{s} = {},\n", .{ member.key_ptr.*, member.value_ptr.* }),
         }
     }
 
