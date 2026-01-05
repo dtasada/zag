@@ -183,7 +183,7 @@ pub fn unionDeclaration(self: *Self) ParserError!ast.Statement {
 
 pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
-    try self.expect(self.advance(), Lexer.Token.@"fn", "function definition", "fn");
+    _ = self.advance(); // consume "fn" keyword
     const function_name = try self.expect(self.advance(), Lexer.Token.ident, "function definition", "function name");
     const parameters = try self.parseParameters();
     const return_type = try self.type_parser.parseType(self.alloc, .default);
@@ -196,6 +196,33 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
             .parameters = parameters,
             .return_type = return_type,
             .body = body,
+        },
+    };
+}
+
+pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
+    _ = self.advance(); // consume "bind" keyword
+    try self.expect(self.advance(), Lexer.Token.@"fn", "binding function declaration", "fn");
+    const function_name = try self.expect(self.advance(), Lexer.Token.ident, "binding function declaration", "function name");
+    const parameters = try self.parseParameters();
+    const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
+        error.HandlerDoesNotExist => return utils.printErr(
+            error.MissingReturnType,
+            "Parser error: missing return type in function '{s}' at {f}.\n",
+            .{ function_name, self.currentPosition() },
+            .red,
+        ),
+        else => return err,
+    };
+    try self.expect(self.advance(), Lexer.Token.semicolon, "binding function definition", ";");
+
+    return .{
+        .binding_function_declaration = .{
+            .pos = pos,
+            .name = function_name,
+            .parameters = parameters,
+            .return_type = return_type,
         },
     };
 }
@@ -221,9 +248,11 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     iterator.* = try expressions.parse(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_paren, "for statement iterator", ")");
 
-    try self.expect(self.advance(), .@"|", "for statement capture", "|");
-    const capture = try self.expect(self.advance(), Lexer.Token.ident, "for statement capture", "for statement capture identifier");
-    try self.expect(self.advance(), .@"|", "for statement capture", "|");
+    const capture = if (self.expect(self.advance(), .@"|", "for statement capture", "|") catch null) |_| b: {
+        const capture = try self.expect(self.advance(), .ident, "for statement capture", "for statement capture identifier");
+        try self.expect(self.advance(), .@"|", "for statement capture", "|");
+        break :b capture;
+    } else null;
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentTokenKind() == .open_brace)
@@ -235,7 +264,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
         .@"for" = .{
             .pos = pos,
             .iterator = iterator,
-            .capture = if (std.mem.eql(u8, capture, "_")) null else capture,
+            .capture = if (capture == null or std.mem.eql(u8, capture.?, "_")) null else capture,
             .body = body,
         },
     };

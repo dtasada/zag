@@ -14,7 +14,7 @@ pub fn compile(
     self: *Self,
     expression: *const ast.Expression,
     opts: struct {
-        is_const: bool = false,
+        binding_mut: bool = false,
         expected_type: ?Type = null, // null means infer the type from the expression
     },
 ) CompilerError!void {
@@ -29,25 +29,28 @@ pub fn compile(
                 .red,
             );
 
-        if (!expected_type.eql(received_type) and expected_type == .optional) switch (received_type) {
-            .@"typeof(null)" => try self.print(
-                "({s}){{ .is_some = false }}",
-                .{self.zag_header_contents.get(expected_type) orelse unreachable},
-            ),
-            else => if (expected_type.optional.convertsTo(received_type)) {
-                try self.print(
-                    "({s}){{ .is_some = true, .payload = ",
+        if (!expected_type.eql(received_type)) switch (expected_type) {
+            .optional => |opt| switch (received_type) {
+                .@"typeof(null)" => try self.print(
+                    "({s}){{ .is_some = false }}",
                     .{self.zag_header_contents.get(expected_type) orelse unreachable},
-                );
-                try compile(self, expression, .{ .expected_type = expected_type.optional.* });
-                try self.write(" }");
-            } else return utils.printErr(
-                error.TypeMismatch,
-                "comperr: Expected '{f}', received '{f}' ({f}).\n",
-                .{ expected_type, received_type, expression.getPosition() },
-                .red,
-            ),
-        } else try compile(self, expression, .{ .is_const = opts.is_const });
+                ),
+                else => if (opt.convertsTo(received_type)) {
+                    try self.print(
+                        "({s}){{ .is_some = true, .payload = ",
+                        .{self.zag_header_contents.get(expected_type) orelse unreachable},
+                    );
+                    try compile(self, expression, .{ .expected_type = opt.* });
+                    try self.write(" }");
+                } else return utils.printErr(
+                    error.TypeMismatch,
+                    "comperr: Expected '{f}', received '{f}' ({f}).\n",
+                    .{ expected_type, received_type, expression.getPosition() },
+                    .red,
+                ),
+            },
+            else => try compile(self, expression, .{ .binding_mut = opts.binding_mut }),
+        } else try compile(self, expression, .{ .binding_mut = opts.binding_mut });
     } else switch (expression.*) {
         .assignment => |a| try assignment(self, a),
         .block => |block| try self.compileBlock(block.block, .{}),
@@ -109,8 +112,8 @@ pub fn compile(
         },
         .array_instantiation => |array| {
             try self.write("(");
-            if (opts.is_const) try self.write("const ");
-            try self.compileType(try .fromAst(self, array.type));
+            if (opts.binding_mut) try self.write("const ");
+            try self.compileType(try .fromAst(self, array.type), .{});
             try self.print("[]){{", .{});
             for (array.contents.items, 1..) |*item, i| {
                 try compile(self, item, .{});
@@ -212,7 +215,11 @@ fn binary(
     expr: ast.Expression.Binary,
 ) CompilerError!void {
     try compile(self, expr.lhs, .{});
-    try self.print(" {s} ", .{@tagName(expr.op)});
+    try self.print(" {s} ", .{switch (expr.op) {
+        .@"and" => "&&",
+        .@"or" => "||",
+        else => |op| @tagName(op),
+    }});
     try compile(self, expr.rhs, .{});
 }
 
@@ -248,30 +255,22 @@ fn call(
                     if (expected_args < received_args) return utils.printErr(
                         error.TooManyArguments,
                         "comperr: Too many arguments in method call at {f}. Expected {}, found {}\n",
-                        .{
-                            call_expr.args.items[0].getPosition(),
-                            expected_args,
-                            received_args,
-                        },
+                        .{ call_expr.args.items[0].getPosition(), expected_args, received_args },
                         .red,
                     ) else if (expected_args > received_args) return utils.printErr(
                         error.MissingArguments,
                         "comperr: Missing arguments in method call at {f}. Expected {}, found {}\n",
-                        .{
-                            call_expr.args.items[0].getPosition(),
-                            expected_args,
-                            received_args,
-                        },
+                        .{ call_expr.args.items[0].getPosition(), expected_args, received_args },
                         .red,
                     );
 
-                    for (method.params.items[1..], 0..) |param, i| {
+                    for (method.params.items[1..], 0..) |expected_type, i| {
                         const received_expr = call_expr.args.items[i];
                         const received_type: Type = try .infer(self, received_expr);
-                        if (!param.eql(received_type)) return utils.printErr(
+                        if (expected_type.* != .variadic and !expected_type.eql(received_type)) return utils.printErr(
                             error.TypeMismatch,
-                            "comperr: type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
-                            .{ received_expr.getPosition(), param, received_type },
+                            "comperr: Type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
+                            .{ received_expr.getPosition(), expected_type, received_type },
                             .red,
                         );
                     }
@@ -324,14 +323,30 @@ fn call(
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| {
-                for (function.params.items, 0..) |param, i| {
+                const expected_args = function.params.items.len;
+                const received_args = call_expr.args.items.len;
+                if (expected_args < received_args) return utils.printErr(
+                    error.TooManyArguments,
+                    "comperr: Too many arguments in function call at {f}. Expected {}, found {}\n",
+                    .{ call_expr.args.items[0].getPosition(), expected_args, received_args },
+                    .red,
+                ) else if (expected_args > received_args) return utils.printErr(
+                    error.MissingArguments,
+                    "comperr: Missing arguments in function call at {f}. Expected {}, found {}\n",
+                    .{ call_expr.args.items[0].getPosition(), expected_args, received_args },
+                    .red,
+                );
+
+                for (function.params.items, 0..) |expected_type, i| {
                     const received_expr = call_expr.args.items[i];
                     const received_type: Type = try .infer(self, received_expr);
-                    if (!param.eql(try .infer(self, call_expr.args.items[i]))) {
+                    if (expected_type.* != .variadic and
+                        !expected_type.eql(try .infer(self, call_expr.args.items[i])))
+                    {
                         return utils.printErr(
                             error.TypeMismatch,
                             "comperr: Type doesn't match function signature at {f}. Expected '{f}', got '{f}' ({f}).\n",
-                            .{ received_expr.getPosition(), param, received_type, call_expr.pos },
+                            .{ received_expr.getPosition(), expected_type, received_type, call_expr.pos },
                             .red,
                         );
                     }

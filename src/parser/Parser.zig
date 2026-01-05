@@ -43,6 +43,7 @@ pub const ParserError = error{
     OutOfMemory,
     ExpressionNotInMap,
     StatementNotInMap,
+    MissingReturnType,
 };
 
 /// Parser state: the current reading position in the lexer token list.
@@ -152,6 +153,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.@"enum", statements.enumDeclaration);
     try self.statement(.@"union", statements.unionDeclaration);
     try self.statement(.@"fn", statements.functionDefinition);
+    try self.statement(.bind, statements.bindingFunctionDeclaration);
     try self.statement(.@"while", statements.@"while");
     try self.statement(.@"return", statements.@"return");
     try self.statement(.@"for", statements.@"for");
@@ -347,28 +349,45 @@ pub fn parseParametersGeneric(self: *Self, type_is_optional: bool) ParserError!a
 
     if (self.currentTokenKind() == Lexer.Token.close_paren) {
         _ = self.advance();
-    } else while (true) {
-        const param_name = try self.expect(self.advance(), .ident, "parameter list", "parameter name");
+    } else {
+        var last_arg = false;
+        while (!last_arg) {
+            const param_name = try self.expect(self.advance(), .ident, "parameter list", "parameter name");
 
-        var param_type: ast.Type = .inferred;
-        if (type_is_optional) {
-            if (self.currentTokenKind() == Lexer.Token.colon) {
+            var param_type: ast.Type = .inferred;
+            if (type_is_optional and self.currentTokenKind() == Lexer.Token.colon) {
                 _ = self.advance();
                 param_type = try self.type_parser.parseType(self.alloc, .default);
+            } else switch (self.advance()) {
+                .colon => param_type = try self.type_parser.parseType(self.alloc, .default),
+                .dot_dot_dot => {
+                    param_type = .variadic;
+                    last_arg = true;
+                },
+                else => |actual| return utils.printErr(
+                    error.UnexpectedToken,
+                    "Unexpected token '{f}' in parameter list at {f}. Expected an explicit or variadic type.\n",
+                    .{ actual, self.lexer.source_map.items[
+                        std.math.clamp(
+                            self.pos - 1,
+                            0,
+                            self.lexer.source_map.items.len - 1,
+                        )
+                    ] },
+                    .red,
+                ),
             }
-        } else {
-            try self.expect(self.advance(), .colon, "parameter list", ":");
-            param_type = try self.type_parser.parseType(self.alloc, .default);
+
+            try params.append(self.alloc, .{ .name = param_name, .type = param_type });
+
+            // look for a comma, else a closing parenthesis
+            self.expectSilent(self.currentToken(), .comma) catch {
+                try self.expect(self.advance(), .close_paren, "parameter list", ")");
+                break;
+            };
+
+            _ = self.advance();
         }
-
-        try params.append(self.alloc, .{ .name = param_name, .type = param_type });
-
-        // look for a comma, else a closing parenthesis
-        self.expectSilent(self.currentToken(), .comma) catch {
-            try self.expect(self.advance(), .close_paren, "parameter list", ")");
-            break;
-        };
-        _ = self.advance();
     }
 
     return params;

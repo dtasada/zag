@@ -38,6 +38,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "binding_function_declaration"
+        },
+        {
+          "type": "SYMBOL",
           "name": "if_statement"
         },
         {
@@ -186,6 +190,47 @@
             "type": "SYMBOL",
             "name": "block"
           }
+        }
+      ]
+    },
+    "binding_function_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "bind"
+        },
+        {
+          "type": "STRING",
+          "value": "fn"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "ident"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "parameters",
+          "content": {
+            "type": "SYMBOL",
+            "name": "parameter_list"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "return_type",
+          "content": {
+            "type": "SYMBOL",
+            "name": "type"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ";"
         }
       ]
     },

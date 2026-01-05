@@ -29,6 +29,7 @@ export default grammar({
       $.enum_declaration,
       $.union_declaration,
       $.function_definition,
+      $.binding_function_declaration,
       $.if_statement,
       $.while_statement,
       $.for_statement,
@@ -67,6 +68,15 @@ export default grammar({
       field("parameters", $.parameter_list),
       field("return_type", $.type),
       field("body", $.block),
+    ),
+
+    binding_function_declaration: $ => seq(
+      "bind",
+      "fn",
+      field("name", $.ident),
+      field("parameters", $.parameter_list),
+      field("return_type", $.type),
+      ";",
     ),
 
     variable_definition: $ => seq(
@@ -215,6 +225,9 @@ export default grammar({
       "void",
       "bool",
       "type",
+
+      "c_char",
+      "c_int",
     ),
 
     optional_type: $ => prec.right(8, seq(

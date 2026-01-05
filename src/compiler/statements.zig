@@ -15,6 +15,7 @@ pub fn compile(
 ) CompilerError!void {
     switch (statement.*) {
         .function_definition => |fn_def| try functionDefinition(self, fn_def),
+        .binding_function_declaration => |bind| try bindingFunctionDeclaration(self, bind),
         .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
         .@"return" => |return_expr| try @"return"(self, return_expr),
         .variable_definition => |var_decl| try variableDefinition(self, var_decl),
@@ -122,6 +123,7 @@ fn compoundTypeDeclaration(
                 try self.compileVariableSignature(
                     member.key_ptr.*,
                     member.value_ptr.*.*,
+                    .{},
                 );
                 try self.write(";\n");
             },
@@ -129,6 +131,7 @@ fn compoundTypeDeclaration(
                 try self.compileVariableSignature(
                     member.key_ptr.*,
                     member.value_ptr.*.*,
+                    .{},
                 );
                 try self.write(";\n");
             },
@@ -149,12 +152,12 @@ fn compoundTypeDeclaration(
 
         try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .{ .symbol = .{} });
 
-        try self.compileType(try .fromAst(self, method.return_type));
+        try self.compileType(try .fromAst(self, method.return_type), .{});
         try self.print(" __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type: Type = try .fromAst(self, parameter.type);
             try self.registerSymbol(parameter.name, parameter_type, .{ .symbol = .{} });
-            try self.compileVariableSignature(parameter.name, parameter_type);
+            try self.compileVariableSignature(parameter.name, parameter_type, .{});
             if (i < method.parameters.items.len) try self.write(", ");
         }
         try self.write(") ");
@@ -227,15 +230,16 @@ fn variableDefinition(
             .red,
         );
 
-    if (!v.is_mut and received_type != .function) try self.write("const ");
+    try self.compileVariableSignature(v.variable_name, expected_type orelse received_type, .{ .binding_mut = v.is_mut });
 
-    try self.compileVariableSignature(v.variable_name, expected_type orelse received_type);
-
-    if (v.assigned_value != .ident and std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
+    if (v.assigned_value != .ident or
+        v.assigned_value == .ident and
+            !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined"))
+    {
         try self.write(" = ");
 
         try expressions.compile(self, &v.assigned_value, .{
-            .is_const = !v.is_mut,
+            .binding_mut = v.is_mut,
             .expected_type = expected_type,
         });
     }
@@ -290,7 +294,7 @@ fn conditional(
                     capture_ident = statement.capture orelse
                         try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
-                    try self.compileType(try .infer(self, range.start.*));
+                    try self.compileType(try .infer(self, range.start.*), .{});
                     try self.print(" {s} = ", .{capture_ident});
                     try expressions.compile(self, range.start, .{});
                     try self.print("; {s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
@@ -301,16 +305,21 @@ fn conditional(
                     .array => |array| {
                         capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
-                        try self.compileType(.usize);
+                        try self.compileType(.usize, .{});
                         try self.print(" {s} = 0", .{capture_ident});
                         try self.print("; {s} < ", .{capture_ident});
-                        if (array.size) |size| {
-                            try self.print("{}", .{size});
-                        } else {
-                            try self.write("(");
-                            try expressions.compile(self, statement.iterator, .{});
-                            try self.write(").len");
-                        }
+                        try self.print("{}", .{array.size});
+                        try self.print("; {s}++", .{capture_ident});
+                    },
+                    .arraylist => {
+                        capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+
+                        try self.compileType(.usize, .{});
+                        try self.print(" {s} = 0", .{capture_ident});
+                        try self.print("; {s} < ", .{capture_ident});
+                        try self.write("(");
+                        try expressions.compile(self, statement.iterator, .{});
+                        try self.write(").len");
                         try self.print("; {s}++", .{capture_ident});
                     },
                     else => |t| return utils.printErr(
@@ -369,10 +378,12 @@ fn functionDefinition(
     try self.pushScope();
     defer self.popScope();
 
-    try self.compileType(try .fromAst(self, function_def.return_type));
+    // we'll set the type of the function return type to be mutable because cc warns when a
+    // function's return type is `const` qualified.
+    try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
     try self.print(" {s}(", .{function_def.name});
     for (function_def.parameters.items, 1..) |parameter, i| {
-        try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type));
+        try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
         if (i < function_def.parameters.items.len) try self.write(", ");
 
         try self.registerSymbol(parameter.name, try .fromAst(self, parameter.type), .{ .symbol = .{} });
@@ -380,4 +391,23 @@ fn functionDefinition(
     try self.write(") ");
 
     try self.compileBlock(function_def.body, .{});
+}
+
+fn bindingFunctionDeclaration(
+    self: *Self,
+    function_def: ast.Statement.BindingFunctionDefinition,
+) CompilerError!void {
+    try self.registerSymbol(function_def.name, try .fromAst(self, function_def.getType()), .{ .symbol = .{} });
+
+    // we'll set the type of the function return type to be mutable because cc warns when a
+    // function's return type is `const` qualified.
+    try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
+    try self.print(" {s}(", .{function_def.name});
+    for (function_def.parameters.items, 1..) |parameter, i| {
+        try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
+        if (i < function_def.parameters.items.len) try self.write(", ");
+
+        try self.registerSymbol(parameter.name, try .fromAst(self, parameter.type), .{ .symbol = .{} });
+    }
+    try self.write(");\n");
 }

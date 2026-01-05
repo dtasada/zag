@@ -297,6 +297,7 @@ pub fn compileBlock(
         try self.compileVariableSignature(
             capture.name,
             (try Type.infer(self, capture.condition.*)).optional.*,
+            .{},
         );
         try self.write(" = (");
         try expressions.compile(self, capture.condition, .{});
@@ -308,6 +309,7 @@ pub fn compileBlock(
         try self.compileVariableSignature(
             iterator.capture_name,
             (try Type.infer(self, iterator.iter_expr.*)).array.inner.*,
+            .{},
         );
         try self.write(" = (");
         try expressions.compile(self, iterator.iter_expr, .{});
@@ -324,11 +326,26 @@ pub fn compileBlock(
     try self.write("}\n\n");
 }
 
-pub fn compileType(self: *Self, t: Type) CompilerError!void {
+pub fn compileType(
+    self: *Self,
+    t: Type,
+    opts: struct {
+        binding_mut: bool = false,
+        /// purely to prevent duplicate `const` qualifiers
+        is_top_level: bool = true,
+    },
+) CompilerError!void {
+    if (opts.is_top_level and !opts.binding_mut and t != .reference) try self.write("const ");
+    const new_opts: @TypeOf(opts) = .{ .binding_mut = opts.binding_mut, .is_top_level = false };
+
     return switch (t) {
         .reference => |reference| {
-            try self.compileType(reference.inner.*);
-            try self.print(" *{s}", .{if (reference.is_mut) "" else " const"});
+            if (!reference.is_mut) try self.write("const ");
+
+            try self.compileType(reference.inner.*, new_opts);
+            try self.write(" *");
+
+            if (!opts.binding_mut) try self.write(" const");
         },
         .@"struct" => |s| try self.write(try self.getInnerName(s.name)),
         .optional => |optional| {
@@ -338,7 +355,7 @@ pub fn compileType(self: *Self, t: Type) CompilerError!void {
                 defer self.writer = &self.output;
 
                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
-                try self.compileType(optional.*);
+                try self.compileType(optional.*, new_opts);
                 try self.write(")\n");
                 try self.flush();
 
@@ -355,9 +372,9 @@ pub fn compileType(self: *Self, t: Type) CompilerError!void {
                 defer self.writer = &self.output;
 
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
-                try self.compileType(error_union.failure.*);
+                try self.compileType(error_union.failure.*, new_opts);
                 try self.write(", ");
-                try self.compileType(error_union.success.*);
+                try self.compileType(error_union.success.*, new_opts);
                 try self.write(")\n");
                 try self.flush();
 
@@ -367,24 +384,25 @@ pub fn compileType(self: *Self, t: Type) CompilerError!void {
             try self.write(type_name);
         },
 
-        .array => |array| if (array.size) |size| {
-            try self.compileType(array.inner.*);
-            try self.print("[{}]", .{size});
-        } else {
+        .array => |array| {
+            try self.compileType(array.inner.*, new_opts);
+            try self.print("[{}]", .{array.size});
+        },
+        .arraylist => |arraylist| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ArrayList_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 self.writer = &self.zag_header;
 
                 // write type definition to zag.h
                 try self.print("__ZAG_ARRAYLIST_DEF({s}, ", .{type_name});
-                try self.compileType(array.inner.*);
+                try self.compileType(arraylist.*, new_opts);
                 try self.write(")\n");
 
                 self.writer = &self.zag_source;
 
                 // write type implementation to zag.c
                 try self.print("__ZAG_ARRAYLIST_IMPL({s}, ", .{type_name});
-                try self.compileType(array.inner.*);
+                try self.compileType(arraylist.*, new_opts);
                 try self.write(")\n");
                 try self.flush();
 
@@ -397,7 +415,7 @@ pub fn compileType(self: *Self, t: Type) CompilerError!void {
         },
 
         // should be unreachable, array and function types are handled in `compileVariableSignature`
-        .function => unreachable,
+        .function, .variadic => unreachable,
         else => |primitive| try self.write(@tagName(primitive)),
     };
 }
@@ -406,26 +424,27 @@ pub fn compileVariableSignature(
     self: *Self,
     name: []const u8,
     t: Type,
+    opts: struct {
+        binding_mut: bool = false,
+    },
 ) CompilerError!void {
     switch (t) {
-        .array => |array| if (array.size) |size| {
-            try self.compileType(array.inner.*);
-            try self.print(" {s}[{}]", .{ name, size });
-        } else {
-            try self.compileType(t);
-            try self.print(" {s}", .{name});
+        .array => |array| {
+            try self.compileType(array.inner.*, .{ .binding_mut = opts.binding_mut });
+            try self.print(" {s}[{}]", .{ name, array.size });
         },
         .function => |function| {
-            try self.compileType(function.return_type.*);
+            try self.compileType(function.return_type.*, .{ .binding_mut = opts.binding_mut });
             try self.print(" (*{s})(", .{name});
             for (function.params.items, 1..) |param, i| {
-                try self.compileType(param.*);
+                try self.compileType(param.*, .{ .binding_mut = opts.binding_mut });
                 if (i < function.params.items.len) try self.write(", ");
             }
             try self.write(")");
         },
+        .variadic => try self.write("..."),
         else => {
-            try self.compileType(t);
+            try self.compileType(t, .{ .binding_mut = opts.binding_mut });
             try self.print(" {s}", .{name});
         },
     }

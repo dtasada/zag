@@ -57,24 +57,26 @@ pub const Token = union(enum) {
     @".",
 
     // keywords
-    let,
-    mut,
-    @"struct",
-    @"enum",
-    @"union",
-    import,
-    @"fn",
-    @"if",
-    @"else",
-    @"for",
-    @"while",
-    @"return",
     @"and",
+    @"else",
+    @"enum",
+    @"fn",
+    @"for",
+    @"if",
     @"or",
     @"pub",
+    @"return",
+    @"struct",
+    @"union",
+    @"while",
+    bind,
+    import,
+    let,
+    mut,
 
     dot_dot,
     dot_dot_equals,
+    dot_dot_dot,
 
     // unary operators
     @"!",
@@ -189,21 +191,22 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
     errdefer self.tokens.deinit(alloc);
 
     var keywords: std.StaticStringMap(Token) = .initComptime(.{
+        .{ "and", .@"and" },
+        .{ "bind", .bind },
+        .{ "else", .@"else" },
+        .{ "enum", .@"enum" },
+        .{ "fn", .@"fn" },
+        .{ "for", .@"for" },
+        .{ "if", .@"if" },
+        .{ "import", .import },
         .{ "let", .let },
         .{ "mut", .mut },
-        .{ "struct", .@"struct" },
-        .{ "enum", .@"enum" },
-        .{ "union", .@"union" },
-        .{ "import", .import },
-        .{ "fn", .@"fn" },
-        .{ "if", .@"if" },
-        .{ "else", .@"else" },
-        .{ "for", .@"for" },
-        .{ "while", .@"while" },
-        .{ "return", .@"return" },
-        .{ "and", .@"and" },
         .{ "or", .@"or" },
         .{ "pub", .@"pub" },
+        .{ "return", .@"return" },
+        .{ "struct", .@"struct" },
+        .{ "union", .@"union" },
+        .{ "while", .@"while" },
     });
 
     while (self.pos < self.input.len) {
@@ -355,13 +358,14 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
                 break :blk switch (double_token) {
                     .@">>" => .@">>=",
                     .@"<<" => .@"<<=",
+                    .dot_dot => .dot_dot_equals,
                     else => double_token,
                 };
             },
             '.' => blk: {
                 _ = self.advance();
                 break :blk switch (double_token) {
-                    .dot_dot => .dot_dot_equals,
+                    .dot_dot => .dot_dot_dot,
                     else => double_token,
                 };
             },

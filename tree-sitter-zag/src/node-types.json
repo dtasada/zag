@@ -227,6 +227,42 @@
     }
   },
   {
+    "type": "binding_function_declaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ident",
+            "named": true
+          }
+        ]
+      },
+      "parameters": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "parameter_list",
+            "named": true
+          }
+        ]
+      },
+      "return_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "block",
     "named": true,
     "fields": {},
@@ -234,6 +270,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "binding_function_declaration",
+          "named": true
+        },
         {
           "type": "enum_declaration",
           "named": true
@@ -533,6 +573,10 @@
         "required": true,
         "types": [
           {
+            "type": "binding_function_declaration",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -742,6 +786,10 @@
         "required": true,
         "types": [
           {
+            "type": "binding_function_declaration",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -807,6 +855,10 @@
         "multiple": true,
         "required": false,
         "types": [
+          {
+            "type": "binding_function_declaration",
+            "named": true
+          },
           {
             "type": "else",
             "named": false
@@ -1039,6 +1091,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "binding_function_declaration",
+          "named": true
+        },
         {
           "type": "enum_declaration",
           "named": true
@@ -1403,6 +1459,10 @@
         "required": true,
         "types": [
           {
+            "type": "binding_function_declaration",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -1624,6 +1684,10 @@
   },
   {
     "type": "and",
+    "named": false
+  },
+  {
+    "type": "bind",
     "named": false
   },
   {

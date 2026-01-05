@@ -12,6 +12,7 @@
  "else"
  "for"
  "while"
+ "bind"
  ; "pub"
  ] @keyword
 
@@ -50,6 +51,7 @@
 (parameter_list (variable_signature name: (ident) @variable.parameter))
 
 (function_definition name: (ident) @function)
+(binding_function_declaration name: (ident) @function)
 
 (call_expression callee: (expression (ident) @function.call))
 ; (call_expression callee: (expression (member_expression (rhs: (ident) @function.call))))

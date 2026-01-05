@@ -1,28 +1,14 @@
-struct MyStruct {
-    x: i32,
-    y: i32,
-
-    fn set_x(self: &mut MyStruct, new_x: i32) void {
-        self.x = new_x;
-    }
-
-    fn add(lhs: MyStruct, rhs: MyStruct) MyStruct {
-        return MyStruct {
-            x: lhs.x + rhs.x,
-            y: lhs.y + rhs.y,
-        };
-    }
-}
-
-fn add(lhs: i32, rhs: i32) i32 {
-    return lhs + rhs;
-}
+bind fn printf(fmt: &c_char, args...) c_int;
 
 fn main() i32 {
-    let arraylist: []i32 = undefined;
-    for (arraylist) |i| {
+    let a = 2; // const int a = 2;
+    let b = &a; // const int * const b = &a;
+    let mut d = &a; // const int * d = &a;
+    let e = 4; // const int e = 4;
+    d = &e; // d = &e
 
-    }
-
-    // return "asd";
+    let mut a2 = 2; // int a2 = 2;
+    let b2 = &a2; // const int * const b2 = &a2;
+    let c2 = &mut a2; // int * const c2 = &a2;
+    let mut d2 = &mut a2; // int * d2 = &a2;
 }

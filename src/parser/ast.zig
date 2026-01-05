@@ -182,6 +182,7 @@ pub const Statement = union(enum) {
     enum_declaration: EnumDeclaration,
     union_declaration: UnionDeclaration,
     function_definition: FunctionDefinition,
+    binding_function_declaration: BindingFunctionDefinition,
     block: ast.Expression.Block,
     @"if": If,
     @"while": While,
@@ -197,6 +198,22 @@ pub const Statement = union(enum) {
         body: ast.Block,
 
         pub fn getType(self: *const FunctionDefinition) Type {
+            return .{
+                .function = .{
+                    .parameters = self.parameters,
+                    .return_type = &self.return_type,
+                },
+            };
+        }
+    };
+
+    pub const BindingFunctionDefinition = struct {
+        pos: utils.Position,
+        name: []const u8,
+        parameters: ParameterList = .empty,
+        return_type: Type,
+
+        pub fn getType(self: *const BindingFunctionDefinition) Type {
             return .{
                 .function = .{
                     .parameters = self.parameters,
@@ -289,10 +306,9 @@ pub const Type = union(enum) {
 
     const Array = struct {
         inner: *const Type,
-        /// if size is `null` type is an arraylist, else it's an array.
         /// if size is `_`, type is an array of inferred size.
         /// if size is a valid expression, type is an array of specified size.
-        size: ?*const Expression = null,
+        size: *const Expression,
     };
 
     const ErrorUnion = struct {
@@ -308,8 +324,10 @@ pub const Type = union(enum) {
     inferred,
     symbol: []const u8,
     optional: *const Type,
+    arraylist: *const Type,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
     function: Function,
+    variadic,
 };

@@ -77,7 +77,7 @@ pub const Type = union(enum) {
         /// if size is `null` type is an arraylist, else it's an array.
         /// if size is `_`, type is an array of inferred size.
         /// if size is a valid expression, type is an array of specified size.
-        size: ?usize = null,
+        size: usize,
     };
 
     pub const ErrorUnion = struct {
@@ -95,7 +95,8 @@ pub const Type = union(enum) {
     u32,
     u64,
 
-    char,
+    c_char,
+    c_int,
 
     usize,
 
@@ -115,10 +116,12 @@ pub const Type = union(enum) {
     @"enum": Enum,
     @"union": Union,
     optional: *const Self,
+    arraylist: *const Self,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
     function: Function,
+    variadic,
 
     pub fn fromSymbol(symbol: []const u8) !Self {
         return if (std.mem.eql(u8, symbol, "i8"))
@@ -147,6 +150,10 @@ pub const Type = union(enum) {
             .void
         else if (std.mem.eql(u8, symbol, "bool"))
             .bool
+        else if (std.mem.eql(u8, symbol, "c_int"))
+            .c_int
+        else if (std.mem.eql(u8, symbol, "c_char"))
+            .c_char
         else
             error.TypeNotPrimitive;
     }
@@ -155,7 +162,13 @@ pub const Type = union(enum) {
     /// `infer` is the expression with which the type is inferred.
     pub fn fromAst(compiler: *Compiler, t: ast.Type) Compiler.CompilerError!Self {
         return switch (t) {
-            .symbol => |symbol| try compiler.getSymbolType(symbol),
+            .symbol => |symbol| compiler.getSymbolType(symbol) catch return utils.printErr(
+                error.UnknownSymbol,
+                "comperr: Unknown symbol '{s}'. TODO: better error with position\n",
+                .{symbol},
+                .red,
+            ),
+            .variadic => .variadic,
             .reference => |reference| .{
                 .reference = .{
                     .inner = b: {
@@ -194,10 +207,14 @@ pub const Type = union(enum) {
                         array_type.* = try fromAst(compiler, array.inner.*);
                         break :b array_type;
                     },
-                    .size = if (array.size) |s|
-                        (try compiler.solveComptimeExpression(s.*)).u64
-                    else
-                        null,
+                    .size = (try compiler.solveComptimeExpression(array.size.*)).u64,
+                },
+            },
+            .arraylist => |arraylist| .{
+                .arraylist = b: {
+                    const t_ptr = try compiler.alloc.create(Type);
+                    t_ptr.* = try fromAst(compiler, arraylist.*);
+                    break :b t_ptr;
                 },
             },
             .optional => |optional| .{
@@ -233,7 +250,7 @@ pub const Type = union(enum) {
                 .{ ident.ident, expr.getPosition() },
                 .red,
             ),
-            .string => .{ .reference = .{ .inner = &.char, .is_mut = false } },
+            .string => .{ .reference = .{ .inner = &.c_char, .is_mut = false } },
             .char => .u8,
             .uint => |uint| if (uint.uint <= std.math.maxInt(i32)) .i32 else .i64,
             .int => |int| if (int.int <= std.math.maxInt(i32) and int.int >= std.math.minInt(i32))
@@ -430,6 +447,11 @@ pub const Type = union(enum) {
         return switch (src) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => dst == .optional,
+            .reference => |src_ref| switch (dst) {
+                .reference => |dst_ref| src_ref.inner.eql(dst_ref.inner.*) and
+                    src_ref.is_mut or !dst_ref.is_mut,
+                else => false,
+            },
             else => switch (dst) {
                 .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => switch (src) {
                     .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
@@ -458,9 +480,14 @@ pub const Type = union(enum) {
             }),
             .array => |array| {
                 _ = try writer.write("[");
-                if (array.size) |size| try writer.print("{}", .{size});
+                try writer.print("{}", .{array.size});
                 _ = try writer.write("]");
                 try writer.print("{f}", .{array.inner});
+            },
+            .arraylist => |array| {
+                _ = try writer.write("[");
+                _ = try writer.write("]");
+                try writer.print("{f}", .{array.*});
             },
             .error_union => |error_union| {
                 try writer.print("{f}", .{error_union.failure});

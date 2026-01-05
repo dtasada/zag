@@ -17,6 +17,8 @@ pub const CONTENT =
     \\typedef uint64_t u64;
     \\
     \\typedef size_t usize;
+    \\typedef char   c_char;
+    \\typedef int    c_int;
     \\
     \\typedef float  f32;
     \\typedef double f64;

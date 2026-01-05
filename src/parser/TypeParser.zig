@@ -162,12 +162,12 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
     const inner = try alloc.create(ast.Type);
     inner.* = try self.parseType(alloc, .default);
 
-    return .{
+    return if (size) |s| .{
         .array = .{
             .inner = inner,
-            .size = size,
+            .size = s,
         },
-    };
+    } else .{ .arraylist = inner };
 }
 
 pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
