@@ -1695,6 +1695,14 @@
     "named": false
   },
   {
+    "type": "c_char",
+    "named": false
+  },
+  {
+    "type": "c_int",
+    "named": false
+  },
+  {
     "type": "comment",
     "named": true,
     "extra": true

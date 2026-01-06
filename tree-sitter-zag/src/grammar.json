@@ -1031,6 +1031,14 @@
         {
           "type": "STRING",
           "value": "type"
+        },
+        {
+          "type": "STRING",
+          "value": "c_char"
+        },
+        {
+          "type": "STRING",
+          "value": "c_int"
         }
       ]
     },

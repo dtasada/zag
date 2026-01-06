@@ -3,6 +3,7 @@ const std = @import("std");
 const utils = @import("utils");
 const ast = @import("Parser").ast;
 const expressions = @import("expressions.zig");
+const errors = @import("errors.zig");
 
 const Type = @import("Type.zig").Type;
 
@@ -124,23 +125,18 @@ fn compoundTypeDeclaration(
     while (members.next()) |member| {
         try self.indent();
         switch (T) {
-            .@"struct" => {
+            inline .@"struct", .@"union" => {
                 try self.compileVariableSignature(
                     member.key_ptr.*,
                     member.value_ptr.*.*,
-                    .{},
+                    .{ .binding_mut = true }, // struct members shouldn't be const.
                 );
                 try self.write(";\n");
             },
-            .@"union" => {
-                try self.compileVariableSignature(
-                    member.key_ptr.*,
-                    member.value_ptr.*.*,
-                    .{},
-                );
-                try self.write(";\n");
-            },
-            .@"enum" => try self.print("{s} = {},\n", .{ member.key_ptr.*, member.value_ptr.* }),
+            .@"enum" => try self.print("{s} = {},\n", .{
+                member.key_ptr.*,
+                member.value_ptr.*,
+            }),
         }
     }
 
@@ -153,7 +149,7 @@ fn compoundTypeDeclaration(
 
         try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .{ .symbol = .{} });
 
-        try self.compileType(try .fromAst(self, method.return_type), .{});
+        try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
         try self.print(" __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type: Type = try .fromAst(self, parameter.type);
@@ -167,10 +163,7 @@ fn compoundTypeDeclaration(
     }
 }
 
-fn @"return"(
-    self: *Self,
-    r: ast.Statement.Return,
-) CompilerError!void {
+fn @"return"(self: *Self, r: ast.Statement.Return) CompilerError!void {
     const expected_type: Type = b: {
         var scopes = std.mem.reverseIterator(self.scopes.items);
         while (scopes.next()) |scope| {
@@ -180,7 +173,8 @@ fn @"return"(
                     .symbol => |f| switch (f.type) {
                         .function => |function| {
                             const expected_type: Type = function.return_type.*;
-                            const received_type: Type = if (r.@"return") |t| try .infer(self, t) else .void;
+                            const received_type: Type =
+                                if (r.@"return") |t| try .infer(self, t) else .void;
 
                             if (!expected_type.eql(received_type) and !received_type.convertsTo(expected_type))
                                 return utils.printErr(
@@ -214,21 +208,15 @@ fn @"return"(
     try self.write(";\n");
 }
 
-fn variableDefinition(
-    self: *Self,
-    v: ast.Statement.VariableDefinition,
-) CompilerError!void {
+fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) CompilerError!void {
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
 
-    if (expected_type != null and
-        !expected_type.?.eql(received_type) and
-        !received_type.convertsTo(expected_type.?))
-        return utils.printErr(
-            error.TypeMismatch,
-            "comperr: Type of expression doesn't match explicit type. Expected: '{f}', received '{f}' ({f}).\n",
-            .{ expected_type.?, received_type, v.assigned_value.getPosition() },
-            .red,
+    if (expected_type != null and !self.checkType(expected_type.?, received_type))
+        return errors.typeMismatch(
+            expected_type.?,
+            received_type,
+            v.assigned_value.getPosition(),
         );
 
     try self.compileVariableSignature(v.variable_name, expected_type orelse received_type, .{ .binding_mut = v.is_mut });

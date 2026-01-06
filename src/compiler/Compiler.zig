@@ -5,6 +5,7 @@ const ast = @import("Parser").ast;
 
 const expressions = @import("expressions.zig");
 const statements = @import("statements.zig");
+const errors = @import("errors.zig");
 
 const Parser = @import("Parser");
 
@@ -70,7 +71,7 @@ indent_level: usize = 0,
 scopes: std.ArrayList(Scope) = .empty,
 
 /// Maps a symbol name to the symbol's type and inner name.
-const Scope = std.StringHashMap(union(enum) {
+const ScopeItem = union(enum) {
     symbol: struct {
         type: Type,
         is_mut: bool,
@@ -80,7 +81,8 @@ const Scope = std.StringHashMap(union(enum) {
         type: Type,
         inner_name: []const u8,
     },
-});
+};
+const Scope = std.StringHashMap(ScopeItem);
 
 /// Helper file handling structure. Used for commodity when writing to a file.
 const File = struct {
@@ -512,6 +514,18 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     return try Type.fromSymbol(symbol);
 }
 
+pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope| return scope.get(symbol) orelse continue;
+
+    return if (Type.fromSymbol(symbol) catch null) |t| .{
+        .type = .{
+            .type = t,
+            .inner_name = symbol,
+        },
+    } else error.SymbolNotVariable;
+}
+
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
@@ -546,4 +560,8 @@ fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         .{symbol},
         .red,
     );
+}
+
+pub fn checkType(_: *const Self, expected_type: Type, received_type: Type) bool {
+    return expected_type.eql(received_type) or received_type.convertsTo(expected_type);
 }

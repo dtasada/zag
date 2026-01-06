@@ -69,6 +69,7 @@ pub fn build(b: *std.Build) void {
     const pretty = b.dependency("pretty", .{});
     const pretty_mod = pretty.module("pretty");
     exe.root_module.addImport("pretty", pretty_mod);
+    compiler_mod.mod.addImport("pretty", pretty_mod);
 
     b.installArtifact(exe);
 
