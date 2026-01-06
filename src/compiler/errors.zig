@@ -20,7 +20,7 @@ pub fn typeMismatch(
 pub fn expressionNotCallable(t: Type, position: utils.Position) CompilerError {
     return utils.printErr(
         error.IllegalExpression,
-        "comperr: Expression of type '{f}' is not callable ({f})\n",
+        "comperr: Expression of type '{f}' is not callable ({f}).\n",
         .{ t, position },
         .red,
     );
@@ -33,7 +33,7 @@ pub fn undeclaredProperty(
 ) CompilerError {
     return utils.printErr(
         error.UndeclaredProperty,
-        "comperr: '{f}' has no member '{s}' ({f})\n",
+        "comperr: '{f}' has no member '{s}' ({f}).\n",
         .{ t, member_name, position },
         .red,
     );
@@ -46,7 +46,7 @@ pub fn tooManyArguments(
 ) CompilerError {
     return utils.printErr(
         error.TooManyArguments,
-        "comperr: Too many arguments in method call at {f}. Expected {}, found {}\n",
+        "comperr: Too many arguments in method call at {f}. Expected {}, found {}.\n",
         .{ position, expected_args, received_args },
         .red,
     );
@@ -59,7 +59,7 @@ pub fn missingArguments(
 ) CompilerError {
     return utils.printErr(
         error.MissingArguments,
-        "comperr: Missing arguments in method call at {f}. Expected {}, found {}\n",
+        "comperr: Missing arguments in method call at {f}. Expected {}, found {}.\n",
         .{ position, expected_args, received_args },
         .red,
     );

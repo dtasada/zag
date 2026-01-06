@@ -26,7 +26,7 @@
 (assignment_operator) @operator
 [".." "..=" "&" "!" "?" "="] @operator
 
-[";" "." "," ":"] @punctuation.delimiter
+[";" "." "," ":" "..."] @punctuation.delimiter
 
 [
  "(" ")"

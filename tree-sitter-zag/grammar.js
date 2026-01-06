@@ -373,7 +373,13 @@ export default grammar({
 
     parameter_list: $ => seq(
       "(",
-      commaSep($.variable_signature),
+      commaSep(choice(
+        $.variable_signature,
+        seq(
+          field("name", $.ident),
+          "...",
+        ),
+      )),
       ")",
     ),
 
