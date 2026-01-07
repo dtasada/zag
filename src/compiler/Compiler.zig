@@ -235,41 +235,6 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.zag_header.write("\n#endif");
     try self.zag_header.flush();
-
-    const out_c_file_path = try std.fs.path.join(self.alloc, &.{ ".zag-out", self.output.path }); // .zag-out/src/main.zag.c
-    defer self.alloc.free(out_c_file_path);
-
-    const main_obj = try std.fs.path.join(self.alloc, &.{ ".zag-out", "bin", "main" });
-    const @"-Iinclude" = try std.fs.path.join(self.alloc, &.{ "-I./", ".zag-out", "zag" });
-
-    const cmd_args: []const []const u8 = &.{
-        "/usr/bin/cc",
-        "-o",
-        main_obj,
-        out_c_file_path,
-        @"-Iinclude",
-        "-Wall",
-        "-Wextra",
-    };
-    for (cmd_args) |arg| std.debug.print("{s} \n", .{arg});
-    std.debug.print("\n", .{});
-    var cc = std.process.Child.init(cmd_args, self.alloc);
-
-    cc.stdin_behavior = .Ignore;
-    cc.stdout_behavior = .Pipe;
-    cc.stderr_behavior = .Pipe;
-    cc.spawn() catch |err| {
-        utils.print("Couldn't spawn compiler command: {}\n", .{err}, .red);
-        return;
-    };
-    const stdout = cc.stdout.?.readToEndAlloc(self.alloc, 1 << 20) catch return;
-    const stderr = cc.stderr.?.readToEndAlloc(self.alloc, 1 << 20) catch return;
-
-    const term = cc.wait() catch return;
-
-    std.debug.print("exit: {}\n", .{term});
-    std.debug.print("stdout:\n{s}\n", .{stdout});
-    std.debug.print("stderr:\n{s}\n", .{stderr});
 }
 
 pub fn compileBlock(

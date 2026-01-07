@@ -1,0 +1,5 @@
+bind fn print_something() void;
+
+fn main() i32 {
+    print_something();
+}

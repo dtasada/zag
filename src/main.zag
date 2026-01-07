@@ -19,10 +19,6 @@ struct Vector2 {
     }
 }
 
-fn main() i32 {
-    let vec = Vector2.new(1, 2);
-    let lhs = Vector2 { x: 1, y: 2 };
-    let rhs = Vector2 { x: 2, y: 4 };
-
-    let add = lhs.add(rhs);
+fn print_something() void {
+    printf("hello world: %d\n", 2);
 }
