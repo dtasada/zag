@@ -1,4 +1,4 @@
-# [Getting Started](gettings-started/README.md)
+# [Getting Started](getting-started/README.md)
 
 # [Overview](overview/README.md)
 
