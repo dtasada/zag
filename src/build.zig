@@ -113,7 +113,11 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     if (stderr.len != 0) utils.print("C compiler error output:\n{s}\n", .{stderr}, .red);
 }
 
-pub fn build(alloc: std.mem.Allocator) !void {
+pub fn build() anyerror!void {
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
     const src_path = "src";
     const src = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
     var files_it = src.iterate();
@@ -135,8 +139,12 @@ pub fn build(alloc: std.mem.Allocator) !void {
     );
 }
 
-pub fn run(alloc: std.mem.Allocator) !void {
-    try build(alloc);
+pub fn run() anyerror!void {
+    try build();
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
 
     const exec_path = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
     defer alloc.free(exec_path);

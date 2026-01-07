@@ -62,9 +62,9 @@ pub fn build(b: *std.Build) void {
 
     compiler_mod.addImport(&parser_mod);
 
-    const clap = b.dependency("clap", .{});
-    const clap_mod = clap.module("clap");
-    exe.root_module.addImport("clap", clap_mod);
+    const cli = b.dependency("cli", .{});
+    const cli_mod = cli.module("cli");
+    exe.root_module.addImport("cli", cli_mod);
 
     const pretty = b.dependency("pretty", .{});
     const pretty_mod = pretty.module("pretty");

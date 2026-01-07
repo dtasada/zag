@@ -26,10 +26,11 @@ cd zag
 Zag uses the standard Zig build system. You can build the compiler executable with a single command:
 
 ```bash
-zig build
+zig build install --prefix ~/.local
 ```
 
-This will create the `zag` executable in the `./zig-out/bin/` directory.
+This will copy the zag compiler into `~/.local/bin/zag`. If `~/.local/bin/` is in your `$PATH`, running `zag` will work. If not, add `~/.local/bin` to your `$PATH`.
+You could also choose any other install prefix.
 
 ## 📝 Step 3: Your First Zag Program
 

@@ -1,5 +1,5 @@
 const std = @import("std");
-const clap = @import("clap");
+const cli = @import("cli");
 const pretty = @import("pretty");
 const builtin = @import("builtin");
 
@@ -33,39 +33,28 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const params = comptime clap.parseParamsComptime(
-        \\-h, --help        Display this message and exit.
-        \\<str>...
-    );
-
-    var diag: clap.Diagnostic = .{};
-    var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
-        .diagnostic = &diag,
-        .allocator = alloc,
-    }) catch |err| {
-        try diag.reportToFile(.stderr(), err);
-        return err;
+    var r = try cli.AppRunner.init(alloc);
+    const app: cli.App = .{
+        .author = "Dani Tasada",
+        .version = "0.1.0",
+        .command = .{
+            .name = "zag",
+            .target = .{
+                .subcommands = &.{
+                    .{
+                        .name = "build",
+                        .description = .{ .one_line = "Build project" },
+                        .target = .{ .action = .{ .exec = build.build } },
+                    },
+                    .{
+                        .name = "run",
+                        .description = .{ .one_line = "Build and run the project" },
+                        .target = .{ .action = .{ .exec = build.run } },
+                    },
+                },
+            },
+        },
     };
-    defer res.deinit();
 
-    if (res.args.help != 0)
-        return clap.helpToFile(.stdout(), clap.Help, &params, .{});
-    for (res.positionals[0]) |pos| {
-        const option = std.meta.stringToEnum(Args, pos) orelse return utils.printErr(
-            error.InvalidArgument,
-            "Error: Invalid argument {s}\n.",
-            .{pos},
-            .red,
-        );
-
-        switch (option) {
-            .build => build.build(alloc) catch |err| return utils.printErr(
-                error.FailedToBuildProject,
-                "Failed to build project: {}\n",
-                .{err},
-                .red,
-            ),
-            .run => try build.run(alloc),
-        }
-    }
+    return r.run(&app);
 }

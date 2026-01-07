@@ -46,12 +46,14 @@ The compiler works by transpiling Zag source code into C11, which is then compil
 
 2.  **Build the project:**
     ```bash
-    zig build
+    zig build install --prefix ~/.local
     ```
+    This will copy the zag compiler into `~/.local/bin/zag`. If `~/.local/bin/` is in your `$PATH`, running `zag` will work. If not, add `~/.local/bin` to your `$PATH`.
+    You could also choose any other install prefix.
 
 3.  **Run the compiler:**
     ```bash
-    zig build run -- build src/main.zag
+    zag build
     ```
 
 ## 💻 Usage
