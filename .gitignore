@@ -1,5 +1,6 @@
-/.zig-cache/
-/zig-out/
-/.zag-out/
-**/*.out
-**/*.o
+.zig-cache/
+zig-out/
+.zag-out/
+*.out
+*.o
+.DS_Store
