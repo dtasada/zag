@@ -336,7 +336,22 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.Call) !void {
     const expected_args = function.params.items.len;
     const received_args = call_expr.args.items.len;
-    if (expected_args < received_args) return errors.tooManyArguments(
+
+    const variadic_arg: ?usize = b: {
+        for (function.params.items, 0..) |param_type, i|
+            if (param_type.* == .variadic)
+                break :b i;
+
+        break :b null;
+    };
+
+    if (variadic_arg != null) {
+        if (received_args < expected_args - 1) return errors.missingArguments(
+            expected_args - 1,
+            received_args,
+            call_expr.args.items[0].getPosition(),
+        );
+    } else if (expected_args < received_args) return errors.tooManyArguments(
         expected_args,
         received_args,
         call_expr.args.items[0].getPosition(),
@@ -346,7 +361,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         call_expr.args.items[0].getPosition(),
     );
 
-    for (function.params.items, 0..) |expected_type, i| {
+    for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_type, i| {
         const received_expr = call_expr.args.items[i];
         const received_type: Type = try .infer(self, received_expr);
         if (expected_type.* != .variadic and

@@ -17,7 +17,14 @@ const BuildError = error{
     FailedToParseSource,
     FailedToCreateCompiler,
     FailedToCompileTarget,
+    FailedToBuildProject,
     CompilationError,
+    InvalidArgument,
+};
+
+const Args = enum {
+    build,
+    run,
 };
 
 /// program entry point. sets up the cli app.
@@ -44,12 +51,21 @@ pub fn main() !void {
     if (res.args.help != 0)
         return clap.helpToFile(.stdout(), clap.Help, &params, .{});
     for (res.positionals[0]) |pos| {
-        if (std.mem.eql(u8, pos, "build")) {
-            build.build(alloc) catch |err| {
-                utils.print("Failed to build project: {}\n", .{err}, .red);
-            };
-        } else {
-            utils.print("unhandled.\n", .{}, .white);
+        const option = std.meta.stringToEnum(Args, pos) orelse return utils.printErr(
+            error.InvalidArgument,
+            "Error: Invalid argument {s}\n.",
+            .{pos},
+            .red,
+        );
+
+        switch (option) {
+            .build => build.build(alloc) catch |err| return utils.printErr(
+                error.FailedToBuildProject,
+                "Failed to build project: {}\n",
+                .{err},
+                .red,
+            ),
+            .run => try build.run(alloc),
         }
     }
 }

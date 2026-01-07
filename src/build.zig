@@ -5,59 +5,6 @@ const Lexer = @import("Lexer");
 const Parser = @import("Parser");
 const Compiler = @import("Compiler");
 
-/// Compiles C code into machine code.
-pub fn compile(alloc: std.mem.Allocator) !void {
-    const main_obj = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
-    defer alloc.free(main_obj);
-
-    const @"-Iinclude" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "zag" });
-    defer alloc.free(@"-Iinclude");
-
-    const src_path = try std.fs.path.join(alloc, &.{ ".zag-out", "src" });
-    defer alloc.free(src_path);
-
-    const @".zig-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
-    var files_it = @".zig-out/src".iterate();
-
-    var files: std.ArrayList([]const u8) = .empty;
-    defer files.deinit(alloc);
-    defer for (files.items) |f| alloc.free(f);
-
-    while (try files_it.next()) |file|
-        try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
-
-    const cmd_args = try std.mem.concat(alloc, []const u8, &.{
-        &.{ "/usr/bin/cc", "-o", main_obj },
-        files.items,
-        &.{ @"-Iinclude", "-Wall", "-Wextra" },
-    });
-    defer alloc.free(cmd_args);
-
-    for (cmd_args) |arg| std.debug.print("{s} \n", .{arg});
-    std.debug.print("\n", .{});
-
-    var cc: std.process.Child = .init(cmd_args, alloc);
-
-    cc.stdin_behavior = .Ignore;
-    cc.stdout_behavior = .Pipe;
-    cc.stderr_behavior = .Pipe;
-    cc.spawn() catch |err| {
-        utils.print("Couldn't spawn compiler command: {}\n", .{err}, .red);
-        return;
-    };
-    const stdout = cc.stdout.?.readToEndAlloc(alloc, 1 << 20) catch return;
-    defer alloc.free(stdout);
-
-    const stderr = cc.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
-    defer alloc.free(stderr);
-
-    const term = cc.wait() catch return;
-
-    std.debug.print("exit: {}\n", .{term});
-    std.debug.print("stdout:\n{s}\n", .{stdout});
-    std.debug.print("stderr:\n{s}\n", .{stderr});
-}
-
 /// Takes zag code and lexes, parses and compiles it to C code.
 pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
     const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024) catch |err|
@@ -114,6 +61,58 @@ pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
         );
 }
 
+/// Compiles C code into machine code.
+pub fn compile(alloc: std.mem.Allocator) !void {
+    const main_obj = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
+    defer alloc.free(main_obj);
+
+    const @"-Iinclude" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "zag" });
+    defer alloc.free(@"-Iinclude");
+
+    const src_path = try std.fs.path.join(alloc, &.{ ".zag-out", "src" });
+    defer alloc.free(src_path);
+
+    const @".zig-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
+    var files_it = @".zig-out/src".iterate();
+
+    var files: std.ArrayList([]const u8) = .empty;
+    defer files.deinit(alloc);
+    defer for (files.items) |f| alloc.free(f);
+
+    while (try files_it.next()) |file|
+        try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
+
+    const cmd_args = try std.mem.concat(alloc, []const u8, &.{
+        &.{ "/usr/bin/cc", "-o", main_obj },
+        files.items,
+        &.{ @"-Iinclude", "-Wall", "-Wextra" },
+    });
+    defer alloc.free(cmd_args);
+
+    for (cmd_args) |arg| utils.print("{s} ", .{arg}, .white);
+    utils.print("\n", .{}, .white);
+
+    var cc: std.process.Child = .init(cmd_args, alloc);
+
+    cc.stdin_behavior = .Ignore;
+    cc.stdout_behavior = .Pipe;
+    cc.stderr_behavior = .Pipe;
+    cc.spawn() catch |err| {
+        utils.print("Couldn't spawn compiler command: {}\n", .{err}, .red);
+        return;
+    };
+    const stdout = cc.stdout.?.readToEndAlloc(alloc, 1 << 20) catch return;
+    defer alloc.free(stdout);
+
+    const stderr = cc.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
+    defer alloc.free(stderr);
+
+    _ = cc.wait() catch return;
+
+    if (stdout.len != 0) utils.print("C compiler output:\n{s}\n", .{stdout}, .white);
+    if (stderr.len != 0) utils.print("C compiler error output:\n{s}\n", .{stderr}, .red);
+}
+
 pub fn build(alloc: std.mem.Allocator) !void {
     const src_path = "src";
     const src = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
@@ -134,4 +133,33 @@ pub fn build(alloc: std.mem.Allocator) !void {
         .{err},
         .red,
     );
+}
+
+pub fn run(alloc: std.mem.Allocator) !void {
+    try build(alloc);
+
+    const exec_path = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
+    defer alloc.free(exec_path);
+
+    utils.print("{s}\n", .{exec_path}, .white);
+
+    var main: std.process.Child = .init(&.{exec_path}, alloc);
+
+    main.stdin_behavior = .Inherit;
+    main.stdout_behavior = .Pipe;
+    main.stderr_behavior = .Pipe;
+    main.spawn() catch |err| {
+        utils.print("Couldn't spawn : {}\n", .{err}, .red);
+        return;
+    };
+    const stdout = main.stdout.?.readToEndAlloc(alloc, 1 << 20) catch return;
+    defer alloc.free(stdout);
+
+    const stderr = main.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
+    defer alloc.free(stderr);
+
+    _ = main.wait() catch return;
+
+    if (stdout.len != 0) utils.print("{s}\n", .{stdout}, .white);
+    if (stderr.len != 0) utils.print("{s}\n", .{stderr}, .red);
 }

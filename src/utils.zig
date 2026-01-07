@@ -11,11 +11,7 @@ pub const Position = struct {
 
 const Color = enum { white, red, green, blue, yellow };
 
-pub fn print(
-    comptime fmt: []const u8,
-    args: anytype,
-    comptime color: Color,
-) void {
+pub fn print(comptime fmt: []const u8, args: anytype, comptime color: Color) void {
     var buf: [1024]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&buf);
     var stdout = &stdout_writer.interface;
