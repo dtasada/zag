@@ -6,7 +6,7 @@
 
 [![Built with Zig](https://img.shields.io/badge/Built_with-Zig-orange.svg?style=flat-square&logo=zig)](https://ziglang.org/) [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE) 
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Roadmap](#roadmap) • [Contributing](#contributing)
+[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Roadmap](#roadmap)
 
 </div>
 
@@ -33,7 +33,7 @@ The compiler works by transpiling Zag source code into C11, which is then compil
 
 ### Prerequisites
 
-*   **Zig**: To build the project yourself, you need a recent version of the [Zig compiler](https://ziglang.org/download/) (0.12+ recommended).
+*   **Zig**: To build the project yourself, you need Zig 0.15.x [Zig compiler](https://ziglang.org/download/).
 *   **C Compiler**: A standard C compiler (`cc`, `gcc`, or `clang`) must be available in your system path.
 
 ### Building from Source
