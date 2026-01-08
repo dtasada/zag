@@ -5,48 +5,16 @@ const Lexer = @import("Lexer");
 const Parser = @import("Parser");
 const Compiler = @import("Compiler");
 
-pub fn getAST(alloc: std.mem.Allocator, file_path: []const u8) !Parser.ast.RootNode {
-    const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20) catch |err|
-        return utils.printErr(
-            error.FailedToReadSource,
-            "Failed to open file '{s}': {}\n",
-            .{ file_path, err },
-            .red,
-        );
-    defer alloc.free(file);
-
-    var lexer = Lexer.init(file, alloc) catch |err|
-        return utils.printErr(
-            error.FailedToTokenizeSource,
-            "Failed to tokenize source code: {}\n",
-            .{err},
-            .red,
-        );
-    defer lexer.deinit(alloc);
-
-    // for (lexer.tokens.items) |t| std.debug.print("t: {f}\n", .{t});
-
-    var parser = Parser.init(lexer, alloc) catch |err|
-        return utils.printErr(
-            error.FailedToCreateParser,
-            "Failed to create parser: {}\n",
-            .{err},
-            .red,
-        );
-    defer parser.deinit();
-
-    return try parser.output.clone(alloc);
-}
-
 /// Takes zag code and lexes, parses and compiles it to C code.
-pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
+pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8, registry: *std.StringHashMap(Compiler.Module)) !void {
     // use ArenaAllocator to avoid too many `.deinit()` methods.
     var arena_back: std.heap.ArenaAllocator = .init(alloc);
     const arena = arena_back.allocator();
     defer arena_back.deinit();
 
-    const ast = try getAST(arena, file_path);
-    var compiler = Compiler.init(arena, ast, file_path) catch |err|
+    const ast = try Compiler.getAST(arena, file_path);
+
+    var compiler = Compiler.init(arena, ast.root, file_path, registry, .emit) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",
@@ -65,7 +33,11 @@ pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
 }
 
 /// Reads a directory and transpiles all necessary files
-fn transpileModule(alloc: std.mem.Allocator, dir_path: []const u8) !void {
+fn transpileModule(
+    alloc: std.mem.Allocator,
+    dir_path: []const u8,
+    registry: *std.StringHashMap(Compiler.Module),
+) !void {
     var src = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer src.close();
 
@@ -78,13 +50,13 @@ fn transpileModule(alloc: std.mem.Allocator, dir_path: []const u8) !void {
             const file_path = try std.fs.path.join(alloc, &.{ dir_path, file.name });
             defer alloc.free(file_path);
 
-            try transpile(alloc, file_path);
+            try transpile(alloc, file_path, registry);
         },
         .directory => {
             const new_path = try std.fs.path.join(alloc, &.{ dir_path, file.name });
             defer alloc.free(new_path);
 
-            try transpileModule(alloc, new_path);
+            try transpileModule(alloc, new_path, registry);
         },
         else => unreachable,
     };
@@ -95,7 +67,10 @@ pub fn build() anyerror!void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    try transpileModule(alloc, "src");
+    var registry = std.StringHashMap(Compiler.Module).init(alloc);
+    defer registry.deinit();
+
+    try transpileModule(alloc, "src", &registry);
 
     compile(alloc) catch |err| return utils.printErr(
         error.FailedToCompileTarget,

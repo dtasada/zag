@@ -2,4 +2,5 @@ import lib;
 
 fn main() i32 {
     lib.printf("Hello there!\n");
+    lib.do_something();
 }

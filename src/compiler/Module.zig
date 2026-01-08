@@ -1,37 +1,30 @@
 const std = @import("std");
 
-const utils = @import("utils");
-
-const ast = @import("Parser").ast;
-
-const Lexer = @import("Lexer");
-const Parser = @import("Parser");
-const Compiler = @import("Compiler.zig");
 const Type = @import("Type.zig").Type;
 
 const Self = @This();
 
-const Symbol = struct {
+pub const Symbol = struct {
     is_pub: bool,
     name: []const u8,
     type: Type,
 };
 
 name: []const u8,
+
 symbols: std.StringHashMap(Symbol),
 
-pub fn resolveSymbols(self: *Self, root_node: ast.RootNode) !void {
-    for (root_node.items) |statement|
-        try self.resolveStatement(statement);
+source_buffer: ?[]u8 = null,
+
+pub fn init(alloc: std.mem.Allocator, name: []const u8) Self {
+    return .{
+        .name = name,
+
+        .symbols = .init(alloc),
+    };
 }
 
-fn resolveStatement(self: *Self, statement: ast.Statement) !void {
-    switch (statement) {
-        .binding_function_declaration => |func| try self.symbols.put(func.name, .{
-            .name = func.name,
-            .is_pub = func.is_pub,
-            .type = undefined,
-        }),
-        else => {},
-    }
+pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+    self.symbols.deinit();
+    if (self.source_buffer) |s| alloc.free(s);
 }

@@ -1,1 +1,7 @@
-bind fn printf(fmt: &c_char, args...) c_int;
+pub bind fn printf(fmt: &c_char, args...) c_int;
+
+pub fn do_something() void {
+    let a = 6;
+    let b = 7;
+    printf("hello there! %d\n", a + b);
+}

@@ -411,15 +411,39 @@ fn bindingFunctionDeclaration(
 }
 
 fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
-    const module: Module = .{
-        .name = statement.alias orelse statement.module_name.getLast(),
-        .symbols = .init(self.alloc),
-    };
+    const module = try self.processImport(&statement);
 
-    // TODO: MUST POPULATE SYMBOLS
+    // Forward declare exported functions
+    var it = module.symbols.iterator();
+    while (it.next()) |entry| {
+        const symbol = entry.value_ptr.*;
+        switch (symbol.type) {
+            .function => |function| {
+                // Return Type
+                // function.return_type is *const Type
+                try self.compileType(function.return_type.*, .{ .binding_mut = true });
+
+                // Name
+                try self.print(" {s}(", .{symbol.name});
+
+                // Params
+                for (function.params.items, 1..) |param, i| {
+                    if (param.* == .variadic) {
+                        try self.write("...");
+                    } else {
+                        try self.compileType(param.*, .{});
+                    }
+
+                    if (i < function.params.items.len) try self.write(", ");
+                }
+                try self.write(");\n");
+            },
+            else => {},
+        }
+    }
 
     try self.registerSymbol(
-        statement.module_name.getLast(),
+        statement.alias orelse statement.module_name.getLast(),
         .{ .module = module },
     );
 }

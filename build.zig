@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) void {
     parser_mod.addImport(&utils_mod);
     lexer_mod.addImport(&utils_mod);
     compiler_mod.addImport(&utils_mod);
+    compiler_mod.addImport(&lexer_mod);
     parser_mod.addImport(&lexer_mod);
 
     compiler_mod.addImport(&parser_mod);

@@ -370,6 +370,7 @@ pub fn import(self: *Self) ParserError!ast.Statement {
         },
         .@"." => continue :s self.advance(),
         .semicolon => break,
+        .as => break,
         else => |other| return self.unexpectedToken("import statement", "as' or ';", other),
     };
 
@@ -381,12 +382,15 @@ pub fn import(self: *Self) ParserError!ast.Statement {
     );
 
     switch (self.currentToken()) {
-        .as => alias = try self.expect(
-            self.advance(),
-            .ident,
-            "import statement",
-            "module alias",
-        ),
+        .as => {
+            _ = self.advance();
+            alias = try self.expect(
+                self.advance(),
+                .ident,
+                "import statement",
+                "module alias",
+            );
+        },
         .semicolon => {},
         else => |other| return self.unexpectedToken("import statement", "as' or ';", other),
     }

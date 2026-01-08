@@ -172,6 +172,16 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
             delimiter = .@"->";
             continue :b reference.inner.*;
         },
+
+        .module => |module| if (module.symbols.get(expr.member_name)) |symbol| {
+            try self.write(symbol.name);
+        } else return utils.printErr(
+            error.UndeclaredProperty,
+            "comperr: Module '{s}' has no member '{s}' ({f}).\n",
+            .{ module.name, expr.member_name, expr.pos },
+            .red,
+        ),
+
         else => return utils.printErr(
             error.IllegalExpression,
             "comperr: Member expression on '{f}' is illegal\n",

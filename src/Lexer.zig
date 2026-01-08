@@ -23,7 +23,7 @@ current_line_len: usize,
 line_col: utils.Position = .{ .line = 1, .col = 1 },
 start_line_col: utils.Position = .{ .line = 1, .col = 1 },
 
-const LexerError = error{
+pub const LexerError = error{
     BadNumber,
     UnknownToken,
     StringNotClosed,

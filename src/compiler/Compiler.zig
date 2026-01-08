@@ -7,6 +7,7 @@ const expressions = @import("expressions.zig");
 const statements = @import("statements.zig");
 const errors = @import("errors.zig");
 
+const Lexer = @import("Lexer");
 const Parser = @import("Parser");
 
 const Type = @import("Type.zig").Type;
@@ -39,24 +40,39 @@ pub const CompilerError = error{
     UnsupportedExpression,
     UnsupportedType,
     VariableRedeclaration,
-} || Parser.ParserError || std.Io.Writer.Error;
+    FailedToReadSource,
+    FailedToTokenizeSource,
+    FailedToCreateParser,
+} || Parser.ParserError ||
+    Lexer.LexerError ||
+    std.fs.Dir.MakeError ||
+    std.fs.Dir.OpenError ||
+    std.fs.Dir.StatFileError ||
+    std.fs.File.OpenError ||
+    std.Io.Writer.Error;
+
+pub const Mode = enum { emit, analysis };
 
 alloc: std.mem.Allocator,
 
 /// Input AST to be compiled.
 input: ast.RootNode,
+source_path: []const u8,
+
+module_registry: *std.StringHashMap(Module),
+exported_symbols: std.StringHashMap(Module.Symbol),
 
 /// Points to whichever file should be written to.
 writer: *File,
 
 /// The C source file being written to.
-output: File,
+output: ?File,
 
 /// The helper `zag.h` header file that contains zag language level dependencies like auto-generated types.
-zag_header: File,
+zag_header: ?File,
 
 /// The helper `zag.c` source file that contains zag language level implementations like auto-generated types.
-zag_source: File,
+zag_source: ?File,
 
 /// Maps a type to its inner name.
 zag_header_contents: std.HashMap(
@@ -86,6 +102,45 @@ pub const ScopeItem = union(enum) {
     },
     module: Module,
 };
+
+pub fn getAST(
+    alloc: std.mem.Allocator,
+    file_path: []const u8,
+) CompilerError!struct {
+    root: ast.RootNode,
+    source: []u8,
+} {
+    const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20) catch |err|
+        return utils.printErr(
+            error.FailedToReadSource,
+            "Failed to open file '{s}': {}\n",
+            .{ file_path, err },
+            .red,
+        );
+
+    var lexer = Lexer.init(file, alloc) catch |err|
+        return utils.printErr(
+            error.FailedToTokenizeSource,
+            "Failed to tokenize source code: {}\n",
+            .{err},
+            .red,
+        );
+    defer lexer.deinit(alloc);
+
+    var parser = Parser.init(lexer, alloc) catch |err|
+        return utils.printErr(
+            error.FailedToCreateParser,
+            "Failed to create parser: {}\n",
+            .{err},
+            .red,
+        );
+    defer parser.deinit();
+
+    return .{
+        .root = try parser.output.clone(alloc),
+        .source = file,
+    };
+}
 
 /// Helper file handling structure. Used for commodity when writing to a file.
 const File = struct {
@@ -136,59 +191,84 @@ const File = struct {
 /// initializes a new `Compiler`.
 /// creates `.zag-out` folder and mirrors the `src` directory with compiled C code.
 /// also creates `.zag-out/bin` folder but doesn't write anything to it.
-pub fn init(alloc: std.mem.Allocator, input: ast.RootNode, file_path: []const u8) !*Self {
+pub fn init(
+    alloc: std.mem.Allocator,
+    input: ast.RootNode,
+    file_path: []const u8,
+    registry: *std.StringHashMap(Module),
+    mode: Mode,
+) CompilerError!*Self {
     const self = try alloc.create(Self);
 
-    // mkdir .zag-out/
-    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
-    defer @".zag-out".close();
-    // mkdir .zag-out/src
-    try @".zag-out".makePath(std.fs.path.dirname(file_path) orelse "");
-
-    // mkdir .zag-out/zag
-    var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
-    defer @".zag-out/zag".close();
-
-    const @".c" = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}); // src/main.zag -> src/main.zag.c
-    const output_file = try @".zag-out".createFile(@".c", .{}); // mkdir .zag-out/src/main.zag.c
-
-    const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
-    const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
-
-    const zag_source_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.c" });
-    const zag_source_file = try @".zag-out/zag".createFile("zag.c", .{});
-
     var visited: std.ArrayList(Type.Context.Visited) = try .initCapacity(alloc, 128);
+
     self.* = .{
         .alloc = alloc,
         .input = input,
-
-        .output = try .init(alloc, @".c", output_file),
-        .zag_header = try .init(alloc, zag_header_path, zag_header_file),
-        .zag_source = try .init(alloc, zag_source_path, zag_source_file),
+        .source_path = try alloc.dupe(u8, file_path),
+        .module_registry = registry,
+        .exported_symbols = .init(alloc),
+        .output = null,
+        .zag_header = null,
+        .zag_source = null,
         .zag_header_contents = .initContext(alloc, .{ .visited = &visited }), // TODO: will probably change in the future, when compiling files
         .writer = undefined,
     };
-    self.writer = &self.output;
 
-    try self.zag_source.write(
-        \\#include <stdlib.h>
-        \\#include <zag.h>
-        \\
-    );
+    if (mode == .emit) {
+        // mkdir .zag-out/
+        var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+        defer @".zag-out".close();
+        // mkdir .zag-out/src
+        try @".zag-out".makePath(std.fs.path.dirname(file_path) orelse "");
 
-    try self.zag_header.write(@import("zag.h.zig").CONTENT);
+        // mkdir .zag-out/zag
+        var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
+        defer @".zag-out/zag".close();
 
-    var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
-    defer @".zag-out/bin".close();
+        const @".c" = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}); // src/main.zag -> src/main.zag.c
+        const output_file = try @".zag-out".createFile(@".c", .{}); // mkdir .zag-out/src/main.zag.c
+
+        const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
+        const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
+
+        const zag_source_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.c" });
+        const zag_source_file = try @".zag-out/zag".createFile("zag.c", .{});
+
+        self.output = try .init(alloc, @".c", output_file);
+        self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
+        self.zag_source = try .init(alloc, zag_source_path, zag_source_file);
+
+        self.writer = &self.output.?;
+
+        try self.zag_source.?.write(
+            \\#include <stdlib.h>
+            \\#include <zag.h>
+            \\
+        );
+
+        try self.zag_header.?.write(@import("zag.h.zig").CONTENT);
+
+        var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
+        defer @".zag-out/bin".close();
+    } else {
+        // use dummy writer? or set to undefined and hope we don't write?
+        // safest is to set to undefined, but we must ensure analyze doesn't write.
+        // Or create a dummy File that writes to null?
+        // Since we know analyze doesn't write, leaving it undefined or null is OK,
+        // BUT `print` calls `self.writer`.
+        // If `analyze` accidentally calls print, we crash.
+        // Let's rely on correct logic for now.
+    }
 
     return self;
 }
 
 /// Frees resources
 pub fn deinit(self: *Self) void {
-    self.output.deinit(self.alloc);
-    self.zag_header.deinit(self.alloc);
+    self.alloc.free(self.source_path);
+    if (self.output) |*o| o.deinit(self.alloc);
+    if (self.zag_header) |*z| z.deinit(self.alloc);
     self.scopes.deinit(self.alloc);
 }
 
@@ -234,10 +314,182 @@ pub fn emit(self: *Self) CompilerError!void {
     for (self.input.items) |*statement|
         try statements.compile(self, statement);
 
-    try self.output.flush();
+    try self.output.?.flush();
 
-    try self.zag_header.write("\n#endif");
-    try self.zag_header.flush();
+    try self.zag_header.?.write("\n#endif");
+    try self.zag_header.?.flush();
+}
+
+pub fn analyze(self: *Self) CompilerError!void {
+    try self.pushScope();
+    defer self.popScope();
+
+    // register constants
+    try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } });
+    try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } });
+
+    for (self.input.items) |*statement| {
+        switch (statement.*) {
+            .import => |*import_stmt| {
+                _ = try self.processImport(import_stmt);
+            },
+            .function_definition => |*func| {
+                const t = try Type.fromAst(self, func.getType());
+                try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
+                if (func.is_pub) {
+                    try self.exported_symbols.put(func.name, .{
+                        .name = func.name,
+                        .is_pub = true,
+                        .type = t,
+                    });
+                }
+            },
+            .binding_function_declaration => |*func| {
+                const t = try Type.fromAst(self, func.getType());
+                try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
+                if (func.is_pub) {
+                    try self.exported_symbols.put(func.name, .{
+                        .name = func.name,
+                        .is_pub = true,
+                        .type = t,
+                    });
+                }
+            },
+            .variable_definition => |*var_def| {
+                // for variables, we need to infer type if possible or take declared type
+                // logic similar to variableDefinition in statements.zig
+                const received_type: Type = try .infer(self, var_def.assigned_value);
+                const expected_type: ?Type = if (var_def.type == .inferred) null else try .fromAst(self, var_def.type);
+
+                const final_type = expected_type orelse received_type;
+
+                try self.registerSymbol(var_def.variable_name, .{
+                    .symbol = .{
+                        .is_mut = var_def.is_mut,
+                        .type = final_type,
+                    },
+                });
+
+                if (var_def.is_pub) {
+                    try self.exported_symbols.put(var_def.variable_name, .{
+                        .name = var_def.variable_name,
+                        .is_pub = true,
+                        .type = final_type,
+                    });
+                }
+            },
+            .struct_declaration => |*struct_decl| {
+                // Simplified struct handling - just register type
+                // We need to match what statements.zig does: Type.Struct.init...
+                // But wait, Type.fromAst calls Type.Struct?
+                // No, declaration registers the type name.
+                // We must process the struct to create the Type.Struct object and register it.
+                // This is complex because it involves members.
+                // For now, let's call the same logic?
+                // Or we can just call statements.compile(self, statement) but redirect writer?
+                // No, that writes C code.
+                // I'll duplicate minimal logic for struct.
+
+                var compound_type = try Type.Struct.init(self.alloc, struct_decl.name);
+                try self.registerSymbol(struct_decl.name, .{
+                    .type = .{ .@"struct" = compound_type },
+                });
+
+                // Populate members
+                // var enum_last_value: usize = 0;
+                for (struct_decl.members.items) |member| {
+                    try compound_type.members.put(member.name, b: {
+                        const member_type = try self.alloc.create(Type);
+                        member_type.* = try .fromAst(self, member.type);
+                        break :b member_type;
+                    });
+                }
+
+                // Populate methods
+                for (struct_decl.methods.items) |method| {
+                    var params: std.ArrayList(*const Type) = try .initCapacity(
+                        self.alloc,
+                        method.parameters.items.len,
+                    );
+                    for (method.parameters.items) |p| {
+                        const param_type = try self.alloc.create(Type);
+                        param_type.* = try .fromAst(self, p.type);
+                        params.appendAssumeCapacity(param_type);
+                    }
+                    const return_type = try self.alloc.create(Type);
+                    return_type.* = try .fromAst(self, method.return_type);
+                    try compound_type.methods.put(method.name, .{
+                        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
+                            struct_decl.name,
+                            method.name,
+                        }),
+                        .params = params,
+                        .return_type = return_type,
+                    });
+                }
+
+                if (struct_decl.is_pub) {
+                    try self.exported_symbols.put(struct_decl.name, .{
+                        .name = struct_decl.name,
+                        .is_pub = true,
+                        .type = .{ .@"struct" = compound_type },
+                    });
+                }
+            },
+            // TODO: Enums and Unions
+            else => {},
+        }
+    }
+}
+
+pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!Module {
+    // 1. Resolve Path
+    // import_stmt.module_name is ArrayList([]const u8)
+    // join with / and add .zag
+    var parts: std.ArrayList([]const u8) = .empty;
+    defer parts.deinit(self.alloc);
+
+    // Add directory of current file
+    if (std.fs.path.dirname(self.source_path)) |dir| try parts.append(self.alloc, dir);
+    for (import_stmt.module_name.items) |part| try parts.append(self.alloc, part);
+
+    const rel_path = try std.fs.path.join(self.alloc, parts.items);
+    defer self.alloc.free(rel_path);
+
+    const full_path = try std.fmt.allocPrint(self.alloc, "{s}.zag", .{rel_path});
+    defer self.alloc.free(full_path);
+
+    // Check registry
+    if (self.module_registry.get(full_path)) |mod| {
+        return mod;
+    }
+
+    // Analyze new module
+    const ast_res = try getAST(self.alloc, full_path); // recursive AST
+
+    // We pass the SAME registry
+    var child_compiler = try init(self.alloc, ast_res.root, full_path, self.module_registry, .analysis);
+    defer child_compiler.deinit();
+
+    try child_compiler.analyze();
+
+    // Create module from exports
+    var mod = Module.init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
+    mod.source_buffer = ast_res.source;
+
+    var it = child_compiler.exported_symbols.iterator();
+    while (it.next()) |entry| {
+        try mod.symbols.put(entry.key_ptr.*, entry.value_ptr.*);
+    }
+
+    // Register
+    // We need to duplicate the path key because it will be freed
+    const key = try self.alloc.dupe(u8, full_path);
+    try self.module_registry.put(key, mod);
+
+    return mod;
 }
 
 pub fn compileBlock(
@@ -321,8 +573,8 @@ pub fn compileType(
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                self.writer = &self.zag_header;
-                defer self.writer = &self.output;
+                self.writer = &self.zag_header.?;
+                defer self.writer = &self.output.?;
 
                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
                 try self.compileType(optional.*, new_opts);
@@ -338,8 +590,8 @@ pub fn compileType(
         .error_union => |error_union| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                self.writer = &self.zag_header;
-                defer self.writer = &self.output;
+                self.writer = &self.zag_header.?;
+                defer self.writer = &self.output.?;
 
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
                 try self.compileType(error_union.failure.*, new_opts);
@@ -361,14 +613,14 @@ pub fn compileType(
         .arraylist => |arraylist| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ArrayList_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                self.writer = &self.zag_header;
+                self.writer = &self.zag_header.?;
 
                 // write type definition to zag.h
                 try self.print("__ZAG_ARRAYLIST_DEF({s}, ", .{type_name});
                 try self.compileType(arraylist.*, new_opts);
                 try self.write(")\n");
 
-                self.writer = &self.zag_source;
+                self.writer = &self.zag_source.?;
 
                 // write type implementation to zag.c
                 try self.print("__ZAG_ARRAYLIST_IMPL({s}, ", .{type_name});
@@ -376,7 +628,7 @@ pub fn compileType(
                 try self.write(")\n");
                 try self.flush();
 
-                self.writer = &self.output;
+                self.writer = &self.output.?;
 
                 try self.zag_header_contents.put(t, type_name);
             }
