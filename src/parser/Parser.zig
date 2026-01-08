@@ -44,6 +44,7 @@ pub const ParserError = error{
     ExpressionNotInMap,
     StatementNotInMap,
     MissingReturnType,
+    SyntaxError,
 };
 
 /// Parser state: the current reading position in the lexer token list.
@@ -148,7 +149,6 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
 
     // Statements
     try self.statement(.let, statements.variableDeclaration);
-    try self.statement(.mut, statements.variableDeclaration);
     try self.statement(.@"struct", statements.structDeclaration);
     try self.statement(.@"enum", statements.enumDeclaration);
     try self.statement(.@"union", statements.unionDeclaration);
@@ -158,6 +158,8 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.@"return", statements.@"return");
     try self.statement(.@"for", statements.@"for");
     try self.statement(.@"if", statements.@"if");
+    try self.statement(.import, statements.import);
+    try self.statement(.@"pub", statements.@"pub");
 
     while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
         try self.output.append(self.alloc, try statements.parse(self));
@@ -189,6 +191,11 @@ pub inline fn advance(self: *Self) Lexer.Token {
 /// Returns token at the current position.
 pub inline fn currentToken(self: *const Self) Lexer.Token {
     return self.lexer.tokens.items[self.pos];
+}
+
+/// Returns token at the current position.
+pub inline fn previousToken(self: *const Self) Lexer.Token {
+    return self.lexer.tokens.items[self.pos - 1];
 }
 
 /// Returns the tag of the token at the current position.

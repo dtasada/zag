@@ -17,13 +17,14 @@ pub fn parse(self: *Self) ParserError!ast.Statement {
 
     const expression = try expressions.parse(self, .default);
 
-    try self.expect(self.currentToken(), Lexer.Token.semicolon, "statement", ";");
-    _ = self.advance(); // consume semicolon
+    try self.expect(self.advance(), Lexer.Token.semicolon, "statement", ";");
 
     return .{ .expression = expression };
 }
 
 pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
+    const is_pub = isPub(self);
+
     const pos = self.currentPosition();
     _ = self.advance(); // consume `let`
 
@@ -58,6 +59,7 @@ pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
     return .{
         .variable_definition = .{
             .pos = pos,
+            .is_pub = is_pub,
             .variable_name = var_name,
             .is_mut = is_mut,
             .assigned_value = assigned_value,
@@ -79,6 +81,8 @@ pub fn compoundTypeDeclaration(
 
     const pos = self.currentPosition();
 
+    const is_pub = isPub(self);
+
     _ = self.advance(); // consume `struct`, `enum`, or `union` keyword.
 
     var compound: switch (T) {
@@ -87,6 +91,7 @@ pub fn compoundTypeDeclaration(
         .@"union" => ast.Statement.UnionDeclaration,
     } = .{
         .pos = pos,
+        .is_pub = is_pub,
         .name = try self.expect(
             self.advance(),
             Lexer.Token.ident,
@@ -182,6 +187,8 @@ pub fn unionDeclaration(self: *Self) ParserError!ast.Statement {
 }
 
 pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
+    const is_pub = isPub(self);
+
     const pos = self.currentPosition();
     _ = self.advance(); // consume "fn" keyword
     const function_name = try self.expect(self.advance(), Lexer.Token.ident, "function definition", "function name");
@@ -192,6 +199,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     return .{
         .function_definition = .{
             .pos = pos,
+            .is_pub = is_pub,
             .name = function_name,
             .parameters = parameters,
             .return_type = return_type,
@@ -201,6 +209,8 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
 }
 
 pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
+    const is_pub = isPub(self);
+
     const pos = self.currentPosition();
     _ = self.advance(); // consume "bind" keyword
     try self.expect(self.advance(), Lexer.Token.@"fn", "binding function declaration", "fn");
@@ -220,6 +230,7 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
     return .{
         .binding_function_declaration = .{
             .pos = pos,
+            .is_pub = is_pub,
             .name = function_name,
             .parameters = parameters,
             .return_type = return_type,
@@ -343,4 +354,59 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
             },
         },
     };
+}
+
+pub fn import(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
+    _ = self.advance(); // consume `import` keyword
+
+    var module: std.ArrayList([]const u8) = .empty;
+    var alias: ?[]const u8 = null;
+
+    while (true) s: switch (self.currentToken()) {
+        .ident => |ident| {
+            try module.append(self.alloc, ident);
+            _ = self.advance();
+        },
+        .@"." => continue :s self.advance(),
+        .semicolon => break,
+        else => |other| return self.unexpectedToken("import statement", "as' or ';", other),
+    };
+
+    if (module.items.len == 0) return utils.printErr(
+        error.SyntaxError,
+        "Parser error: import statement must include a module identifier ({f}).",
+        .{self.currentPosition()},
+        .red,
+    );
+
+    switch (self.currentToken()) {
+        .as => alias = try self.expect(
+            self.advance(),
+            .ident,
+            "import statement",
+            "module alias",
+        ),
+        .semicolon => {},
+        else => |other| return self.unexpectedToken("import statement", "as' or ';", other),
+    }
+
+    try self.expect(self.advance(), .semicolon, "import statement", ";");
+
+    return .{
+        .import = .{
+            .pos = pos,
+            .module_name = module,
+            .alias = alias,
+        },
+    };
+}
+
+pub fn @"pub"(self: *Self) ParserError!ast.Statement {
+    _ = self.advance(); // consume `pub` keyword
+    return parse(self);
+}
+
+fn isPub(self: *Self) bool {
+    return if (self.pos <= 0) false else self.previousToken() == .@"pub";
 }

@@ -14,6 +14,8 @@ const Value = @import("Value.zig").Value;
 
 const Self = @This();
 
+pub const Module = @import("Module.zig");
+
 pub const CompilerError = error{
     AssignmentToImmutableVariable,
     BadMutability,
@@ -42,7 +44,7 @@ pub const CompilerError = error{
 alloc: std.mem.Allocator,
 
 /// Input AST to be compiled.
-input: []const ast.Statement,
+input: ast.RootNode,
 
 /// Points to whichever file should be written to.
 writer: *File,
@@ -71,7 +73,8 @@ indent_level: usize = 0,
 scopes: std.ArrayList(Scope) = .empty,
 
 /// Maps a symbol name to the symbol's type and inner name.
-const ScopeItem = union(enum) {
+pub const Scope = std.StringHashMap(ScopeItem);
+pub const ScopeItem = union(enum) {
     symbol: struct {
         type: Type,
         is_mut: bool,
@@ -81,8 +84,8 @@ const ScopeItem = union(enum) {
         type: Type,
         inner_name: []const u8,
     },
+    module: Module,
 };
-const Scope = std.StringHashMap(ScopeItem);
 
 /// Helper file handling structure. Used for commodity when writing to a file.
 const File = struct {
@@ -133,7 +136,7 @@ const File = struct {
 /// initializes a new `Compiler`.
 /// creates `.zag-out` folder and mirrors the `src` directory with compiled C code.
 /// also creates `.zag-out/bin` folder but doesn't write anything to it.
-pub fn init(alloc: std.mem.Allocator, input: []const ast.Statement, file_path: []const u8) !*Self {
+pub fn init(alloc: std.mem.Allocator, input: ast.RootNode, file_path: []const u8) !*Self {
     const self = try alloc.create(Self);
 
     // mkdir .zag-out/
@@ -221,14 +224,14 @@ pub fn emit(self: *Self) CompilerError!void {
     defer self.popScope();
 
     // register constants
-    try self.registerSymbol("true", .bool, .{ .symbol = .{} });
-    try self.registerSymbol("false", .bool, .{ .symbol = .{} });
-    try self.registerSymbol("null", .@"typeof(null)", .{ .symbol = .{} });
-    try self.registerSymbol("undefined", .@"typeof(undefined)", .{ .symbol = .{} });
+    try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } });
+    try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } });
 
     try self.write("#include <zag.h>\n");
 
-    for (self.input) |*statement|
+    for (self.input.items) |*statement|
         try statements.compile(self, statement);
 
     try self.output.flush();
@@ -444,10 +447,10 @@ pub fn popScope(self: *Self) void {
 pub fn registerSymbol(
     self: *Self,
     name: []const u8,
-    @"type": Type,
     symbol_or_type: union(enum) {
-        symbol: struct { is_mut: bool = false },
-        type: void,
+        symbol: struct { is_mut: bool = false, type: Type },
+        type: Type,
+        module: Module,
     },
 ) !void {
     var last = &self.scopes.items[self.scopes.items.len - 1];
@@ -455,16 +458,17 @@ pub fn registerSymbol(
         .symbol => |symbol| .{
             .symbol = .{
                 .is_mut = symbol.is_mut,
-                .type = @"type",
+                .type = symbol.type,
                 .inner_name = name, // TODO: name mangling for generics ig
             },
         },
-        .type => .{
+        .type => |@"type"| .{
             .type = .{
                 .type = @"type",
                 .inner_name = name, // TODO: name mangling for generics ig
             },
         },
+        .module => |module| .{ .module = module },
     });
 }
 
@@ -472,7 +476,8 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
         return switch (scope.get(symbol) orelse continue) {
-            inline else => |s| s.type,
+            .module => |module| .{ .module = module },
+            inline .symbol, .type => |s| s.type,
         };
 
     // return primitive type
@@ -496,9 +501,9 @@ pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
     while (it.next()) |scope|
         return switch (scope.get(symbol) orelse continue) {
             .symbol => |s| s.is_mut,
-            .type => return utils.printErr(
+            else => return utils.printErr(
                 error.SymbolNotVariable,
-                "Compiler error: Symbol {s} is a type, not a variable\n",
+                "Compiler error: Symbol {s} is not a variable\n",
                 .{symbol},
                 .red,
             ),
@@ -516,6 +521,7 @@ fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
         return switch (scope.get(symbol) orelse continue) {
+            .module => |module| module.name,
             inline else => |s| s.inner_name,
         };
 

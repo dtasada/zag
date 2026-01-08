@@ -6,6 +6,7 @@ const ast = @import("Parser").ast;
 const expressions = @import("expressions.zig");
 
 const Compiler = @import("Compiler.zig");
+const Module = @import("Module.zig");
 const CompilerError = Compiler.CompilerError;
 
 pub const Type = union(enum) {
@@ -121,6 +122,7 @@ pub const Type = union(enum) {
     array: Array,
     error_union: ErrorUnion,
     function: Function,
+    module: Module,
     variadic,
 
     pub fn fromSymbol(symbol: []const u8) !Self {

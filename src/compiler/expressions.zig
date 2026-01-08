@@ -220,6 +220,15 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
                 },
                 .symbol => try methodCall(self, call_expr, m),
+                .module => |module| if (module.symbols.get(m.member_name)) |symbol| switch (symbol.type) {
+                    .function => |function| try functionCall(self, function, call_expr),
+                    else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
+                } else return utils.printErr(
+                    error.UndeclaredProperty,
+                    "comperr: Module '{s}' has no member '{s}' ({f}).\n",
+                    .{ module.name, m.member_name, call_expr.pos },
+                    .red,
+                ),
             },
             else => try methodCall(self, call_expr, m),
         },

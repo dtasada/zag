@@ -1,24 +1,5 @@
-bind fn printf(fmt: &c_char, args...) c_int;
+import lib;
 
-struct Vector2 {
-    x: i32,
-    y: i32,
-
-    fn new(x: i32, y: i32) Vector2 {
-        return Vector2 {
-            x: x,
-            y: y,
-        };
-    }
-
-    fn add(lhs: Vector2, rhs: Vector2) Vector2 {
-        return Vector2 {
-            x: lhs.x + rhs.x,
-            y: lhs.y + rhs.y,
-        };
-    }
-}
-
-fn print_something() void {
-    printf("hello world, %d, %f\n", 2, 4.5);
+fn main() i32 {
+    lib.printf("Hello there!\n");
 }

@@ -5,9 +5,8 @@ const Lexer = @import("Lexer");
 const Parser = @import("Parser");
 const Compiler = @import("Compiler");
 
-/// Takes zag code and lexes, parses and compiles it to C code.
-pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
-    const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024) catch |err|
+pub fn getAST(alloc: std.mem.Allocator, file_path: []const u8) !Parser.ast.RootNode {
+    const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20) catch |err|
         return utils.printErr(
             error.FailedToReadSource,
             "Failed to open file '{s}': {}\n",
@@ -16,23 +15,18 @@ pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
         );
     defer alloc.free(file);
 
-    // use ArenaAllocator to avoid too many `.deinit()` methods.
-    var arena_back = std.heap.ArenaAllocator.init(alloc);
-    const arena = arena_back.allocator();
-    defer arena_back.deinit();
-
-    var lexer = Lexer.init(file, arena) catch |err|
+    var lexer = Lexer.init(file, alloc) catch |err|
         return utils.printErr(
             error.FailedToTokenizeSource,
             "Failed to tokenize source code: {}\n",
             .{err},
             .red,
         );
-    defer lexer.deinit(arena);
+    defer lexer.deinit(alloc);
 
     // for (lexer.tokens.items) |t| std.debug.print("t: {f}\n", .{t});
 
-    var parser = Parser.init(lexer, arena) catch |err|
+    var parser = Parser.init(lexer, alloc) catch |err|
         return utils.printErr(
             error.FailedToCreateParser,
             "Failed to create parser: {}\n",
@@ -41,9 +35,18 @@ pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
         );
     defer parser.deinit();
 
-    // try pretty.print(alloc, .{parser.output}, .{ .max_depth = 100 });
+    return try parser.output.clone(alloc);
+}
 
-    var compiler = Compiler.init(arena, parser.output.items, file_path) catch |err|
+/// Takes zag code and lexes, parses and compiles it to C code.
+pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
+    // use ArenaAllocator to avoid too many `.deinit()` methods.
+    var arena_back: std.heap.ArenaAllocator = .init(alloc);
+    const arena = arena_back.allocator();
+    defer arena_back.deinit();
+
+    const ast = try getAST(arena, file_path);
+    var compiler = Compiler.init(arena, ast, file_path) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",
@@ -52,13 +55,54 @@ pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8) !void {
         );
     defer compiler.deinit();
 
-    compiler.emit() catch |err| // Call emit to build the module
-        return utils.printErr(
-            error.CompilationError,
-            "Compilation error: {}\n",
-            .{err},
-            .red,
-        );
+    // Call emit to build the module
+    compiler.emit() catch |err| return utils.printErr(
+        error.CompilationError,
+        "Compilation error: {}\n",
+        .{err},
+        .red,
+    );
+}
+
+/// Reads a directory and transpiles all necessary files
+fn transpileModule(alloc: std.mem.Allocator, dir_path: []const u8) !void {
+    var src = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
+    defer src.close();
+
+    var files_it = src.iterate();
+
+    while (try files_it.next()) |file| switch (file.kind) {
+        .file => {
+            if (!std.mem.endsWith(u8, file.name, ".zag")) continue;
+
+            const file_path = try std.fs.path.join(alloc, &.{ dir_path, file.name });
+            defer alloc.free(file_path);
+
+            try transpile(alloc, file_path);
+        },
+        .directory => {
+            const new_path = try std.fs.path.join(alloc, &.{ dir_path, file.name });
+            defer alloc.free(new_path);
+
+            try transpileModule(alloc, new_path);
+        },
+        else => unreachable,
+    };
+}
+
+pub fn build() anyerror!void {
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    try transpileModule(alloc, "src");
+
+    compile(alloc) catch |err| return utils.printErr(
+        error.FailedToCompileTarget,
+        "Build error: {}\n",
+        .{err},
+        .red,
+    );
 }
 
 /// Compiles C code into machine code.
@@ -72,7 +116,9 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const src_path = try std.fs.path.join(alloc, &.{ ".zag-out", "src" });
     defer alloc.free(src_path);
 
-    const @".zig-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
+    var @".zig-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
+    defer @".zig-out/src".close();
+
     var files_it = @".zig-out/src".iterate();
 
     var files: std.ArrayList([]const u8) = .empty;
@@ -111,32 +157,6 @@ pub fn compile(alloc: std.mem.Allocator) !void {
 
     if (stdout.len != 0) utils.print("C compiler output:\n{s}\n", .{stdout}, .white);
     if (stderr.len != 0) utils.print("C compiler error output:\n{s}\n", .{stderr}, .red);
-}
-
-pub fn build() anyerror!void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
-
-    const src_path = "src";
-    const src = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
-    var files_it = src.iterate();
-
-    while (try files_it.next()) |file| {
-        if (!std.mem.endsWith(u8, file.name, ".zag")) continue;
-
-        const file_path = try std.fs.path.join(alloc, &.{ src_path, file.name });
-        defer alloc.free(file_path);
-
-        try transpile(alloc, file_path);
-    }
-
-    compile(alloc) catch |err| return utils.printErr(
-        error.FailedToCompileTarget,
-        "Build error: {}\n",
-        .{err},
-        .red,
-    );
 }
 
 pub fn run() anyerror!void {

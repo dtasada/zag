@@ -24,6 +24,7 @@ export default grammar({
 
     _statement: $ => choice(
       $.return_statement,
+      $.import_statement,
       $.variable_definition,
       $.struct_declaration,
       $.enum_declaration,
@@ -184,6 +185,22 @@ export default grammar({
     return_statement: $ => seq(
       "return",
       optional(field("return_value", $.expression)),
+      ";",
+    ),
+
+    import_statement: $ => seq(
+      "import",
+      seq(
+        optional(repeat(seq(
+          $.ident,
+          ".",
+        ))),
+        $.ident,
+      ),
+      optional(seq(
+        "as",
+        $.ident,
+      )),
       ";",
     ),
 

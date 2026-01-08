@@ -28,7 +28,7 @@ const Args = enum {
 };
 
 /// program entry point. sets up the cli app.
-pub fn main() !void {
+pub fn main() void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
@@ -56,5 +56,9 @@ pub fn main() !void {
         },
     };
 
-    return r.run(&app);
+    return r.run(&app) catch |err| utils.print(
+        "Error: {}",
+        .{err},
+        .red,
+    );
 }

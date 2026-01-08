@@ -40,6 +40,6 @@
     "python": false,
     "rust": false,
     "swift": false,
-    "zig": true
+    "zig": false
   }
 }

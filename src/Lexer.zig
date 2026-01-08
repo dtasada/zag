@@ -71,6 +71,7 @@ pub const Token = union(enum) {
     @"while",
     bind,
     import,
+    as,
     let,
     mut,
 
@@ -192,6 +193,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
 
     var keywords: std.StaticStringMap(Token) = .initComptime(.{
         .{ "and", .@"and" },
+        .{ "as", .as },
         .{ "bind", .bind },
         .{ "else", .@"else" },
         .{ "enum", .@"enum" },

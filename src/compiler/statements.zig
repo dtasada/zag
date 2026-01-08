@@ -6,6 +6,7 @@ const expressions = @import("expressions.zig");
 const errors = @import("errors.zig");
 
 const Type = @import("Type.zig").Type;
+const Module = @import("Module.zig");
 
 const Self = @import("Compiler.zig");
 const CompilerError = Self.CompilerError;
@@ -16,6 +17,7 @@ pub fn compile(
 ) CompilerError!void {
     switch (statement.*) {
         .function_definition => |fn_def| try functionDefinition(self, fn_def),
+        .import => |import_statement| try import(self, import_statement),
         .binding_function_declaration => |bind| try bindingFunctionDeclaration(self, bind),
         .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
         .@"return" => |return_expr| try @"return"(self, return_expr),
@@ -49,11 +51,13 @@ fn compoundTypeDeclaration(
         .@"enum" => Type.Enum,
     } = try .init(self.alloc, type_decl.name);
 
-    try self.registerSymbol(type_decl.name, switch (T) {
-        .@"struct" => .{ .@"struct" = compound_type },
-        .@"union" => .{ .@"union" = compound_type },
-        .@"enum" => .{ .@"enum" = compound_type },
-    }, .type);
+    try self.registerSymbol(type_decl.name, .{
+        .type = switch (T) {
+            .@"struct" => .{ .@"struct" = compound_type },
+            .@"union" => .{ .@"union" = compound_type },
+            .@"enum" => .{ .@"enum" = compound_type },
+        },
+    });
 
     var enum_last_value: usize = 0;
     for (type_decl.members.items) |member| {
@@ -147,13 +151,15 @@ fn compoundTypeDeclaration(
         try self.pushScope();
         defer self.popScope();
 
-        try self.registerSymbol(method.name, try .fromAst(self, method.getType()), .{ .symbol = .{} });
+        try self.registerSymbol(method.name, .{ .symbol = .{
+            .type = try .fromAst(self, method.getType()),
+        } });
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
         try self.print(" __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const parameter_type: Type = try .fromAst(self, parameter.type);
-            try self.registerSymbol(parameter.name, parameter_type, .{ .symbol = .{} });
+            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = parameter_type } });
             try self.compileVariableSignature(parameter.name, parameter_type, .{});
             if (i < method.parameters.items.len) try self.write(", ");
         }
@@ -168,28 +174,22 @@ fn @"return"(self: *Self, r: ast.Statement.Return) CompilerError!void {
         var scopes = std.mem.reverseIterator(self.scopes.items);
         while (scopes.next()) |scope| {
             var symbols = scope.iterator();
-            while (symbols.next()) |symbol|
-                switch (symbol.value_ptr.*) {
-                    .symbol => |f| switch (f.type) {
-                        .function => |function| {
-                            const expected_type: Type = function.return_type.*;
-                            const received_type: Type =
-                                if (r.@"return") |t| try .infer(self, t) else .void;
+            while (symbols.next()) |symbol| switch (symbol.value_ptr.*) {
+                .symbol => |f| switch (f.type) {
+                    .function => |function| {
+                        const expected_type: Type = function.return_type.*;
+                        const received_type: Type =
+                            if (r.@"return") |t| try Type.infer(self, t) else .void;
 
-                            if (!expected_type.eql(received_type) and !received_type.convertsTo(expected_type))
-                                return utils.printErr(
-                                    error.TypeMismatch,
-                                    "comperr: Expected '{f}', received '{f}' ({f}).\n",
-                                    .{ expected_type, received_type, r.pos },
-                                    .red,
-                                );
+                        if (!self.checkType(expected_type, received_type))
+                            return errors.typeMismatch(expected_type, received_type, r.pos);
 
-                            break :b expected_type;
-                        },
-                        else => continue,
+                        break :b expected_type;
                     },
-                    .type => continue,
-                };
+                    else => continue,
+                },
+                .module, .type => continue,
+            };
         }
 
         return utils.printErr(
@@ -233,11 +233,12 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
         });
     }
 
-    try self.registerSymbol(
-        v.variable_name,
-        expected_type orelse received_type,
-        .{ .symbol = .{ .is_mut = v.is_mut } },
-    );
+    try self.registerSymbol(v.variable_name, .{
+        .symbol = .{
+            .is_mut = v.is_mut,
+            .type = expected_type orelse received_type,
+        },
+    });
 
     try self.write(";\n");
 }
@@ -362,7 +363,9 @@ fn functionDefinition(
     self: *Self,
     function_def: ast.Statement.FunctionDefinition,
 ) CompilerError!void {
-    try self.registerSymbol(function_def.name, try .fromAst(self, function_def.getType()), .{ .symbol = .{} });
+    try self.registerSymbol(function_def.name, .{ .symbol = .{
+        .type = try .fromAst(self, function_def.getType()),
+    } });
 
     try self.pushScope();
     defer self.popScope();
@@ -375,7 +378,9 @@ fn functionDefinition(
         try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
         if (i < function_def.parameters.items.len) try self.write(", ");
 
-        try self.registerSymbol(parameter.name, try .fromAst(self, parameter.type), .{ .symbol = .{} });
+        try self.registerSymbol(parameter.name, .{
+            .symbol = .{ .type = try .fromAst(self, parameter.type) },
+        });
     }
     try self.write(") ");
 
@@ -386,7 +391,9 @@ fn bindingFunctionDeclaration(
     self: *Self,
     function_def: ast.Statement.BindingFunctionDefinition,
 ) CompilerError!void {
-    try self.registerSymbol(function_def.name, try .fromAst(self, function_def.getType()), .{ .symbol = .{} });
+    try self.registerSymbol(function_def.name, .{ .symbol = .{
+        .type = try .fromAst(self, function_def.getType()),
+    } });
 
     // we'll set the type of the function return type to be mutable because cc warns when a
     // function's return type is `const` qualified.
@@ -396,7 +403,23 @@ fn bindingFunctionDeclaration(
         try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
         if (i < function_def.parameters.items.len) try self.write(", ");
 
-        try self.registerSymbol(parameter.name, try .fromAst(self, parameter.type), .{ .symbol = .{} });
+        try self.registerSymbol(parameter.name, .{
+            .symbol = .{ .type = try .fromAst(self, parameter.type) },
+        });
     }
     try self.write(");\n");
+}
+
+fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
+    const module: Module = .{
+        .name = statement.alias orelse statement.module_name.getLast(),
+        .symbols = .init(self.alloc),
+    };
+
+    // TODO: MUST POPULATE SYMBOLS
+
+    try self.registerSymbol(
+        statement.module_name.getLast(),
+        .{ .module = module },
+    );
 }

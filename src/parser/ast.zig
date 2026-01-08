@@ -184,14 +184,22 @@ pub const Statement = union(enum) {
     function_definition: FunctionDefinition,
     binding_function_declaration: BindingFunctionDefinition,
     block: ast.Expression.Block,
+    import: Import,
     @"if": If,
     @"while": While,
     @"for": For,
 
     pub const Return = struct { pos: utils.Position, @"return": ?ast.Expression };
 
+    pub const Import = struct {
+        pos: utils.Position,
+        module_name: std.ArrayList([]const u8),
+        alias: ?[]const u8,
+    };
+
     pub const FunctionDefinition = struct {
         pos: utils.Position,
+        is_pub: bool,
         name: []const u8,
         parameters: ParameterList = .empty,
         return_type: Type,
@@ -209,6 +217,7 @@ pub const Statement = union(enum) {
 
     pub const BindingFunctionDefinition = struct {
         pos: utils.Position,
+        is_pub: bool,
         name: []const u8,
         parameters: ParameterList = .empty,
         return_type: Type,
@@ -225,6 +234,7 @@ pub const Statement = union(enum) {
 
     pub const VariableDefinition = struct {
         pos: utils.Position,
+        is_pub: bool,
         is_mut: bool,
         variable_name: []const u8,
         type: Type,
@@ -239,6 +249,7 @@ pub const Statement = union(enum) {
         };
 
         pos: utils.Position,
+        is_pub: bool,
         name: []const u8,
         generic_types: ?ParameterList = null,
         members: std.ArrayList(Member) = .empty,
@@ -252,6 +263,7 @@ pub const Statement = union(enum) {
         };
 
         pos: utils.Position,
+        is_pub: bool,
         name: []const u8,
         members: std.ArrayList(Member) = .empty,
         methods: std.ArrayList(FunctionDefinition) = .empty,
@@ -264,6 +276,7 @@ pub const Statement = union(enum) {
         };
 
         pos: utils.Position,
+        is_pub: bool,
         name: []const u8,
         generic_types: ?ParameterList = null, // only for structs and unions
         members: std.ArrayList(Member) = .empty,
