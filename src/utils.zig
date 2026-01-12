@@ -3,9 +3,14 @@ const std = @import("std");
 pub const Position = struct {
     line: usize,
     col: usize,
+    file_path: ?[]const u8 = null,
 
     pub fn format(self: Position, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("{}:{}", .{ self.line, self.col });
+        if (self.file_path) |path| {
+            try writer.print("{s}:{}:{}", .{ path, self.line, self.col });
+        } else {
+            try writer.print("{}:{}", .{ self.line, self.col });
+        }
     }
 };
 

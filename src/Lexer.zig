@@ -6,6 +6,7 @@ const Self = @This();
 
 /// raw string input of source file
 input: []const u8,
+file_path: []const u8,
 
 /// arraylist of tokens. this is the output of the lexer.
 tokens: std.ArrayList(Token) = .empty,
@@ -130,12 +131,15 @@ pub const Token = union(enum) {
 };
 
 /// Initializes and runs tokenizer. Populates `tokens`.
-pub fn init(input: []const u8, alloc: std.mem.Allocator) !*Self {
+pub fn init(input: []const u8, alloc: std.mem.Allocator, file_path: []const u8) !*Self {
     const self = try alloc.create(Self);
     self.* = .{
         .input = input,
+        .file_path = file_path,
         .current_line_len = std.mem.indexOfScalar(u8, self.input, '\n') orelse
             self.input.len,
+        .line_col = .{ .line = 1, .col = 1, .file_path = file_path },
+        .start_line_col = .{ .line = 1, .col = 1, .file_path = file_path },
     };
 
     try self.tokenize(alloc);

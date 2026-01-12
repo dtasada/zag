@@ -118,7 +118,7 @@ pub fn getAST(
             .red,
         );
 
-    var lexer = Lexer.init(file, alloc) catch |err|
+    var lexer = Lexer.init(file, alloc, file_path) catch |err|
         return utils.printErr(
             error.FailedToTokenizeSource,
             "Failed to tokenize source code: {}\n",

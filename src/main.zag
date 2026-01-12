@@ -4,7 +4,7 @@ fn main() i32 {
     let v2a = lib.Vector2.init(1, 2);
     let v2b = lib.Vector2.init(1, 2);
 
-    let v2c = lib.Vector2.add(v2a, v2b);
+    let v2c = Vector2.add(v2b);
 
     lib.printf("Hello there!\n");
     lib.do_something();
