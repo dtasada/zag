@@ -104,8 +104,11 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     defer files.deinit(alloc);
     defer for (files.items) |f| alloc.free(f);
 
-    while (try files_it.next()) |file|
-        try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
+    while (try files_it.next()) |file| {
+        if (std.mem.endsWith(u8, file.name, ".c")) {
+            try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
+        }
+    }
 
     const cmd_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "/usr/bin/cc", "-o", main_obj },

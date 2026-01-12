@@ -16,6 +16,10 @@ pub struct Vector2 {
     }
 }
 
+pub enum MyEnum {
+    a, b, c
+}
+
 pub fn do_something() void {
     let a = 6;
     let b = 7;

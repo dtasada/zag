@@ -63,7 +63,7 @@ module_registry: *std.StringHashMap(Module),
 exported_symbols: std.StringHashMap(Module.Symbol),
 
 /// Points to whichever file should be written to.
-writer: *File,
+writer: ?*File,
 
 /// The C source file being written to.
 output: ?File,
@@ -73,6 +73,9 @@ zag_header: ?File,
 
 /// The helper `zag.c` source file that contains zag language level implementations like auto-generated types.
 zag_source: ?File,
+
+/// The header file for the module being compiled (e.g. `lib.zag.h`).
+module_header: ?File,
 
 /// Maps a type to its inner name.
 zag_header_contents: std.HashMap(
@@ -209,58 +212,63 @@ pub fn init(
         .module_registry = registry,
         .exported_symbols = .init(alloc),
         .output = null,
+        .module_header = null,
         .zag_header = null,
         .zag_source = null,
         .zag_header_contents = .initContext(alloc, .{ .visited = &visited }), // TODO: will probably change in the future, when compiling files
-        .writer = undefined,
+        .writer = null,
     };
 
-    if (mode == .emit) {
-        // mkdir .zag-out/
-        var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
-        defer @".zag-out".close();
-        // mkdir .zag-out/src
-        try @".zag-out".makePath(std.fs.path.dirname(file_path) orelse "");
+    switch (mode) {
+        .emit => {
+            // mkdir .zag-out/
+            var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+            defer @".zag-out".close();
+            // mkdir .zag-out/src
+            try @".zag-out".makePath(std.fs.path.dirname(file_path) orelse "");
 
-        // mkdir .zag-out/zag
-        var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
-        defer @".zag-out/zag".close();
+            // mkdir .zag-out/zag
+            var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
+            defer @".zag-out/zag".close();
 
-        const @".c" = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}); // src/main.zag -> src/main.zag.c
-        const output_file = try @".zag-out".createFile(@".c", .{}); // mkdir .zag-out/src/main.zag.c
+            const @".c" = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}); // src/main.zag -> src/main.zag.c
+            const output_file = try @".zag-out".createFile(@".c", .{}); // mkdir .zag-out/src/main.zag.c
 
-        const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
-        const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
+            const @".h" = try std.fmt.allocPrint(alloc, "{s}.h", .{file_path});
+            const module_header_file = try @".zag-out".createFile(@".h", .{});
 
-        const zag_source_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.c" });
-        const zag_source_file = try @".zag-out/zag".createFile("zag.c", .{});
+            const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
+            const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
 
-        self.output = try .init(alloc, @".c", output_file);
-        self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
-        self.zag_source = try .init(alloc, zag_source_path, zag_source_file);
+            const zag_source_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.c" });
+            const zag_source_file = try @".zag-out/zag".createFile("zag.c", .{});
 
-        self.writer = &self.output.?;
+            self.output = try .init(alloc, @".c", output_file);
+            self.module_header = try .init(alloc, @".h", module_header_file);
+            self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
+            self.zag_source = try .init(alloc, zag_source_path, zag_source_file);
 
-        try self.zag_source.?.write(
-            \\#include <stdlib.h>
-            \\#include <zag.h>
-            \\
-        );
+            self.writer = &self.output.?;
 
-        try self.zag_header.?.write(@import("zag.h.zig").CONTENT);
+            try self.zag_source.?.write(
+                \\#include <stdlib.h>
+                \\#include <zag.h>
+                \\
+            );
 
-        var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
-        defer @".zag-out/bin".close();
-    } else {
-        // UNIMPLEMENTED: In analysis mode, `self.writer` is left undefined. 
-        // Any accidental calls to `self.print` or `self.write` during analysis will likely cause a crash.
-        // use dummy writer? or set to undefined and hope we don't write?
-        // safest is to set to undefined, but we must ensure analyze doesn't write.
-        // Or create a dummy File that writes to null?
-        // Since we know analyze doesn't write, leaving it undefined or null is OK,
-        // BUT `print` calls `self.writer`.
-        // If `analyze` accidentally calls print, we crash.
-        // Let's rely on correct logic for now.
+            try self.zag_header.?.write(@import("zag.h.zig").CONTENT);
+
+            // Header Guard
+            const guard_name = try std.fmt.allocPrint(alloc, "__ZAG_MODULE_{}_H", .{std.hash.Wyhash.hash(0, file_path)});
+            try self.module_header.?.print("#ifndef {s}\n#define {s}\n\n#include <zag.h>\n\n", .{ guard_name, guard_name });
+
+            // Include module header in module source
+            try self.output.?.print("#include \"{s}.h\"\n\n", .{std.fs.path.basename(file_path)});
+
+            var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
+            defer @".zag-out/bin".close();
+        },
+        .analysis => {},
     }
 
     return self;
@@ -270,6 +278,7 @@ pub fn init(
 pub fn deinit(self: *Self) void {
     self.alloc.free(self.source_path);
     if (self.output) |*o| o.deinit(self.alloc);
+    if (self.module_header) |*h| h.deinit(self.alloc);
     if (self.zag_header) |*z| z.deinit(self.alloc);
     self.scopes.deinit(self.alloc);
 }
@@ -280,24 +289,28 @@ pub fn print(
     comptime fmt: []const u8,
     args: anytype,
 ) CompilerError!void {
-    try self.writer.print(fmt, args);
+    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
+    try w.print(fmt, args);
 }
 
 /// Writes bytes to whichever file handle `self.writer` is pointing to at the moment.
 pub fn write(self: *Self, bytes: []const u8) CompilerError!void {
-    try self.writer.write(bytes);
+    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
+    try w.write(bytes);
 }
 
 /// Flushes whichever file handle `self.writer` is pointing to at the moment
 pub fn flush(self: *Self) CompilerError!void {
-    try self.writer.flush();
+    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
+    try w.flush();
 }
 
 /// Prints 4 spaces for each indent level into whichever file handle `self.writer` is pointing to
 /// at the moment.
 pub inline fn indent(self: *Self) CompilerError!void {
+    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
     for (0..self.indent_level) |_|
-        try self.writer.write("    ");
+        try w.write("    ");
 }
 
 /// Entry point for the compiler. Compiles AST into C code.
@@ -320,6 +333,9 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.zag_header.?.write("\n#endif");
     try self.zag_header.?.flush();
+
+    try self.module_header.?.write("\n#endif");
+    try self.module_header.?.flush();
 }
 
 pub fn analyze(self: *Self) CompilerError!void {
@@ -440,8 +456,100 @@ pub fn analyze(self: *Self) CompilerError!void {
                     });
                 }
             },
-            // UNIMPLEMENTED: Enum and Union declarations are not analyzed or exported.
-            // They will not be available when this module is imported.
+            .enum_declaration => |*enum_decl| {
+                var compound_type = try Type.Enum.init(self.alloc, enum_decl.name);
+                try self.registerSymbol(enum_decl.name, .{
+                    .type = .{ .@"enum" = compound_type },
+                });
+
+                var enum_last_value: usize = 0;
+                for (enum_decl.members.items) |member| {
+                    try compound_type.members.put(member.name, if (member.value) |value| b: {
+                        enum_last_value = (try self.solveComptimeExpression(value)).u64;
+                        break :b enum_last_value;
+                    } else b: {
+                        const val = enum_last_value + 1;
+                        enum_last_value += 1;
+                        break :b val;
+                    });
+                }
+
+                // Populate methods
+                for (enum_decl.methods.items) |method| {
+                    var params: std.ArrayList(*const Type) = try .initCapacity(
+                        self.alloc,
+                        method.parameters.items.len,
+                    );
+                    for (method.parameters.items) |p| {
+                        const param_type = try self.alloc.create(Type);
+                        param_type.* = try .fromAst(self, p.type);
+                        params.appendAssumeCapacity(param_type);
+                    }
+                    const return_type = try self.alloc.create(Type);
+                    return_type.* = try .fromAst(self, method.return_type);
+                    try compound_type.methods.put(method.name, .{
+                        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
+                            enum_decl.name,
+                            method.name,
+                        }),
+                        .params = params,
+                        .return_type = return_type,
+                    });
+                }
+
+                if (enum_decl.is_pub) {
+                    try self.exported_symbols.put(enum_decl.name, .{
+                        .name = enum_decl.name,
+                        .is_pub = true,
+                        .type = .{ .@"enum" = compound_type },
+                    });
+                }
+            },
+            .union_declaration => |*union_decl| {
+                var compound_type = try Type.Union.init(self.alloc, union_decl.name);
+                try self.registerSymbol(union_decl.name, .{
+                    .type = .{ .@"union" = compound_type },
+                });
+
+                for (union_decl.members.items) |member| {
+                    try compound_type.members.put(member.name, b: {
+                        const member_type = try self.alloc.create(Type);
+                        member_type.* = if (member.type) |t| try .fromAst(self, t) else .void;
+                        break :b member_type;
+                    });
+                }
+
+                // Populate methods
+                for (union_decl.methods.items) |method| {
+                    var params: std.ArrayList(*const Type) = try .initCapacity(
+                        self.alloc,
+                        method.parameters.items.len,
+                    );
+                    for (method.parameters.items) |p| {
+                        const param_type = try self.alloc.create(Type);
+                        param_type.* = try .fromAst(self, p.type);
+                        params.appendAssumeCapacity(param_type);
+                    }
+                    const return_type = try self.alloc.create(Type);
+                    return_type.* = try .fromAst(self, method.return_type);
+                    try compound_type.methods.put(method.name, .{
+                        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
+                            union_decl.name,
+                            method.name,
+                        }),
+                        .params = params,
+                        .return_type = return_type,
+                    });
+                }
+
+                if (union_decl.is_pub) {
+                    try self.exported_symbols.put(union_decl.name, .{
+                        .name = union_decl.name,
+                        .is_pub = true,
+                        .type = .{ .@"union" = compound_type },
+                    });
+                }
+            },
             // TODO: Enums and Unions
             else => {},
         }
@@ -458,7 +566,6 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     // Add directory of current file
     if (std.fs.path.dirname(self.source_path)) |dir| try parts.append(self.alloc, dir);
     for (import_stmt.module_name.items) |part| try parts.append(self.alloc, part);
-
 
     const rel_path = try std.fs.path.join(self.alloc, parts.items);
     defer self.alloc.free(rel_path);
@@ -575,6 +682,8 @@ pub fn compileType(
             if (!opts.binding_mut) try self.write(" const");
         },
         .@"struct" => |s| try self.write(try self.getInnerName(s.name)),
+        .@"union" => |u| try self.write(try self.getInnerName(u.name)),
+        .@"enum" => |e| try self.write(try self.getInnerName(e.name)),
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
@@ -718,14 +827,14 @@ pub fn registerSymbol(
                 .type = symbol.type,
                 // UNIMPLEMENTED: Name mangling is not implemented.
                 // Symbols are emitted with their raw names, which will cause link errors if multiple modules define the same symbol.
-                .inner_name = name, 
+                .inner_name = name,
             },
         },
         .type => |@"type"| .{
             .type = .{
                 .type = @"type",
                 // UNIMPLEMENTED: Name mangling is not implemented.
-                .inner_name = name, 
+                .inner_name = name,
             },
         },
         .module => |module| .{ .module = module },

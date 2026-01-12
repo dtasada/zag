@@ -184,6 +184,15 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
             .red,
         ),
 
+        .@"enum" => |@"enum"| if (@"enum".members.contains(expr.member_name)) {
+            try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name });
+        } else return utils.printErr(
+            error.UndeclaredProperty,
+            "comperr: Enum '{s}' has no member '{s}' ({f}).\n",
+            .{ @"enum".name, expr.member_name, expr.pos },
+            .red,
+        ),
+
         else => return utils.printErr(
             error.IllegalExpression,
             "comperr: Member expression on '{f}' is illegal\n",

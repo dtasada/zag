@@ -422,6 +422,14 @@ pub const Type = union(enum) {
                 .{ module.name, member.member_name, member.pos },
                 .red,
             ),
+            .@"enum" => |@"enum"| if (@"enum".members.contains(member.member_name)) {
+                return parent_type;
+            } else return utils.printErr(
+                error.UndeclaredProperty,
+                "comperr: Enum '{s}' has no member '{s}' ({f})\n",
+                .{ @"enum".name, member.member_name, member.pos },
+                .red,
+            ),
             else => |other| return utils.printErr(
                 error.IllegalExpression,
                 "comperr: Member expression on '{f}' is illegal ({f})\n",
