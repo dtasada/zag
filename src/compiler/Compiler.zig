@@ -252,6 +252,8 @@ pub fn init(
         var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
         defer @".zag-out/bin".close();
     } else {
+        // UNIMPLEMENTED: In analysis mode, `self.writer` is left undefined. 
+        // Any accidental calls to `self.print` or `self.write` during analysis will likely cause a crash.
         // use dummy writer? or set to undefined and hope we don't write?
         // safest is to set to undefined, but we must ensure analyze doesn't write.
         // Or create a dummy File that writes to null?
@@ -438,6 +440,8 @@ pub fn analyze(self: *Self) CompilerError!void {
                     });
                 }
             },
+            // UNIMPLEMENTED: Enum and Union declarations are not analyzed or exported.
+            // They will not be available when this module is imported.
             // TODO: Enums and Unions
             else => {},
         }
@@ -454,6 +458,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     // Add directory of current file
     if (std.fs.path.dirname(self.source_path)) |dir| try parts.append(self.alloc, dir);
     for (import_stmt.module_name.items) |part| try parts.append(self.alloc, part);
+
 
     const rel_path = try std.fs.path.join(self.alloc, parts.items);
     defer self.alloc.free(rel_path);
@@ -711,13 +716,16 @@ pub fn registerSymbol(
             .symbol = .{
                 .is_mut = symbol.is_mut,
                 .type = symbol.type,
-                .inner_name = name, // TODO: name mangling for generics ig
+                // UNIMPLEMENTED: Name mangling is not implemented.
+                // Symbols are emitted with their raw names, which will cause link errors if multiple modules define the same symbol.
+                .inner_name = name, 
             },
         },
         .type => |@"type"| .{
             .type = .{
                 .type = @"type",
-                .inner_name = name, // TODO: name mangling for generics ig
+                // UNIMPLEMENTED: Name mangling is not implemented.
+                .inner_name = name, 
             },
         },
         .module => |module| .{ .module = module },
@@ -771,11 +779,31 @@ pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
 
 fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
     var it = std.mem.reverseIterator(self.scopes.items);
-    while (it.next()) |scope|
-        return switch (scope.get(symbol) orelse continue) {
-            .module => |module| module.name,
-            inline else => |s| s.inner_name,
-        };
+    while (it.next()) |scope| {
+        if (scope.get(symbol)) |item| {
+            return switch (item) {
+                .module => |module| module.name,
+                inline else => |s| s.inner_name,
+            };
+        }
+    }
+
+    // Search in modules in scope
+    it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope| {
+        var scope_it = scope.iterator();
+        while (scope_it.next()) |entry| {
+            switch (entry.value_ptr.*) {
+                .module => |module| {
+                    if (module.symbols.get(symbol)) |s| {
+                        // TODO: mangling
+                        return s.name;
+                    }
+                },
+                else => {},
+            }
+        }
+    }
 
     return utils.printErr(
         error.UnknownSymbol,

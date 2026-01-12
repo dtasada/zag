@@ -92,3 +92,39 @@ The compiler generates C code (`.c`) and a header (`zag.h`).
 
 1.  **Color Codes Swapped**: `.green` uses the code for blue (`34`), and `.blue` uses green (`32`).
 2.  **Buffer Overflow**: `print` uses a fixed 1024-byte buffer. Use `std.io.getStdOut().writer()` for safety.
+
+
+
+
+### TODO
+1. Incomplete Export Analysis (The Biggest Gap)
+   * Structs, Enums, and Unions: In src/compiler/Compiler.zig, the analyze function completely ignores enum and union declarations. It also doesn't fully "export" struct definitions to
+     the C output of the importer.
+       * Consequence: You cannot currently import and use an enum or union from another file. If you try to use an imported struct type in a C function signature, the C compiler might
+         complain about "incomplete types" because I didn't generate the typedef struct ... in the importing file's C output.
+   * Global Variables: I registered them in the symbol table, but I didn't add logic to src/compiler/statements.zig's import function to generate extern declarations for them.
+       * Consequence: Accessing a global variable from another module will result in a C compile error (undeclared identifier).
+
+2. Fragile C Output Generation
+   * String Escaping: I investigated adding proper string escaping (e.g., converting a newline byte back to \n for the C string literal) but abandoned it to focus on the critical
+     "use-after-free" bug.
+       * Consequence: If your source string contains weird control characters or certain escapes, they are written as raw bytes to the C file. This works for simple text but is
+         technically unsafe C generation.
+   * Unsafe "Analysis" Writer: In Compiler.init, when in .analysis mode, I left self.writer as undefined.
+       * Consequence: If the analyze phase accidentally calls any function that tries to write to the file (like print), the compiler will crash (segfault) instead of doing nothing. A
+         proper implementation would use a "dummy" writer that discards input.
+
+3. Code Duplication
+   * Struct Parsing Logic: To implement analyze for structs, I copied and pasted the logic for parsing members and methods from statements.zig into Compiler.zig.
+       * Consequence: If you change how structs are defined or handled in the future, you have to remember to update it in two places, or the analysis phase will desync from the
+         compilation phase.
+
+4. General "TODOs" I Skipped
+   * Name Mangling: I am printing raw symbol names (symbol.name).
+       * Consequence: If two modules define a function with the same name (e.g., helper), and you import both (or link them), the C linker will fail with "duplicate symbol" errors
+         because I'm not namespacing them (e.g., module_helper vs other_helper).
+   * Generics: There are comments like // TODO: name mangling for generics which I haven't touched.
+
+If you'd like, I can tackle any of these specific areas to make the system more robust. Exporting Structs/Enums or Name Mangling would probably be the most important next steps for a
+usable language.
+

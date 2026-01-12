@@ -129,7 +129,7 @@ pub const Expression = union(enum) {
 
     pub const StructInstantiation = struct {
         pos: utils.Position,
-        name: []const u8,
+        type_expr: *const Expression,
         members: std.StringHashMap(Expression),
     };
 

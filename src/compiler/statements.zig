@@ -413,37 +413,64 @@ fn bindingFunctionDeclaration(
 fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
     const module = try self.processImport(&statement);
 
-    // Forward declare exported functions
+    const name = statement.alias orelse statement.module_name.getLast();
+
+    try self.registerSymbol(name, .{ .module = module });
+
     var it = module.symbols.iterator();
     while (it.next()) |entry| {
         const symbol = entry.value_ptr.*;
         switch (symbol.type) {
-            .function => |function| {
-                // Return Type
-                // function.return_type is *const Type
-                try self.compileType(function.return_type.*, .{ .binding_mut = true });
-
-                // Name
-                try self.print(" {s}(", .{symbol.name});
-
-                // Params
-                for (function.params.items, 1..) |param, i| {
-                    if (param.* == .variadic) {
-                        try self.write("...");
-                    } else {
-                        try self.compileType(param.*, .{});
-                    }
-
-                    if (i < function.params.items.len) try self.write(", ");
-                }
-                try self.write(");\n");
-            },
+            .@"struct" => try self.print("typedef struct {s} {s};\n", .{ symbol.name, symbol.name }),
+            .@"union" => try self.print("typedef union {s} {s};\n", .{ symbol.name, symbol.name }),
+            .@"enum" => try self.print("typedef enum {s} {s};\n", .{ symbol.name, symbol.name }),
             else => {},
         }
     }
 
-    try self.registerSymbol(
-        statement.alias orelse statement.module_name.getLast(),
-        .{ .module = module },
-    );
+    // 2. Define types and declarations (struct Name { ... }; and functions)
+    it = module.symbols.iterator();
+    while (it.next()) |entry| {
+        const symbol = entry.value_ptr.*;
+        switch (symbol.type) {
+            .function => |function| {
+                try self.compileType(function.return_type.*, .{ .binding_mut = true });
+                try self.print(" {s}(", .{symbol.name});
+                for (function.params.items, 1..) |param, i| {
+                    if (param.* == .variadic) try self.write("...") else try self.compileType(param.*, .{});
+                    if (i < function.params.items.len) try self.write(", ");
+                }
+                try self.write(");\n");
+            },
+            .@"struct" => |@"struct"| {
+                try self.print("struct {s} {{\n", .{symbol.name});
+                var members = @"struct".members.iterator();
+                while (members.next()) |member| {
+                    try self.indent();
+                    try self.write("    ");
+                    // members must be mutable in definition
+                    try self.compileVariableSignature(member.key_ptr.*, member.value_ptr.*.*, .{ .binding_mut = true });
+                    try self.write(";\n");
+                }
+                try self.write("};\n");
+
+                // Methods
+                var methods = @"struct".methods.iterator();
+                while (methods.next()) |method| {
+                    const m = method.value_ptr;
+                    try self.compileType(m.return_type.*, .{ .binding_mut = true });
+                    try self.print(" {s}(", .{m.inner_name});
+                    for (m.params.items, 1..) |param, i| {
+                        try self.compileType(param.*, .{});
+                        if (i < m.params.items.len) try self.write(", ");
+                    }
+                    try self.write(");\n");
+                }
+            },
+            // UNIMPLEMENTED: Enum and Union full definitions are not emitted for imported modules.
+            // Attempts to use imported enums/unions will result in C compilation errors (incomplete type).
+            // UNIMPLEMENTED: Global variables are not emitted as `extern`. Accessing imported globals will fail.
+            else => {},
+        }
+    }
 }

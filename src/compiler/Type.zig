@@ -295,12 +295,7 @@ pub const Type = union(enum) {
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .range => @panic("invalid"),
             .assignment => .void,
-            .struct_instantiation => |struct_inst| compiler.getSymbolType(struct_inst.name) catch return utils.printErr(
-                error.UnknownSymbol,
-                "comperr: Unknown symbol '{s}' at {f}\n",
-                .{ struct_inst.name, expr.getPosition() },
-                .red,
-            ),
+            .struct_instantiation => |struct_inst| Type.infer(compiler, struct_inst.type_expr.*),
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => .void,
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
@@ -419,6 +414,14 @@ pub const Type = union(enum) {
                 );
             },
             .reference => |reference| continue :b reference.inner.*,
+            .module => |module| if (module.symbols.get(member.member_name)) |symbol| {
+                return symbol.type;
+            } else return utils.printErr(
+                error.UndeclaredProperty,
+                "comperr: Module '{s}' has no member '{s}' ({f})\n",
+                .{ module.name, member.member_name, member.pos },
+                .red,
+            ),
             else => |other| return utils.printErr(
                 error.IllegalExpression,
                 "comperr: Member expression on '{f}' is illegal ({f})\n",

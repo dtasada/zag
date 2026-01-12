@@ -80,7 +80,9 @@ pub fn compile(
                 .red,
             ),
         .struct_instantiation => |struct_inst| {
-            try self.print("({s}){{\n", .{struct_inst.name});
+            try self.write("(");
+            try self.compileType(try Type.infer(self, struct_inst.type_expr.*), .{});
+            try self.write("){\n");
             self.indent_level += 1;
 
             var members = struct_inst.members.iterator();
@@ -215,9 +217,10 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
 
 fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
     switch (call_expr.callee.*) {
-        .member => |m| switch (m.parent.*) {
-            .ident => |ident| switch (try self.getScopeItem(ident.ident)) {
-                .type => |t| switch (t.type) {
+        .member => |m| {
+            // Check if member access resolves to a static type (e.g. lib.Vector2.init)
+            if (try tryResolveStaticType(self, m.parent.*)) |static_type| {
+                switch (static_type) {
                     .@"struct" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
                         .member => |member_type| return errors.expressionNotCallable(member_type.*, call_expr.callee.getPosition()),
                         .method => |method| {
@@ -225,27 +228,60 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                                 .params = method.params,
                                 .return_type = method.return_type,
                             }, call_expr);
+                            return;
                         },
-                    } else return errors.undeclaredProperty(t.type, m.member_name, call_expr.pos),
-                    else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
-                },
-                .symbol => try methodCall(self, call_expr, m),
-                .module => |module| if (module.symbols.get(m.member_name)) |symbol| switch (symbol.type) {
-                    .function => |function| try functionCall(self, function, call_expr),
-                    else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
-                } else return utils.printErr(
-                    error.UndeclaredProperty,
-                    "comperr: Module '{s}' has no member '{s}' ({f}).\n",
-                    .{ module.name, m.member_name, call_expr.pos },
-                    .red,
-                ),
-            },
-            else => try methodCall(self, call_expr, m),
+                    } else return errors.undeclaredProperty(static_type, m.member_name, call_expr.pos),
+                    .module => |module| if (module.symbols.get(m.member_name)) |symbol| switch (symbol.type) {
+                        .function => |function| {
+                            try functionCall(self, function, call_expr);
+                            return;
+                        },
+                        else => return errors.expressionNotCallable(symbol.type, call_expr.callee.getPosition()),
+                    } else return utils.printErr(
+                        error.UndeclaredProperty,
+                        "comperr: Module '{s}' has no member '{s}' ({f}).\n",
+                        .{ module.name, m.member_name, call_expr.pos },
+                        .red,
+                    ),
+                    else => {},
+                }
+            }
+            try methodCall(self, call_expr, m);
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| try functionCall(self, function, call_expr),
             else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
         },
+    }
+}
+
+fn tryResolveStaticType(self: *Self, expr: ast.Expression) !?Type {
+    switch (expr) {
+        .ident => |ident| {
+            const item = self.getScopeItem(ident.ident) catch return null;
+            return switch (item) {
+                .type => |t| t.type,
+                .module => |m| .{ .module = m },
+                else => null,
+            };
+        },
+        .member => |m| {
+            const parent = (try tryResolveStaticType(self, m.parent.*)) orelse return null;
+            switch (parent) {
+                .module => |module| {
+                    if (module.symbols.get(m.member_name)) |sym| {
+                        switch (sym.type) {
+                            .@"struct", .@"enum", .@"union" => return sym.type,
+                            .module => return .{ .module = sym.type.module },
+                            else => return null,
+                        }
+                    }
+                    return null;
+                },
+                else => return null,
+            }
+        },
+        else => return null,
     }
 }
 

@@ -120,21 +120,11 @@ pub fn group(self: *Self) ParserError!ast.Expression {
 }
 
 pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
-    const struct_name = switch (lhs.*) {
-        .ident => |ident| ident.ident,
-        else => |other| return utils.printErr(
-            error.UnexpectedExpression,
-            "Parser: Expected struct name in struct instantiation, received {s}.",
-            .{@tagName(other)},
-            .red,
-        ),
-    };
-
     try self.expect(self.advance(), Lexer.Token.open_brace, "struct instantiation", "{");
 
     var @"struct": ast.Expression.StructInstantiation = .{
         .pos = lhs.getPosition(),
-        .name = struct_name,
+        .type_expr = lhs,
         .members = .init(self.alloc),
     };
 
@@ -219,7 +209,9 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
         try parse(self, .default);
 
     var @"else": ?*ast.Expression = null;
-    if (self.currentTokenKind() == Lexer.Token.@"else") {
+    if (self.currentTokenKind() == .open_brace) {
+        // block
+    } else if (self.currentTokenKind() == Lexer.Token.@"else") {
         _ = self.advance(); // consume `else`
 
         @"else" = try self.alloc.create(ast.Expression);

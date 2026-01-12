@@ -6,7 +6,11 @@ const Parser = @import("Parser");
 const Compiler = @import("Compiler");
 
 /// Takes zag code and lexes, parses and compiles it to C code.
-pub fn transpile(alloc: std.mem.Allocator, file_path: []const u8, registry: *std.StringHashMap(Compiler.Module)) !void {
+pub fn transpile(
+    alloc: std.mem.Allocator,
+    file_path: []const u8,
+    registry: *std.StringHashMap(Compiler.Module),
+) !void {
     // use ArenaAllocator to avoid too many `.deinit()` methods.
     var arena_back: std.heap.ArenaAllocator = .init(alloc);
     const arena = arena_back.allocator();

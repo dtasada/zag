@@ -14,8 +14,8 @@
  "for"
  "while"
  "bind"
- ; "pub"
- ] @keyword
+ "pub"
+] @keyword
 
 (while_statement "while" @repeat)
 (if_statement ["if" "else"] @conditional)

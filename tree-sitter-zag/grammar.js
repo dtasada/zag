@@ -64,6 +64,7 @@ export default grammar({
     ),
 
     function_definition: $ => seq(
+      optional("pub"),
       "fn",
       field("name", $.ident),
       field("parameters", $.parameter_list),
@@ -72,6 +73,7 @@ export default grammar({
     ),
 
     binding_function_declaration: $ => seq(
+      optional("pub"),
       "bind",
       "fn",
       field("name", $.ident),
@@ -94,6 +96,7 @@ export default grammar({
     ),
 
     struct_declaration: $ => seq(
+      optional("pub"),
       "struct",
       field("name", $.ident_type),
       optional(field("generics", $.parameter_list)),
@@ -116,6 +119,7 @@ export default grammar({
     ),
 
     enum_declaration: $ => seq(
+      optional("pub"),
       "enum",
       optional(field("type", $.parameter_list)),
       field("name", $.ident_type),
@@ -136,6 +140,7 @@ export default grammar({
     ),
 
     union_declaration: $ => seq(
+      optional("pub"),
       "union",
       field("name", $.ident_type),
       "{",
