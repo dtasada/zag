@@ -51,6 +51,7 @@
 (member_expression rhs: (ident) @field)
 
 (parameter_list (variable_signature name: (ident) @variable.parameter))
+(parameter_list name: (ident) @variable.parameter)
 
 (function_definition name: (ident) @function)
 (binding_function_declaration name: (ident) @function)
@@ -69,6 +70,7 @@
 
 (variable_definition variable_name: (ident) @variable)
 (struct_instantiation_expression_member member_name: (ident) @field)
+
 (struct_member name: (ident) @field)
 (enum_member name: (ident) @field)
 (union_member name: (ident) @field)

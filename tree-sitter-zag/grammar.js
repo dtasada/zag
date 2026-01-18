@@ -11,6 +11,10 @@ function commaSep(item) {
   return seq(repeat(seq(item, ",")), optional(item));
 }
 
+function commaSep1(item) {
+  return seq(repeat1(seq(item, ",")), optional(item));
+}
+
 export default grammar({
   name: "zag",
 
@@ -103,15 +107,13 @@ export default grammar({
       field("name", $.ident_type),
       optional(field("generic_parameters", $.generic_parameter_list)),
       "{",
-      // repeat(choice(
-        commaSep(field("member", $.struct_member)),
-        repeat(field("method", $.function_definition)),
-      // )),
+      commaSep(field("member", $.struct_member)),
+      repeat(field("method", $.function_definition)),
       "}",
     ),
 
     struct_member: $ => seq(
-      field("name", $.ident),
+      commaSep1(field("name", $.ident)),
       ":",
       field("type", $.type),
       optional(seq(
@@ -147,14 +149,12 @@ export default grammar({
       field("name", $.ident_type),
       optional(field("generic_parameters", $.generic_parameter_list)),
       "{",
-      // repeat(choice(
-        commaSep(field("member", $.union_member)),
-        repeat(field("method", $.function_definition)),
-      // )),
+      commaSep(field("member", $.union_member)),
+      repeat(field("method", $.function_definition)),
       "}",
     ),
     union_member: $ => seq(
-      field("name", $.ident),
+      commaSep1(field("name", $.ident)),
       ":",
       field("type", $.type),
     ),
@@ -399,11 +399,17 @@ export default grammar({
 
     parameter_list: $ => seq(
       "(",
-      commaSep(choice(
-        $.variable_signature,
-        seq(
+      optional(seq(
+        commaSep(choice(
+          $.variable_signature,
           field("name", $.ident),
-          "...",
+        )),
+        choice(
+          $.variable_signature,
+          seq(
+            field("name", $.ident),
+            "...",
+          )
         ),
       )),
       ")",

@@ -5,7 +5,7 @@ struct MyStruct {
     z: f32
 }
 
-fn my_func(x, y: i32, z: f32) void {
+fn my_func(x, y: i32, z: f32, a, b: f32, c: i32) void {
 
 }
 
