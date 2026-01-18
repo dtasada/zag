@@ -80,6 +80,7 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) Parser
 }
 
 pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
+    const position = self.parent_parser.currentPosition();
     const ident = try self.parent_parser.expect(
         self.parent_parser.advance(),
         Lexer.Token.ident,
@@ -87,10 +88,11 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
         "type name",
     );
 
-    return .{ .symbol = ident };
+    return .{ .symbol = .{ .symbol = ident, .position = position } };
 }
 
 pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+    const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '&'
 
     const is_mut = self.parent_parser.currentTokenKind() == Lexer.Token.mut;
@@ -101,6 +103,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
 
     return .{
         .reference = .{
+            .position = position,
             .inner = inner,
             .is_mut = is_mut,
         },
@@ -108,24 +111,27 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
 }
 
 pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+    const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '?'
 
     const inner = try alloc.create(ast.Type);
     inner.* = try parseType(self, alloc, .default);
 
-    return .{ .optional = inner };
+    return .{ .optional = .{ .position = position, .inner = inner } };
 }
 
 pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+    const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '!'
 
     const success = try alloc.create(ast.Type);
     success.* = try parseType(self, alloc, .default);
 
-    return .{ .error_union = .{ .success = success } };
+    return .{ .error_union = .{ .position = position, .success = success } };
 }
 
 pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+    const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '!'
 
     const failure = try alloc.create(ast.Type);
@@ -136,6 +142,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
 
     return .{
         .error_union = .{
+            .position = position,
             .success = success,
             .failure = failure,
         },
@@ -143,6 +150,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
 }
 
 pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+    const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '['
 
     var size: ?*ast.Expression = null;
@@ -164,10 +172,16 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     return if (size) |s| .{
         .array = .{
+            .position = position,
             .inner = inner,
             .size = s,
         },
-    } else .{ .arraylist = inner };
+    } else .{
+        .arraylist = .{
+            .position = position,
+            .inner = inner,
+        },
+    };
 }
 
 pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {

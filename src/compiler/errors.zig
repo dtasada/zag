@@ -64,3 +64,12 @@ pub fn missingArguments(
         .red,
     );
 }
+
+pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
+    return utils.printErr(
+        error.UnknownSymbol,
+        "comperr: Unknown symbol '{s}' at {f}.\n",
+        .{ symbol, position },
+        .red,
+    );
+}

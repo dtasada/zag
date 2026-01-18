@@ -184,6 +184,22 @@
           }
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "generic_parameters",
+              "content": {
+                "type": "SYMBOL",
+                "name": "generic_parameter_list"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "FIELD",
           "name": "parameters",
           "content": {
@@ -239,6 +255,22 @@
             "type": "SYMBOL",
             "name": "ident"
           }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "generic_parameters",
+              "content": {
+                "type": "SYMBOL",
+                "name": "generic_parameter_list"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -364,10 +396,10 @@
           "members": [
             {
               "type": "FIELD",
-              "name": "generics",
+              "name": "generic_parameters",
               "content": {
                 "type": "SYMBOL",
-                "name": "parameter_list"
+                "name": "generic_parameter_list"
               }
             },
             {
@@ -656,6 +688,22 @@
             "type": "SYMBOL",
             "name": "ident_type"
           }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "generic_parameters",
+              "content": {
+                "type": "SYMBOL",
+                "name": "generic_parameter_list"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -1979,6 +2027,39 @@
                 "name": "op",
                 "content": {
                   "type": "STRING",
+                  "value": "but"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "rhs",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "expression"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "PREC_LEFT",
+          "value": 4,
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "lhs",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "expression"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "op",
+                "content": {
+                  "type": "STRING",
                   "value": "or"
                 }
               },
@@ -2524,6 +2605,70 @@
         {
           "type": "STRING",
           "value": ")"
+        }
+      ]
+    },
+    "generic_parameter_list": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "<"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "ident_type"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "variable_signature"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "STRING",
+                    "value": ","
+                  }
+                ]
+              }
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "ident_type"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "variable_signature"
+                    }
+                  ]
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": ">"
         }
       ]
     },

@@ -181,6 +181,16 @@ pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErro
     };
 }
 
+pub fn generic(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+    return .{
+        .generic = .{
+            .pos = lhs.getPosition(),
+            .lhs = lhs,
+            .arguments = try self.parseGenericArguments(),
+        },
+    };
+}
+
 pub fn @"if"(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     try self.expect(self.advance(), Lexer.Token.@"if", "if expression", "if");
@@ -287,3 +297,4 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
         },
     };
 }
+

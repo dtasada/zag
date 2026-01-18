@@ -410,7 +410,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 // No, that writes C code.
                 // I'll duplicate minimal logic for struct.
 
-                var compound_type = try Type.Struct.init(self.alloc, struct_decl.name);
+                var compound_type: Type.Struct = try .init(self.alloc, struct_decl.name);
                 try self.registerSymbol(struct_decl.name, .{
                     .type = .{ .@"struct" = compound_type },
                 });
@@ -457,7 +457,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 }
             },
             .enum_declaration => |*enum_decl| {
-                var compound_type = try Type.Enum.init(self.alloc, enum_decl.name);
+                var compound_type: Type.Enum = try .init(self.alloc, enum_decl.name);
                 try self.registerSymbol(enum_decl.name, .{
                     .type = .{ .@"enum" = compound_type },
                 });
@@ -506,7 +506,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 }
             },
             .union_declaration => |*union_decl| {
-                var compound_type = try Type.Union.init(self.alloc, union_decl.name);
+                var compound_type: Type.Union = try .init(self.alloc, union_decl.name);
                 try self.registerSymbol(union_decl.name, .{
                     .type = .{ .@"union" = compound_type },
                 });
@@ -550,16 +550,12 @@ pub fn analyze(self: *Self) CompilerError!void {
                     });
                 }
             },
-            // TODO: Enums and Unions
             else => {},
         }
     }
 }
 
 pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!Module {
-    // 1. Resolve Path
-    // import_stmt.module_name is ArrayList([]const u8)
-    // join with / and add .zag
     var parts: std.ArrayList([]const u8) = .empty;
     defer parts.deinit(self.alloc);
 

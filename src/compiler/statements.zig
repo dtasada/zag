@@ -59,6 +59,26 @@ fn compoundTypeDeclaration(
         },
     });
 
+    try self.pushScope();
+    defer self.popScope();
+    // switch (T) {
+    //     .@"struct", .@"union" => if (type_decl.generic_types) |generics| {
+    //         for (generics.items) |param| {
+    //             switch (param.type) {
+    //                 .inferred => try self.registerSymbol(param.name, .{ .symbol = .{
+    //                     .type = .type,
+    //                     .is_mut = false,
+    //                 } }),
+    //                 else => try self.registerSymbol(param.name, .{ .symbol = .{
+    //                     .type = try .fromAst(self, param.type),
+    //                     .is_mut = false,
+    //                 } }),
+    //             }
+    //         }
+    //     },
+    //     else => {},
+    // }
+
     var enum_last_value: usize = 0;
     for (type_decl.members.items) |member| {
         if (compound_type.getProperty(member.name)) |_| return utils.printErr(

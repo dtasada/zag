@@ -103,6 +103,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
 
     // logical
     try self.led(.@"and", .logical, expressions.binary);
+    try self.led(.but, .logical, expressions.binary);
     try self.led(.@"or", .logical, expressions.binary);
 
     // relational
@@ -137,6 +138,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@".", .member, expressions.member);
     try self.led(.open_brace, .call, expressions.structInstantiation);
     try self.led(.open_paren, .call, expressions.call);
+    try self.led(.@"<", .primary, expressions.generic);
     try self.nud(.open_bracket, expressions.arrayInstantiation);
 
     // other expressions
@@ -316,17 +318,29 @@ pub fn parseGenericParameters(self: *Self) ParserError!ast.ParameterList {
 }
 
 pub fn parseArguments(self: *Self) ParserError!ast.ArgumentList {
+    return try self.parseArgumentsGeneric(false);
+}
+pub fn parseGenericArguments(self: *Self) ParserError!ast.ArgumentList {
+    return try self.parseArgumentsGeneric(true);
+}
+
+fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ArgumentList {
+    const opening_token: Lexer.Token = if (is_generic) .@"<" else .open_paren;
+    const closing_token: Lexer.Token = if (is_generic) .@">" else .close_paren;
+    const environment = if (is_generic) "generic argument list" else "argument list";
+
     var args: ast.ArgumentList = .empty;
 
-    try self.expect(self.advance(), .open_paren, "argument list", "(");
+    try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
-    if (self.currentTokenKind() == Lexer.Token.close_paren) {
+    if (self.currentTokenKind() == closing_token) {
         _ = self.advance();
     } else while (true) {
-        try args.append(self.alloc, try expressions.parse(self, .default));
+        const bp: BindingPower = if (is_generic) .relational else .default;
+        try args.append(self.alloc, try expressions.parse(self, bp));
 
         self.expectSilent(self.currentToken(), .comma) catch {
-            try self.expect(self.advance(), .close_paren, "argument list", ")");
+            try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
             break;
         };
 
@@ -349,31 +363,49 @@ pub fn parseBlock(self: *Self) !ast.Block {
     return block;
 }
 
-pub fn parseParametersGeneric(self: *Self, type_is_optional: bool) ParserError!ast.ParameterList {
+pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ParameterList {
+    const context = if (is_generic) "generic parameter list" else "parameter list";
+    const opening_token = if (is_generic) .@"<" else .open_paren;
+    const closing_token = if (is_generic) .@">" else .close_paren;
+
     var params: ast.ParameterList = .empty;
+    try self.expect(
+        self.advance(),
+        opening_token,
+        "parameter list",
+        @tagName(opening_token),
+    );
 
-    try self.expect(self.advance(), .open_paren, "parameter list", "(");
+    if (self.currentTokenKind() == closing_token) {
+        if (is_generic) return utils.printErr(
+            error.UnexpectedToken,
+            "Parser error: empty generic parameter list at {f}.\n",
+            .{self.currentPosition()},
+            .red,
+        );
 
-    if (self.currentTokenKind() == Lexer.Token.close_paren) {
         _ = self.advance();
     } else {
         var last_arg = false;
         while (!last_arg) {
-            const param_name = try self.expect(self.advance(), .ident, "parameter list", "parameter name");
+            const position = self.currentPosition();
+            const param_name = try self.expect(self.advance(), .ident, context, "parameter name");
 
-            var param_type: ast.Type = .inferred;
-            if (type_is_optional and self.currentTokenKind() == Lexer.Token.colon) {
-                _ = self.advance();
-                param_type = try self.type_parser.parseType(self.alloc, .default);
+            var param_type: ast.Type = .{ .inferred = .{ .position = position } };
+            if (is_generic) {
+                param_type = if (self.currentTokenKind() == Lexer.Token.colon) b: {
+                    _ = self.advance();
+                    break :b try self.type_parser.parseType(self.alloc, .default);
+                } else .{ .inferred = .{ .position = position } };
             } else switch (self.advance()) {
                 .colon => param_type = try self.type_parser.parseType(self.alloc, .default),
                 .dot_dot_dot => {
-                    param_type = .variadic;
+                    param_type = .{ .variadic = .{ .position = position } };
                     last_arg = true;
                 },
                 else => |actual| return utils.printErr(
                     error.UnexpectedToken,
-                    "Unexpected token '{f}' in parameter list at {f}. Expected an explicit or variadic type.\n",
+                    "Unexpected token '{f}' in " ++ context ++ " at {f}. Expected a type.\n",
                     .{ actual, self.lexer.source_map.items[
                         std.math.clamp(
                             self.pos - 1,
@@ -389,7 +421,12 @@ pub fn parseParametersGeneric(self: *Self, type_is_optional: bool) ParserError!a
 
             // look for a comma, else a closing parenthesis
             self.expectSilent(self.currentToken(), .comma) catch {
-                try self.expect(self.advance(), .close_paren, "parameter list", ")");
+                try self.expect(
+                    self.advance(),
+                    if (is_generic) .@">" else .close_paren,
+                    context,
+                    if (is_generic) ">" else ")",
+                );
                 break;
             };
 

@@ -67,6 +67,7 @@ export default grammar({
       optional("pub"),
       "fn",
       field("name", $.ident),
+      optional(field("generic_parameters", $.generic_parameter_list)),
       field("parameters", $.parameter_list),
       field("return_type", $.type),
       field("body", $.block),
@@ -77,6 +78,7 @@ export default grammar({
       "bind",
       "fn",
       field("name", $.ident),
+      optional(field("generic_parameters", $.generic_parameter_list)),
       field("parameters", $.parameter_list),
       field("return_type", $.type),
       ";",
@@ -99,7 +101,7 @@ export default grammar({
       optional("pub"),
       "struct",
       field("name", $.ident_type),
-      optional(field("generics", $.parameter_list)),
+      optional(field("generic_parameters", $.generic_parameter_list)),
       "{",
       // repeat(choice(
         commaSep(field("member", $.struct_member)),
@@ -143,6 +145,7 @@ export default grammar({
       optional("pub"),
       "union",
       field("name", $.ident_type),
+      optional(field("generic_parameters", $.generic_parameter_list)),
       "{",
       // repeat(choice(
         commaSep(field("member", $.union_member)),
@@ -330,6 +333,7 @@ export default grammar({
       prec.left(6, seq(field("lhs", $.expression), field("op", "|"), field("rhs", $.expression))),
       prec.left(6, seq(field("lhs", $.expression), field("op", "^"), field("rhs", $.expression))),
       prec.left(4, seq(field("lhs", $.expression), field("op", "and"), field("rhs", $.expression))),
+      prec.left(4, seq(field("lhs", $.expression), field("op", "but"), field("rhs", $.expression))),
       prec.left(4, seq(field("lhs", $.expression), field("op", "or"), field("rhs", $.expression))),
       prec.left(7, seq(field("lhs", $.expression), field("op", ">>"), field("rhs", $.expression))),
       prec.left(7, seq(field("lhs", $.expression), field("op", "<<"), field("rhs", $.expression))),
@@ -403,6 +407,12 @@ export default grammar({
         ),
       )),
       ")",
+    ),
+
+    generic_parameter_list: $ => seq(
+      "<",
+      commaSep(choice($.ident_type, $.variable_signature)),
+      ">",
     ),
 
     prefix_operator: $ => choice(

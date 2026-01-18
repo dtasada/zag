@@ -59,6 +59,7 @@ pub const Token = union(enum) {
 
     // keywords
     @"and",
+    but,
     @"else",
     @"enum",
     @"fn",
@@ -198,6 +199,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
     var keywords: std.StaticStringMap(Token) = .initComptime(.{
         .{ "and", .@"and" },
         .{ "as", .as },
+        .{ "but", .but },
         .{ "bind", .bind },
         .{ "else", .@"else" },
         .{ "enum", .@"enum" },

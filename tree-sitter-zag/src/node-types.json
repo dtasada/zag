@@ -205,6 +205,10 @@
             "named": false
           },
           {
+            "type": "but",
+            "named": false
+          },
+          {
             "type": "or",
             "named": false
           },
@@ -230,6 +234,16 @@
     "type": "binding_function_declaration",
     "named": true,
     "fields": {
+      "generic_parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_parameter_list",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -662,6 +676,16 @@
           }
         ]
       },
+      "generic_parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_parameter_list",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -718,6 +742,25 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "generic_parameter_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "ident_type",
+          "named": true
+        },
+        {
+          "type": "variable_signature",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1203,12 +1246,12 @@
     "type": "struct_declaration",
     "named": true,
     "fields": {
-      "generics": {
+      "generic_parameters": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "parameter_list",
+            "type": "generic_parameter_list",
             "named": true
           }
         ]
@@ -1376,6 +1419,16 @@
     "type": "union_declaration",
     "named": true,
     "fields": {
+      "generic_parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_parameter_list",
+            "named": true
+          }
+        ]
+      },
       "member": {
         "multiple": true,
         "required": false,
@@ -1750,6 +1803,10 @@
   },
   {
     "type": "bool",
+    "named": false
+  },
+  {
+    "type": "but",
     "named": false
   },
   {

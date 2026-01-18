@@ -4,6 +4,7 @@ const utils = @import("utils");
 const ast = @import("Parser").ast;
 
 const expressions = @import("expressions.zig");
+const errors = @import("errors.zig");
 
 const Compiler = @import("Compiler.zig");
 const Module = @import("Module.zig");
@@ -124,6 +125,7 @@ pub const Type = union(enum) {
     function: Function,
     module: Module,
     variadic,
+    generic,
 
     pub fn fromSymbol(symbol: []const u8) !Self {
         return if (std.mem.eql(u8, symbol, "i8"))
@@ -164,11 +166,9 @@ pub const Type = union(enum) {
     /// `infer` is the expression with which the type is inferred.
     pub fn fromAst(compiler: *Compiler, t: ast.Type) Compiler.CompilerError!Self {
         return switch (t) {
-            .symbol => |symbol| compiler.getSymbolType(symbol) catch return utils.printErr(
-                error.UnknownSymbol,
-                "comperr: Unknown symbol '{s}'. TODO: better error with position\n",
-                .{symbol},
-                .red,
+            .symbol => |symbol| compiler.getSymbolType(symbol.symbol) catch return errors.unknownSymbol(
+                symbol.symbol,
+                symbol.position,
             ),
             .variadic => .variadic,
             .reference => |reference| .{
@@ -215,14 +215,14 @@ pub const Type = union(enum) {
             .arraylist => |arraylist| .{
                 .arraylist = b: {
                     const t_ptr = try compiler.alloc.create(Type);
-                    t_ptr.* = try fromAst(compiler, arraylist.*);
+                    t_ptr.* = try fromAst(compiler, arraylist.inner.*);
                     break :b t_ptr;
                 },
             },
             .optional => |optional| .{
                 .optional = b: {
                     const t_ptr = try compiler.alloc.create(Type);
-                    t_ptr.* = try fromAst(compiler, optional.*);
+                    t_ptr.* = try fromAst(compiler, optional.inner.*);
                     break :b t_ptr;
                 },
             },
@@ -246,11 +246,9 @@ pub const Type = union(enum) {
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
-            .ident => |ident| compiler.getSymbolType(ident.ident) catch return utils.printErr(
-                error.UnknownSymbol,
-                "comperr: Unknown symbol '{s}' at {f}\n",
-                .{ ident.ident, expr.getPosition() },
-                .red,
+            .ident => |ident| compiler.getSymbolType(ident.ident) catch return errors.unknownSymbol(
+                ident.ident,
+                expr.getPosition(),
             ),
             .string => .{ .reference = .{ .inner = &.c_char, .is_mut = false } },
             .char => .u8,
@@ -333,6 +331,10 @@ pub const Type = union(enum) {
                     },
                     .is_mut = reference.is_mut,
                 },
+            },
+            .generic => |generic| {
+                _ = generic;
+                @panic("unimplemented");
             },
             .bad_node => unreachable,
         };

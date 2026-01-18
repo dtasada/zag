@@ -150,6 +150,7 @@ pub fn compile(
                 .red,
             );
         },
+        .generic => |_| @panic(""),
         .bad_node => unreachable,
     }
 }
@@ -217,7 +218,7 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
 fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
     try compile(self, expr.lhs, .{});
     try self.print(" {s} ", .{switch (expr.op) {
-        .@"and" => "&&",
+        .@"and", .but => "&&",
         .@"or" => "||",
         else => |op| @tagName(op),
     }});

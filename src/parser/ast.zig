@@ -30,6 +30,7 @@ pub const BinaryOperator = enum {
     @"|",
     @"^",
     @"and",
+    but,
     @"or",
     @">>",
     @"<<",
@@ -92,8 +93,14 @@ pub const Expression = union(enum) {
     range: Range,
     index: Index,
     reference: Reference,
+    generic: Generic,
 
     pub const Block = struct { pos: utils.Position, block: ast.Block };
+    pub const Generic = struct {
+        pos: utils.Position,
+        lhs: *const Expression,
+        arguments: ArgumentList,
+    };
 
     pub const Binary = struct {
         pos: utils.Position,
@@ -201,13 +208,15 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        parameters: ParameterList = .empty,
+        generic_parameters: ?ParameterList,
+        parameters: ParameterList,
         return_type: Type,
         body: ast.Block,
 
         pub fn getType(self: *const FunctionDefinition) Type {
             return .{
                 .function = .{
+                    .position = self.pos,
                     .parameters = self.parameters,
                     .return_type = &self.return_type,
                 },
@@ -219,12 +228,14 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        parameters: ParameterList = .empty,
+        generic_parameters: ?ParameterList,
+        parameters: ParameterList,
         return_type: Type,
 
         pub fn getType(self: *const BindingFunctionDefinition) Type {
             return .{
                 .function = .{
+                    .position = self.pos,
                     .parameters = self.parameters,
                     .return_type = &self.return_type,
                 },
@@ -313,11 +324,13 @@ pub const VariableSignature = struct {
 
 pub const Type = union(enum) {
     const Reference = struct {
+        position: utils.Position,
         inner: *const Type,
         is_mut: bool,
     };
 
     const Array = struct {
+        position: utils.Position,
         inner: *const Type,
         /// if size is `_`, type is an array of inferred size.
         /// if size is a valid expression, type is an array of specified size.
@@ -325,22 +338,24 @@ pub const Type = union(enum) {
     };
 
     const ErrorUnion = struct {
+        position: utils.Position,
         success: *const Type,
         failure: ?*const Type = null,
     };
 
     const Function = struct {
+        position: utils.Position,
         parameters: ParameterList = .empty,
         return_type: *const Type,
     };
 
-    inferred,
-    symbol: []const u8,
-    optional: *const Type,
-    arraylist: *const Type,
+    inferred: struct { position: utils.Position },
+    symbol: struct { position: utils.Position, symbol: []const u8 },
+    optional: struct { position: utils.Position, inner: *const Type },
+    arraylist: struct { position: utils.Position, inner: *const Type },
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
     function: Function,
-    variadic,
+    variadic: struct { position: utils.Position },
 };

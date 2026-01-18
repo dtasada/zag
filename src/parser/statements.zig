@@ -39,7 +39,7 @@ pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
     );
 
     // optionally parse type
-    var @"type": ast.Type = .inferred;
+    var @"type": ast.Type = .{ .inferred = .{ .position = self.currentPosition() } };
     if (self.currentTokenKind() == Lexer.Token.colon) {
         _ = self.advance(); // consume colon
         @"type" = try self.type_parser.parseType(self.alloc, .default);
@@ -100,7 +100,7 @@ pub fn compoundTypeDeclaration(
         ),
     };
 
-    if (self.currentTokenKind() == Lexer.Token.open_paren)
+    if (self.currentTokenKind() == Lexer.Token.@"<") {
         switch (T) {
             inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
             .@"enum" => return utils.printErr(
@@ -109,9 +109,10 @@ pub fn compoundTypeDeclaration(
                 .{self.lexer.source_map.items[self.pos]},
                 .red,
             ),
-        };
+        }
+    }
 
-    try self.expect(self.advance(), Lexer.Token.open_brace, context, "{");
+    try self.expect(self.advance(), Lexer.Token.open_brace, context, "{' or '<");
 
     while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
         // parse member
@@ -192,8 +193,21 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume "fn" keyword
     const function_name = try self.expect(self.advance(), Lexer.Token.ident, "function definition", "function name");
+    const generic_parameters = switch (self.currentToken()) {
+        .open_paren => null,
+        .@"<" => try self.parseGenericParameters(),
+        else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
+    };
     const parameters = try self.parseParameters();
-    const return_type = try self.type_parser.parseType(self.alloc, .default);
+    const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
+        error.HandlerDoesNotExist => return utils.printErr(
+            error.MissingReturnType,
+            "Parser error: missing return type in function '{s}' at {f}.\n",
+            .{ function_name, self.currentPosition() },
+            .red,
+        ),
+        else => return err,
+    };
     const body = try self.parseBlock();
 
     return .{
@@ -201,6 +215,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
             .pos = pos,
             .is_pub = is_pub,
             .name = function_name,
+            .generic_parameters = generic_parameters,
             .parameters = parameters,
             .return_type = return_type,
             .body = body,
@@ -215,6 +230,11 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "bind" keyword
     try self.expect(self.advance(), Lexer.Token.@"fn", "binding function declaration", "fn");
     const function_name = try self.expect(self.advance(), Lexer.Token.ident, "binding function declaration", "function name");
+    const generic_parameters = switch (self.currentToken()) {
+        .open_paren => null,
+        .@"<" => try self.parseGenericParameters(),
+        else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
+    };
     const parameters = try self.parseParameters();
     const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist => return utils.printErr(
@@ -232,6 +252,7 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
             .pos = pos,
             .is_pub = is_pub,
             .name = function_name,
+            .generic_parameters = generic_parameters,
             .parameters = parameters,
             .return_type = return_type,
         },
