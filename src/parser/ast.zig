@@ -84,6 +84,7 @@ pub const Expression = union(enum) {
     call: Call,
     member: Member,
     binary: Binary,
+    comparison: Comparison,
     prefix: Prefix,
     assignment: Assignment,
     struct_instantiation: StructInstantiation,
@@ -107,6 +108,17 @@ pub const Expression = union(enum) {
         lhs: *const Expression,
         op: BinaryOperator,
         rhs: *const Expression,
+    };
+
+    pub const Comparison = struct {
+        pub const Item = struct {
+            op: BinaryOperator,
+            right: *const Expression,
+        };
+
+        pos: utils.Position,
+        left: *const Expression,
+        comparisons: std.ArrayList(Item),
     };
 
     pub const Member = struct {

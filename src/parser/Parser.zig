@@ -107,7 +107,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"or", .logical, expressions.binary);
 
     // relational
-    try self.led(.@"<", .relational, expressions.binary);
+    try self.led(.@"<", .relational, expressions.ambiguousLessThan);
     try self.led(.@"<=", .relational, expressions.binary);
     try self.led(.@">", .relational, expressions.binary);
     try self.led(.@">=", .relational, expressions.binary);
@@ -138,7 +138,6 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@".", .member, expressions.member);
     try self.led(.open_brace, .call, expressions.structInstantiation);
     try self.led(.open_paren, .call, expressions.call);
-    try self.led(.@"<", .primary, expressions.generic);
     try self.nud(.open_bracket, expressions.arrayInstantiation);
 
     // other expressions
@@ -395,7 +394,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
             const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
             try param_names.append(self.alloc, .{ .name = first_name, .pos = first_pos });
 
-            while (self.currentTokenKind() == Lexer.Token.comma) {
+            while (self.currentTokenKind() == .comma) {
                 _ = self.advance();
                 const pos = self.currentPosition();
                 const name = try self.expect(self.advance(), .ident, context, "parameter name");

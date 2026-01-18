@@ -50,6 +50,7 @@ pub fn compile(
         .assignment => |a| try assignment(self, a),
         .block => |block| try self.compileBlock(block.block, .{}),
         .binary => |b| try binary(self, b),
+        .comparison => |comp| try comparison(self, comp),
         .float => |float| try self.print("{}", .{float.float}),
         .int => |int| try self.print("{}", .{int.int}),
         .uint => |uint| try self.print("{}", .{uint.uint}),
@@ -223,6 +224,36 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
         else => |op| @tagName(op),
     }});
     try compile(self, expr.rhs, .{});
+}
+
+fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
+    if (comp.comparisons.items.len == 0) return;
+
+    try self.write("(");
+
+    var prev_operand: *const ast.Expression = comp.left;
+
+    for (comp.comparisons.items, 0..) |item, i| {
+        if (i > 0) try self.write(" && ");
+
+        try self.write("(");
+        try compile(self, prev_operand, .{});
+        try self.print(" {s} ", .{switch (item.op) {
+            .@"==" => "==",
+            .@"!=" => "!=",
+            .@"<" => "<",
+            .@">" => ">",
+            .@"<=" => "<=",
+            .@">=" => ">=",
+            else => unreachable,
+        }});
+        try compile(self, item.right, .{});
+        try self.write(")");
+
+        prev_operand = item.right;
+    }
+
+    try self.write(")");
 }
 
 fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {

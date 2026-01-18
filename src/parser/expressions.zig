@@ -32,14 +32,39 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
     const new_rhs = try self.alloc.create(ast.Expression);
     new_rhs.* = rhs;
 
-    return .{
-        .binary = .{
-            .pos = pos,
-            .lhs = lhs,
-            .op = op,
-            .rhs = new_rhs,
+    switch (op) {
+        .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
+            if (lhs.* == .comparison) {
+                var comparisons = try lhs.comparison.comparisons.clone(self.alloc);
+                try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
+                return .{
+                    .comparison = .{
+                        .pos = lhs.getPosition(),
+                        .left = lhs.comparison.left,
+                        .comparisons = comparisons,
+                    },
+                };
+            } else {
+                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .empty;
+                try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
+                return .{
+                    .comparison = .{
+                        .pos = pos,
+                        .left = lhs,
+                        .comparisons = comparisons,
+                    },
+                };
+            }
         },
-    };
+        else => return .{
+            .binary = .{
+                .pos = pos,
+                .lhs = lhs,
+                .op = op,
+                .rhs = new_rhs,
+            },
+        },
+    }
 }
 
 pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
@@ -179,6 +204,35 @@ pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErro
             .args = try self.parseArguments(),
         },
     };
+}
+
+pub fn ambiguousLessThan(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
+    if (isGenericLookahead(self)) {
+        return generic(self, lhs, bp);
+    } else {
+        return binary(self, lhs, bp);
+    }
+}
+
+fn isGenericLookahead(self: *Self) bool {
+    var depth: usize = 0;
+    var i = self.pos;
+    const tokens = self.lexer.tokens.items;
+
+    while (i < tokens.len) {
+        const token = tokens[i];
+        switch (token) {
+            .@"<" => depth += 1,
+            .@">" => {
+                depth -= 1;
+                if (depth == 0) return true;
+            },
+            .open_paren, .close_paren, .open_brace, .close_brace, .semicolon => return false,
+            else => {},
+        }
+        i += 1;
+    }
+    return false;
 }
 
 pub fn generic(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {

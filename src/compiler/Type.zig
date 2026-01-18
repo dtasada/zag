@@ -290,6 +290,20 @@ pub const Type = union(enum) {
                     else => lhs,
                 };
             },
+            .comparison => |comp| {
+                var current_type = try Type.infer(compiler, comp.left.*);
+                for (comp.comparisons.items) |cmp| {
+                    const next_type = try Type.infer(compiler, cmp.right.*);
+                    if (!current_type.eql(next_type)) return utils.printErr(
+                        error.TypeMismatch,
+                        "comperr: Mismatched types in comparison: {f} {s} {f}\n",
+                        .{ current_type, @tagName(cmp.op), next_type },
+                        .red,
+                    );
+                    current_type = next_type;
+                }
+                return .bool;
+            },
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .range => @panic("invalid"),
             .assignment => .void,
