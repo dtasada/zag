@@ -1,19 +1,12 @@
-import lib;
+struct MyStruct {
+    x, y: i32,
+    z: f32
+}
 
-fn generic_func<T>() void {
+fn my_func(x, y: i32, z: f32) void {
 
 }
 
 fn main() i32 {
-    let v2a = lib.Vector2.init(1, 2);
-    let v2b = lib.Vector2.init(1, 2);
-
-    let v2c = v2a.add(v2b);
-
-    let myenum = lib.MyEnum.a;
-
-    generic_func<i32>();
-
-    lib.printf("Hello there!\n");
-    lib.do_something();
+    let ms = MyStruct { x: 1, y: 2};
 }

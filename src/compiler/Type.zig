@@ -32,8 +32,8 @@ pub const Type = union(enum) {
             };
 
             name: []const u8,
-            members: *std.StringHashMap(MemberType),
-            methods: *std.StringHashMap(Method),
+            members: *std.StringArrayHashMap(MemberType),
+            methods: *std.StringArrayHashMap(Method),
 
             /// get member or method. returns `null` if no member or method is found with `name`.
             pub fn getProperty(self: *const CompoundType(T), name: []const u8) ?union(enum) {
@@ -52,9 +52,9 @@ pub const Type = union(enum) {
             }
 
             pub fn init(alloc: std.mem.Allocator, name: []const u8) !CompoundType(T) {
-                const members = try alloc.create(std.StringHashMap(MemberType));
+                const members = try alloc.create(std.StringArrayHashMap(MemberType));
                 members.* = .init(alloc);
-                const methods = try alloc.create(std.StringHashMap(Method));
+                const methods = try alloc.create(std.StringArrayHashMap(Method));
                 methods.* = .init(alloc);
                 return .{
                     .name = name,

@@ -118,7 +118,27 @@ pub fn compoundTypeDeclaration(
         // parse member
         switch (self.currentToken()) {
             .ident => {
-                const member_name = try self.expect(self.advance(), Lexer.Token.ident, context, "member name");
+                var member_names: std.ArrayList([]const u8) = .empty;
+                defer member_names.deinit(self.alloc);
+
+                try member_names.append(self.alloc, try self.expect(
+                    self.advance(),
+                    Lexer.Token.ident,
+                    context,
+                    "member name",
+                ));
+
+                if (T != .@"enum") {
+                    while (self.currentTokenKind() == Lexer.Token.comma) {
+                        _ = self.advance(); // consume comma
+                        try member_names.append(self.alloc, try self.expect(
+                            self.advance(),
+                            Lexer.Token.ident,
+                            context,
+                            "member name",
+                        ));
+                    }
+                }
 
                 const member_type: ?ast.Type =
                     switch (T) {
@@ -138,21 +158,23 @@ pub fn compoundTypeDeclaration(
                         .@"union" => null,
                     };
 
-                try switch (T) {
-                    .@"struct" => compound.members.append(self.alloc, .{
-                        .name = member_name,
-                        .type = member_type orelse unreachable,
-                        .default_value = default_value,
-                    }),
-                    .@"enum" => compound.members.append(self.alloc, .{
-                        .name = member_name,
-                        .value = default_value,
-                    }),
-                    .@"union" => compound.members.append(self.alloc, .{
-                        .name = member_name,
-                        .type = member_type,
-                    }),
-                };
+                for (member_names.items) |name| {
+                    try switch (T) {
+                        .@"struct" => compound.members.append(self.alloc, .{
+                            .name = name,
+                            .type = member_type orelse unreachable,
+                            .default_value = default_value,
+                        }),
+                        .@"enum" => compound.members.append(self.alloc, .{
+                            .name = name,
+                            .value = default_value,
+                        }),
+                        .@"union" => compound.members.append(self.alloc, .{
+                            .name = name,
+                            .type = member_type,
+                        }),
+                    };
+                }
 
                 self.expectSilent(self.currentToken(), Lexer.Token.comma) catch break;
                 _ = self.advance(); // if there was a comma, consume it

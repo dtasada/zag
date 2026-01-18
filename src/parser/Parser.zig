@@ -388,19 +388,30 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
     } else {
         var last_arg = false;
         while (!last_arg) {
-            const position = self.currentPosition();
-            const param_name = try self.expect(self.advance(), .ident, context, "parameter name");
+            var param_names: std.ArrayList(struct { name: []const u8, pos: utils.Position }) = .empty;
+            defer param_names.deinit(self.alloc);
 
-            var param_type: ast.Type = .{ .inferred = .{ .position = position } };
+            const first_pos = self.currentPosition();
+            const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
+            try param_names.append(self.alloc, .{ .name = first_name, .pos = first_pos });
+
+            while (self.currentTokenKind() == Lexer.Token.comma) {
+                _ = self.advance();
+                const pos = self.currentPosition();
+                const name = try self.expect(self.advance(), .ident, context, "parameter name");
+                try param_names.append(self.alloc, .{ .name = name, .pos = pos });
+            }
+
+            var param_type: ast.Type = .{ .inferred = .{ .position = first_pos } };
             if (is_generic) {
                 param_type = if (self.currentTokenKind() == Lexer.Token.colon) b: {
                     _ = self.advance();
                     break :b try self.type_parser.parseType(self.alloc, .default);
-                } else .{ .inferred = .{ .position = position } };
+                } else .{ .inferred = .{ .position = first_pos } };
             } else switch (self.advance()) {
                 .colon => param_type = try self.type_parser.parseType(self.alloc, .default),
                 .dot_dot_dot => {
-                    param_type = .{ .variadic = .{ .position = position } };
+                    param_type = .{ .variadic = .{ .position = first_pos } };
                     last_arg = true;
                 },
                 else => |actual| return utils.printErr(
@@ -417,9 +428,10 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 ),
             }
 
-            try params.append(self.alloc, .{ .name = param_name, .type = param_type });
+            for (param_names.items) |p| {
+                try params.append(self.alloc, .{ .name = p.name, .type = param_type });
+            }
 
-            // look for a comma, else a closing parenthesis
             self.expectSilent(self.currentToken(), .comma) catch {
                 try self.expect(
                     self.advance(),
