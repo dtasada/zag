@@ -8,6 +8,11 @@ struct MyStruct {
 union MyUnion {
     f: f32,
     i: i32,
+    c: u8,
+
+    fn print(self: MyUnion) void {
+        lib.printf("self: %c", self.c);
+    }
 }
 
 fn main() i32 {
@@ -16,7 +21,7 @@ fn main() i32 {
     let c = 3;
     let d = 4;
 
-    let mu = MyUnion { i: 2 };
+    let mu = MyUnion { i: 65 };
 
-    lib.printf("mu: %d", mu.i);
+    mu.print();
 }

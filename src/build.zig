@@ -135,14 +135,16 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const stderr = cc.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
     defer alloc.free(stderr);
 
-    _ = cc.wait() catch return;
+    const result = cc.wait() catch return;
 
     if (stdout.len != 0) utils.print("C compiler output:\n{s}\n", .{stdout}, .white);
     if (stderr.len != 0) utils.print("C compiler error output:\n{s}\n", .{stderr}, .red);
+
+    return checkResult(error.CompilationError, result);
 }
 
 pub fn run() anyerror!void {
-    try build();
+    build() catch return;
 
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer _ = gpa.deinit();
@@ -168,8 +170,19 @@ pub fn run() anyerror!void {
     const stderr = main.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
     defer alloc.free(stderr);
 
-    _ = main.wait() catch return;
+    const result = main.wait() catch return;
 
     if (stdout.len != 0) utils.print("{s}\n", .{stdout}, .white);
     if (stderr.len != 0) utils.print("{s}\n", .{stderr}, .red);
+
+    return checkResult(error.RuntimeError, result);
+}
+
+fn checkResult(comptime err: anyerror, result: std.process.Child.Term) !void {
+    switch (result) {
+        .Exited => |c| if (c != 0) return utils.printErr(err, "{}: exited with code {}.\n", .{ err, c }, .red),
+        .Signal => |c| return utils.printErr(err, "{}: exited with signal {}.\n", .{ err, c }, .red),
+        .Stopped => |c| return utils.printErr(err, "{}: stopped with code {}.\n", .{ err, c }, .red),
+        .Unknown => |c| return utils.printErr(err, "{}: unknown problem with code {}.\n", .{ err, c }, .red),
+    }
 }

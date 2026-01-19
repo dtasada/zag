@@ -386,7 +386,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 
     const parent: Type = try .infer(self, m.parent.*);
     b: switch (parent) {
-        .@"struct" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
+        inline .@"struct", .@"union" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
             .method => |method| {
                 if (!parent.convertsTo(method.params.items[0].*))
                     return utils.printErr(
@@ -451,7 +451,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                             unreachable,
                     );
                 try compile(self, m.parent, .{});
-                try self.write(", ");
+                if (method.params.items.len > 1) try self.write(", ");
                 for (call_expr.args.items, 1..) |*arg, i| {
                     try compile(self, arg, .{});
                     if (i < call_expr.args.items.len) try self.write(", ");
