@@ -49,7 +49,10 @@ fn compoundTypeDeclaration(
         .@"struct" => Type.Struct,
         .@"union" => Type.Union,
         .@"enum" => Type.Enum,
-    } = try .init(self.alloc, type_decl.name);
+    } = try .init(self.alloc, type_decl.name, switch (T) {
+        .@"struct" => null,
+        .@"union", .@"enum" => Type.getTagType(type_decl.members.items.len),
+    });
 
     try self.registerSymbol(type_decl.name, .{
         .type = switch (T) {
@@ -126,16 +129,33 @@ fn compoundTypeDeclaration(
 
     try self.print("typedef {s} {{\n", .{switch (T) {
         .@"struct" => "struct",
-        .@"union" => "union",
+        .@"union" => "struct",
         .@"enum" => "enum",
     }});
+
     self.indent_level += 1;
 
     var members = compound_type.members.iterator();
+    if (T == .@"union") {
+        try self.indent();
+        try self.print("{f} tag;\n", .{compound_type.tag_type.?});
+        try self.indent();
+        try self.write("union {\n");
+        self.indent_level += 1;
+    }
+
     while (members.next()) |member| {
         try self.indent();
         switch (T) {
-            inline .@"struct", .@"union" => {
+            .@"struct" => {
+                try self.compileVariableSignature(
+                    member.key_ptr.*,
+                    member.value_ptr.*.*,
+                    .{ .binding_mut = true }, // struct members shouldn't be const.
+                );
+                try self.write(";\n");
+            },
+            .@"union" => {
                 try self.compileVariableSignature(
                     member.key_ptr.*,
                     member.value_ptr.*.*,
@@ -149,6 +169,11 @@ fn compoundTypeDeclaration(
                 member.value_ptr.*,
             }),
         }
+    }
+    if (T == .@"union") {
+        self.indent_level -= 1;
+        try self.indent();
+        try self.write("} payload;\n");
     }
 
     self.indent_level -= 1;

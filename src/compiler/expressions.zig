@@ -80,23 +80,10 @@ pub fn compile(
                 .{ ident.ident, expression.getPosition() },
                 .red,
             ),
-        .struct_instantiation => |struct_inst| {
-            try self.write("(");
-            try self.compileType(try Type.infer(self, struct_inst.type_expr.*), .{});
-            try self.write("){\n");
-            self.indent_level += 1;
-
-            var members = struct_inst.members.iterator();
-            while (members.next()) |m| {
-                try self.indent();
-                try self.print(".{s} = ", .{m.key_ptr.*});
-                try compile(self, m.value_ptr, .{});
-                try self.write(",\n");
-            }
-
-            self.indent_level -= 1;
-            try self.indent();
-            try self.write("}");
+        .struct_instantiation => |struct_inst| switch (try Type.infer(self, struct_inst.type_expr.*)) {
+            .@"struct" => |s| try structInstantiation(self, struct_inst, s),
+            .@"union" => |u| try unionInstantiation(self, struct_inst, u),
+            else => unreachable,
         },
         .reference => |reference| {
             switch (reference.inner.*) {
@@ -156,6 +143,62 @@ pub fn compile(
     }
 }
 
+fn structInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiation, t: Type.Struct) !void {
+    try self.write("(");
+    try self.compileType(.{ .@"struct" = t }, .{});
+    try self.write("){\n");
+    self.indent_level += 1;
+
+    var members = struct_inst.members.iterator();
+    while (members.next()) |m| {
+        try self.indent();
+        try self.print(".{s} = ", .{m.key_ptr.*});
+        try compile(self, m.value_ptr, .{});
+        try self.write(",\n");
+    }
+
+    self.indent_level -= 1;
+    try self.indent();
+    try self.write("}");
+}
+
+fn unionInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiation, u: Type.Union) !void {
+    try self.write("(");
+    try self.compileType(.{ .@"union" = u }, .{});
+    try self.write("){ ");
+
+    if (struct_inst.members.count() != 1) return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Instantiation of union type '{s}' is missing a tag initialization ({f}).\n",
+        .{ u.name, struct_inst.pos },
+        .red,
+    );
+
+    // get used tag
+    var it = struct_inst.members.iterator();
+    const tag_and_payload = it.next().?;
+    const tag_name = tag_and_payload.key_ptr.*;
+    const payload_val = tag_and_payload.value_ptr.*;
+
+    // find the matching union tag by name
+    const member_name, const tag, const member_type = b: {
+        var members_it = u.members.iterator();
+        var i: usize = 0;
+        while (members_it.next()) |m| : (i += 1) {
+            if (std.mem.eql(u8, tag_name, m.key_ptr.*)) {
+                break :b .{ m.key_ptr.*, i, m.value_ptr.* };
+            }
+        }
+        unreachable;
+    };
+
+    try self.print(".tag = {}, ", .{tag});
+
+    try self.print(".payload = {{ .{s} = ", .{member_name});
+    try compile(self, &payload_val, .{ .expected_type = member_type.* });
+    try self.write(" } }");
+}
+
 fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
     const parent_type: Type = try .infer(self, expr.parent.*);
     var delimiter: enum { @".", @"->" } = .@".";
@@ -186,19 +229,27 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
             .red,
         ),
 
-        .@"enum" => |@"enum"| if (@"enum".members.contains(expr.member_name)) {
-            try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name });
-        } else return utils.printErr(
-            error.UndeclaredProperty,
-            "comperr: Enum '{s}' has no member '{s}' ({f}).\n",
-            .{ @"enum".name, expr.member_name, expr.pos },
-            .red,
-        ),
+        .@"enum" => |@"enum"| if (@"enum".getProperty(expr.member_name)) |property| switch (property) {
+            .member => try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name }),
+            .method => |method| try self.write(method.inner_name),
+        } else return errors.undeclaredProperty(parent_type, expr.member_name, expr.pos),
+
+        .@"union" => |@"union"| if (@"union".getProperty(expr.member_name)) |property| switch (property) {
+            .member => {
+                try compile(self, expr.parent, .{});
+                try self.print("{s}payload.{s}", .{
+                    @tagName(delimiter),
+                    expr.member_name,
+                });
+                delimiter = .@".";
+            },
+            .method => |method| try self.write(method.inner_name),
+        } else return errors.undeclaredProperty(parent_type, expr.member_name, expr.pos),
 
         else => return utils.printErr(
             error.IllegalExpression,
-            "comperr: Member expression on '{f}' is illegal\n",
-            .{parent_type},
+            "comperr: Member expression on '{f}' is illegal ({f}).\n",
+            .{ parent_type, expr.pos },
             .red,
         ),
     }

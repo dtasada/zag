@@ -319,10 +319,7 @@ pub fn emit(self: *Self) CompilerError!void {
     defer self.popScope();
 
     // register constants
-    try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } });
-    try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } });
-    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } });
-    try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } });
+    try self.registerConstants();
 
     try self.write("#include <zag.h>\n");
 
@@ -342,11 +339,7 @@ pub fn analyze(self: *Self) CompilerError!void {
     try self.pushScope();
     defer self.popScope();
 
-    // register constants
-    try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } });
-    try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } });
-    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } });
-    try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } });
+    try self.registerConstants();
 
     for (self.input.items) |*statement| {
         switch (statement.*) {
@@ -399,18 +392,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 }
             },
             .struct_declaration => |*struct_decl| {
-                // Simplified struct handling - just register type
-                // We need to match what statements.zig does: Type.Struct.init...
-                // But wait, Type.fromAst calls Type.Struct?
-                // No, declaration registers the type name.
-                // We must process the struct to create the Type.Struct object and register it.
-                // This is complex because it involves members.
-                // For now, let's call the same logic?
-                // Or we can just call statements.compile(self, statement) but redirect writer?
-                // No, that writes C code.
-                // I'll duplicate minimal logic for struct.
-
-                var compound_type: Type.Struct = try .init(self.alloc, struct_decl.name);
+                var compound_type: Type.Struct = try .init(self.alloc, struct_decl.name, null);
                 try self.registerSymbol(struct_decl.name, .{
                     .type = .{ .@"struct" = compound_type },
                 });
@@ -457,7 +439,12 @@ pub fn analyze(self: *Self) CompilerError!void {
                 }
             },
             .enum_declaration => |*enum_decl| {
-                var compound_type: Type.Enum = try .init(self.alloc, enum_decl.name);
+                var compound_type: Type.Enum = try .init(
+                    self.alloc,
+                    enum_decl.name,
+                    Type.getTagType(enum_decl.members.items.len),
+                );
+
                 try self.registerSymbol(enum_decl.name, .{
                     .type = .{ .@"enum" = compound_type },
                 });
@@ -506,7 +493,11 @@ pub fn analyze(self: *Self) CompilerError!void {
                 }
             },
             .union_declaration => |*union_decl| {
-                var compound_type: Type.Union = try .init(self.alloc, union_decl.name);
+                var compound_type: Type.Union = try .init(
+                    self.alloc,
+                    union_decl.name,
+                    Type.getTagType(union_decl.members.items.len),
+                );
                 try self.registerSymbol(union_decl.name, .{
                     .type = .{ .@"union" = compound_type },
                 });
@@ -837,6 +828,35 @@ pub fn registerSymbol(
     });
 }
 
+/// Registers boolean constants, null, undefined, and primitive types
+fn registerConstants(self: *Self) !void {
+    try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } });
+    try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } });
+
+    try self.registerSymbol("i8", .{ .type = .i8 });
+    try self.registerSymbol("i16", .{ .type = .i16 });
+    try self.registerSymbol("i32", .{ .type = .i32 });
+    try self.registerSymbol("i64", .{ .type = .i64 });
+
+    try self.registerSymbol("u8", .{ .type = .u8 });
+    try self.registerSymbol("u16", .{ .type = .u16 });
+    try self.registerSymbol("u32", .{ .type = .u32 });
+    try self.registerSymbol("u64", .{ .type = .u64 });
+
+    try self.registerSymbol("usize", .{ .type = .usize });
+
+    try self.registerSymbol("f32", .{ .type = .f32 });
+    try self.registerSymbol("f64", .{ .type = .f64 });
+
+    try self.registerSymbol("void", .{ .type = .void });
+    try self.registerSymbol("bool", .{ .type = .bool });
+
+    try self.registerSymbol("c_int", .{ .type = .c_int });
+    try self.registerSymbol("c_char", .{ .type = .c_char });
+}
+
 pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope|
@@ -846,19 +866,14 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
         };
 
     // return primitive type
-    return try Type.fromSymbol(symbol);
+    return error.UnknownSymbol;
 }
 
 pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| return scope.get(symbol) orelse continue;
 
-    return if (Type.fromSymbol(symbol) catch null) |t| .{
-        .type = .{
-            .type = t,
-            .inner_name = symbol,
-        },
-    } else error.SymbolNotVariable;
+    return error.SymbolNotVariable;
 }
 
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {

@@ -34,6 +34,7 @@ pub const Type = union(enum) {
             name: []const u8,
             members: *std.StringArrayHashMap(MemberType),
             methods: *std.StringArrayHashMap(Method),
+            tag_type: ?*const Type, // only for unions and enums
 
             /// get member or method. returns `null` if no member or method is found with `name`.
             pub fn getProperty(self: *const CompoundType(T), name: []const u8) ?union(enum) {
@@ -51,15 +52,26 @@ pub const Type = union(enum) {
                     null;
             }
 
-            pub fn init(alloc: std.mem.Allocator, name: []const u8) !CompoundType(T) {
+            pub fn init(alloc: std.mem.Allocator, name: []const u8, tag_type: ?Type) !CompoundType(T) {
+                // if (T == .@"struct" and tag_type != null) @compileError("Struct type can't have a tag type");
+
                 const members = try alloc.create(std.StringArrayHashMap(MemberType));
                 members.* = .init(alloc);
+
                 const methods = try alloc.create(std.StringArrayHashMap(Method));
                 methods.* = .init(alloc);
+
+                var tag: ?*Type = null;
+                if (tag_type) |t| {
+                    tag = try alloc.create(Type);
+                    tag.?.* = t;
+                }
+
                 return .{
                     .name = name,
                     .members = members,
                     .methods = methods,
+                    .tag_type = tag,
                 };
             }
         };
@@ -126,41 +138,6 @@ pub const Type = union(enum) {
     module: Module,
     variadic,
     generic,
-
-    pub fn fromSymbol(symbol: []const u8) !Self {
-        return if (std.mem.eql(u8, symbol, "i8"))
-            .i8
-        else if (std.mem.eql(u8, symbol, "i16"))
-            .i16
-        else if (std.mem.eql(u8, symbol, "i32"))
-            .i32
-        else if (std.mem.eql(u8, symbol, "i64"))
-            .i64
-        else if (std.mem.eql(u8, symbol, "u8"))
-            .u8
-        else if (std.mem.eql(u8, symbol, "u16"))
-            .u16
-        else if (std.mem.eql(u8, symbol, "u32"))
-            .u32
-        else if (std.mem.eql(u8, symbol, "u64"))
-            .u64
-        else if (std.mem.eql(u8, symbol, "usize"))
-            .usize
-        else if (std.mem.eql(u8, symbol, "f32"))
-            .f32
-        else if (std.mem.eql(u8, symbol, "f64"))
-            .f64
-        else if (std.mem.eql(u8, symbol, "void"))
-            .void
-        else if (std.mem.eql(u8, symbol, "bool"))
-            .bool
-        else if (std.mem.eql(u8, symbol, "c_int"))
-            .c_int
-        else if (std.mem.eql(u8, symbol, "c_char"))
-            .c_char
-        else
-            error.TypeNotPrimitive;
-    }
 
     /// Converts an AST type to a Compiler type.
     /// `infer` is the expression with which the type is inferred.
@@ -747,4 +724,22 @@ pub const Type = union(enum) {
             };
         }
     };
+
+    /// returns an unsigned integer type given a length
+    pub fn uintFromBits(bits: u6) Type {
+        return if (bits <= 8)
+            .u8
+        else if (bits <= 16)
+            .u16
+        else if (bits <= 32)
+            .u32
+        else if (bits <= 64)
+            .u64
+        else
+            unreachable;
+    }
+
+    pub fn getTagType(enum_length: usize) Type {
+        return uintFromBits(@intFromFloat(@ceil(std.math.log2(@as(f32, @floatFromInt(enum_length))))));
+    }
 };
