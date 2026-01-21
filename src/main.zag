@@ -23,5 +23,11 @@ fn main() i32 {
 
     let mu = MyUnion { i: 65 };
 
+    match (mu) {
+        f -> "1",
+        i -> "2",
+        c -> "3",
+    }
+
     mu.print();
 }

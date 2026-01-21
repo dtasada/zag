@@ -449,6 +449,10 @@ pub fn import(self: *Self) ParserError!ast.Statement {
     };
 }
 
+pub fn match(self: *Self) ParserError!ast.Statement {
+    return .{ .expression = try expressions.parse(self, .primary) };
+}
+
 pub fn @"pub"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume `pub` keyword
     return parse(self);

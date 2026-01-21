@@ -21,12 +21,16 @@ pub const CompilerError = error{
     AssignmentToImmutableVariable,
     BadMutability,
     DuplicateMember,
+    FailedToCreateParser,
+    FailedToReadSource,
+    FailedToTokenizeSource,
     IllegalExpression,
     IllegalStatement,
     MemberExpressionOnPrimitiveType,
     MemberIsNotAMethod,
     MissingArguments,
     MissingElseClause,
+    NoSuchMember,
     OutOfMemory,
     SymbolNotVariable,
     TooManyArguments,
@@ -40,9 +44,6 @@ pub const CompilerError = error{
     UnsupportedExpression,
     UnsupportedType,
     VariableRedeclaration,
-    FailedToReadSource,
-    FailedToTokenizeSource,
-    FailedToCreateParser,
 } || Parser.ParserError ||
     Lexer.LexerError ||
     std.fs.Dir.MakeError ||
@@ -409,15 +410,15 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 // Populate methods
                 for (struct_decl.methods.items) |method| {
-                    var params: std.ArrayList(*const Type) = try .initCapacity(
+                    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
                         self.alloc,
                         method.parameters.items.len,
                     );
-                    for (method.parameters.items) |p| {
-                        const param_type = try self.alloc.create(Type);
-                        param_type.* = try .fromAst(self, p.type);
-                        params.appendAssumeCapacity(param_type);
-                    }
+                    for (method.parameters.items) |p|
+                        params.appendAssumeCapacity(.{
+                            .name = p.name,
+                            .type = try .fromAst(self, p.type),
+                        });
                     const return_type = try self.alloc.create(Type);
                     return_type.* = try .fromAst(self, method.return_type);
                     try compound_type.methods.put(method.name, .{
@@ -463,15 +464,16 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 // Populate methods
                 for (enum_decl.methods.items) |method| {
-                    var params: std.ArrayList(*const Type) = try .initCapacity(
+                    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
                         self.alloc,
                         method.parameters.items.len,
                     );
-                    for (method.parameters.items) |p| {
-                        const param_type = try self.alloc.create(Type);
-                        param_type.* = try .fromAst(self, p.type);
-                        params.appendAssumeCapacity(param_type);
-                    }
+                    for (method.parameters.items) |p|
+                        params.appendAssumeCapacity(.{
+                            .name = p.name,
+                            .type = try .fromAst(self, p.type),
+                        });
+
                     const return_type = try self.alloc.create(Type);
                     return_type.* = try .fromAst(self, method.return_type);
                     try compound_type.methods.put(method.name, .{
@@ -512,15 +514,16 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 // Populate methods
                 for (union_decl.methods.items) |method| {
-                    var params: std.ArrayList(*const Type) = try .initCapacity(
+                    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
                         self.alloc,
                         method.parameters.items.len,
                     );
-                    for (method.parameters.items) |p| {
-                        const param_type = try self.alloc.create(Type);
-                        param_type.* = try .fromAst(self, p.type);
-                        params.appendAssumeCapacity(param_type);
-                    }
+                    for (method.parameters.items) |p|
+                        params.appendAssumeCapacity(.{
+                            .name = p.name,
+                            .type = try .fromAst(self, p.type),
+                        });
+
                     const return_type = try self.alloc.create(Type);
                     return_type.* = try .fromAst(self, method.return_type);
                     try compound_type.methods.put(method.name, .{
@@ -760,7 +763,7 @@ pub fn compileVariableSignature(
             try self.compileType(function.return_type.*, .{ .binding_mut = opts.binding_mut });
             try self.print(" (*{s})(", .{name});
             for (function.params.items, 1..) |param, i| {
-                try self.compileType(param.*, .{ .binding_mut = opts.binding_mut });
+                try self.compileType(param.type, .{ .binding_mut = opts.binding_mut });
                 if (i < function.params.items.len) try self.write(", ");
             }
             try self.write(")");

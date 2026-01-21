@@ -59,7 +59,6 @@ pub const Token = union(enum) {
 
     // keywords
     @"and",
-    but,
     @"else",
     @"enum",
     @"fn",
@@ -71,15 +70,18 @@ pub const Token = union(enum) {
     @"struct",
     @"union",
     @"while",
-    bind,
-    import,
     as,
+    bind,
+    but,
+    import,
     let,
+    match,
     mut,
 
     dot_dot,
     dot_dot_equals,
     dot_dot_dot,
+    arrow,
 
     // unary operators
     @"!",
@@ -199,8 +201,8 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
     var keywords: std.StaticStringMap(Token) = .initComptime(.{
         .{ "and", .@"and" },
         .{ "as", .as },
-        .{ "but", .but },
         .{ "bind", .bind },
+        .{ "but", .but },
         .{ "else", .@"else" },
         .{ "enum", .@"enum" },
         .{ "fn", .@"fn" },
@@ -208,6 +210,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
         .{ "if", .@"if" },
         .{ "import", .import },
         .{ "let", .let },
+        .{ "match", .match },
         .{ "mut", .mut },
         .{ "or", .@"or" },
         .{ "pub", .@"pub" },
@@ -339,6 +342,7 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
                 _ = self.advance();
                 break :blk switch (first_token) {
                     .@">" => .@">>",
+                    .@"-" => .arrow,
                     else => first_token,
                 };
             },

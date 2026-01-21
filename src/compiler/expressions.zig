@@ -4,6 +4,7 @@ const utils = @import("utils");
 
 const ast = @import("Parser").ast;
 const errors = @import("errors.zig");
+const statements = @import("statements.zig");
 const hash = @import("Parser").hash;
 
 const Self = @import("Compiler.zig");
@@ -139,6 +140,47 @@ pub fn compile(
             );
         },
         .generic => |_| @panic(""),
+        .match => |match| switch (try Type.infer(self, match.condition.*)) {
+            .@"union" => |@"union"| {
+                try self.write("switch ((");
+                try compile(self, match.condition, .{});
+                try self.write(").tag) {\n");
+                self.indent_level += 1;
+
+                for (match.cases.items) |case| {
+                    for (case.cases.items) |c| {
+                        try self.indent();
+                        try self.write("case ");
+                        switch (c) {
+                            .ident => |ident| {
+                                const m = @"union".getMember(ident.ident) catch return utils.printErr(
+                                    error.IllegalExpression,
+                                    "comperr: Union type '{s}' doesn't have member '{s}' ({f}).\n",
+                                    .{ @"union".name, ident.ident, c.getPosition() },
+                                    .red,
+                                );
+                                try self.print("__zag_{s}_tag_type_{s}", .{ @"union".name, m.member_name });
+                            },
+                            else => return utils.printErr(
+                                error.IllegalExpression,
+                                "comperr: Match statement case on union type '{s}' must be a member identifier ({f}).\n",
+                                .{ @"union".name, c.getPosition() },
+                                .red,
+                            ),
+                        }
+                        try self.write(": ");
+                    }
+
+                    try statements.compile(self, &case.result);
+                    try self.indent();
+                    try self.write("break;\n");
+                }
+
+                self.indent_level -= 1;
+                try self.write("}");
+            },
+            else => @panic("unimplemented!"),
+        },
         .bad_node => unreachable,
     }
 }
@@ -180,22 +222,12 @@ fn unionInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiati
     const tag_name = tag_and_payload.key_ptr.*;
     const payload_val = tag_and_payload.value_ptr.*;
 
-    // find the matching union tag by name
-    const member_name, const tag, const member_type = b: {
-        var members_it = u.members.iterator();
-        var i: usize = 0;
-        while (members_it.next()) |m| : (i += 1) {
-            if (std.mem.eql(u8, tag_name, m.key_ptr.*)) {
-                break :b .{ m.key_ptr.*, i, m.value_ptr.* };
-            }
-        }
-        unreachable;
-    };
+    const m = try u.getMember(tag_name);
 
-    try self.print(".tag = {}, ", .{tag});
+    try self.print(".tag = __zag_{s}_tag_type_{s}, ", .{ u.name, tag_name });
 
-    try self.print(".payload = {{ .{s} = ", .{member_name});
-    try compile(self, &payload_val, .{ .expected_type = member_type.* });
+    try self.print(".payload = {{ .{s} = ", .{m.member_name});
+    try compile(self, &payload_val, .{ .expected_type = m.member_type.* });
     try self.write(" } }");
 }
 
@@ -388,7 +420,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
             .method => |method| {
-                if (!parent.convertsTo(method.params.items[0].*))
+                if (!parent.convertsTo(method.params.items[0].type))
                     return utils.printErr(
                         error.IllegalExpression,
                         "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
@@ -396,7 +428,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                         .red,
                     );
 
-                const expected_type = method.params.items[0].*;
+                const expected_type = method.params.items[0].type;
                 switch (expected_type) {
                     .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
                         error.BadMutability,
@@ -423,17 +455,17 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 for (method.params.items[1..], 0..) |expected_param_type, i| {
                     const received_expr = call_expr.args.items[i];
                     const received_type: Type = try .infer(self, received_expr);
-                    if (expected_param_type.* != .variadic and !expected_param_type.eql(received_type)) return utils.printErr(
+                    if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return utils.printErr(
                         error.TypeMismatch,
                         "comperr: Type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
-                        .{ received_expr.getPosition(), expected_param_type, received_type },
+                        .{ received_expr.getPosition(), expected_param_type.type, received_type },
                         .red,
                     );
                 }
 
                 const ref_level_diff = parent_reference_level - b2: {
                     var self_method_reference_level: i32 = 0;
-                    count_ref_level: switch (method.params.items[0].*) {
+                    count_ref_level: switch (method.params.items[0].type) {
                         .reference => |reference| {
                             self_method_reference_level += 1;
                             continue :count_ref_level reference.inner.*;
@@ -486,7 +518,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
 
     const variadic_arg: ?usize = b: {
         for (function.params.items, 0..) |param_type, i|
-            if (param_type.* == .variadic)
+            if (param_type.type == .variadic)
                 break :b i;
 
         break :b null;
@@ -511,9 +543,9 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
     for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_type, i| {
         const received_expr = call_expr.args.items[i];
         const received_type: Type = try .infer(self, received_expr);
-        if (expected_type.* != .variadic and
-            !expected_type.eql(try .infer(self, call_expr.args.items[i])))
-            return errors.typeMismatch(expected_type.*, received_type, received_expr.getPosition());
+        if (expected_type.type != .variadic and
+            !expected_type.type.eql(try .infer(self, call_expr.args.items[i])))
+            return errors.typeMismatch(expected_type.type, received_type, received_expr.getPosition());
     }
 
     try compile(self, call_expr.callee, .{});

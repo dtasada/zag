@@ -296,6 +296,56 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
     };
 }
 
+pub fn match(self: *Self) ParserError!ast.Expression {
+    const position = self.currentPosition();
+    _ = self.advance(); // consume `match` keyword
+
+    try self.expect(self.advance(), .open_paren, "match statement", "(");
+    const condition = try self.alloc.create(ast.Expression);
+    condition.* = try parse(self, .default);
+    try self.expect(self.advance(), .close_paren, "match statement", ")");
+
+    try self.expect(self.advance(), .open_brace, "match statement", "{");
+
+    var cases: std.ArrayList(ast.Expression.Match.Case) = .empty;
+    while (true) {
+        const pos = self.currentPosition();
+        var opts: std.ArrayList(ast.Expression) = .empty;
+
+        try opts.append(self.alloc, try parse(self, .default));
+
+        while (self.currentToken() == .comma) {
+            _ = self.advance();
+            try opts.append(self.alloc, try parse(self, .default));
+        }
+
+        try self.expect(self.advance(), .arrow, "match statement case", "->");
+
+        const result: ast.Statement = b: {
+            if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn|
+                break :b try statement_fn(self);
+
+            break :b .{ .expression = try parse(self, .default) };
+        };
+
+        try cases.append(self.alloc, .{ .cases = opts, .pos = pos, .result = result });
+
+        self.expectSilent(self.currentToken(), .comma) catch break;
+        _ = self.advance();
+        if (self.currentToken() == .close_brace) break;
+    }
+
+    try self.expect(self.advance(), .close_brace, "match statement", "}");
+
+    return .{
+        .match = .{
+            .pos = position,
+            .condition = condition,
+            .cases = cases,
+        },
+    };
+}
+
 pub fn block(self: *Self) ParserError!ast.Expression {
     return .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } };
 }
@@ -351,4 +401,3 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
         },
     };
 }
-

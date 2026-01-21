@@ -81,20 +81,33 @@ pub const Expression = union(enum) {
     uint: struct { pos: utils.Position, uint: u64 },
     float: struct { pos: utils.Position, float: f64 },
 
-    call: Call,
-    member: Member,
-    binary: Binary,
-    comparison: Comparison,
-    prefix: Prefix,
-    assignment: Assignment,
-    struct_instantiation: StructInstantiation,
-    array_instantiation: ArrayInstantiation,
-    block: Expression.Block,
     @"if": If,
-    range: Range,
-    index: Index,
-    reference: Reference,
+    array_instantiation: ArrayInstantiation,
+    assignment: Assignment,
+    binary: Binary,
+    block: Expression.Block,
+    call: Call,
+    comparison: Comparison,
     generic: Generic,
+    index: Index,
+    match: Match,
+    member: Member,
+    prefix: Prefix,
+    range: Range,
+    reference: Reference,
+    struct_instantiation: StructInstantiation,
+
+    pub const Match = struct {
+        pub const Case = struct {
+            pos: utils.Position,
+            cases: std.ArrayList(Expression),
+            result: Statement,
+        };
+
+        pos: utils.Position,
+        condition: *const Expression,
+        cases: std.ArrayList(Case),
+    };
 
     pub const Block = struct { pos: utils.Position, block: ast.Block };
     pub const Generic = struct {
@@ -301,7 +314,7 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        generic_types: ?ParameterList = null, // only for structs and unions
+        generic_types: ?ParameterList = null,
         members: std.ArrayList(Member) = .empty,
         methods: std.ArrayList(FunctionDefinition) = .empty,
     };

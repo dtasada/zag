@@ -3,6 +3,7 @@ const std = @import("std");
 const utils = @import("utils");
 const ast = @import("Parser").ast;
 
+const statements = @import("statements.zig");
 const expressions = @import("expressions.zig");
 const errors = @import("errors.zig");
 
@@ -14,7 +15,12 @@ pub const Type = union(enum) {
     const Self = @This();
 
     pub const Function = struct {
-        params: std.ArrayList(*const Self),
+        pub const Param = struct {
+            name: []const u8,
+            type: Type,
+        };
+
+        params: std.ArrayList(Param),
         return_type: *const Self,
     };
 
@@ -27,7 +33,7 @@ pub const Type = union(enum) {
 
             const Method = struct {
                 inner_name: []const u8,
-                params: std.ArrayList(*const Self),
+                params: std.ArrayList(Function.Param),
                 return_type: *const Self,
             };
 
@@ -52,8 +58,25 @@ pub const Type = union(enum) {
                     null;
             }
 
+            pub fn getMember(self: *const CompoundType(T), tag_name: []const u8) !struct {
+                member_name: []const u8,
+                member_type: MemberType,
+            } {
+                var members_it = self.members.iterator();
+                var i: usize = 0;
+                while (members_it.next()) |m| : (i += 1) {
+                    if (std.mem.eql(u8, tag_name, m.key_ptr.*))
+                        return .{
+                            .member_name = m.key_ptr.*,
+                            .member_type = m.value_ptr.*,
+                        };
+                }
+
+                return error.NoSuchMember;
+            }
+
             pub fn init(alloc: std.mem.Allocator, name: []const u8, tag_type: ?Type) !CompoundType(T) {
-                // if (T == .@"struct" and tag_type != null) @compileError("Struct type can't have a tag type");
+                if (T == .@"struct" and tag_type != null) @panic("Struct type can't have a tag type");
 
                 const members = try alloc.create(std.StringArrayHashMap(MemberType));
                 members.* = .init(alloc);
@@ -161,15 +184,15 @@ pub const Type = union(enum) {
             .function => |function| .{
                 .function = .{
                     .params = b: {
-                        var params: std.ArrayList(*const Self) = try .initCapacity(
+                        var params: std.ArrayList(Function.Param) = try .initCapacity(
                             compiler.alloc,
                             function.parameters.items.len,
                         );
-                        for (function.parameters.items) |p| {
-                            const param = try compiler.alloc.create(Self);
-                            param.* = try fromAst(compiler, p.type);
-                            params.appendAssumeCapacity(param);
-                        }
+                        for (function.parameters.items) |p|
+                            params.appendAssumeCapacity(.{
+                                .name = p.name,
+                                .type = try fromAst(compiler, p.type),
+                            });
                         break :b params;
                     },
                     .return_type = b: {
@@ -327,6 +350,7 @@ pub const Type = union(enum) {
                 _ = generic;
                 @panic("unimplemented");
             },
+            .match => |_| @panic("unimplemented"),
             .bad_node => unreachable,
         };
     }
@@ -352,6 +376,121 @@ pub const Type = union(enum) {
                 ),
             },
         };
+    }
+
+    ///
+    pub fn fromCompoundTypeDeclaration(
+        compiler: *Compiler,
+        comptime T: enum { @"struct", @"union", @"enum" },
+        type_decl: switch (T) {
+            .@"struct" => ast.Statement.StructDeclaration,
+            .@"union" => ast.Statement.UnionDeclaration,
+            .@"enum" => ast.Statement.EnumDeclaration,
+        },
+    ) !switch (T) {
+        .@"struct" => Type.Struct,
+        .@"union" => Type.Union,
+        .@"enum" => Type.Enum,
+    } {
+        // register struct in scope
+        var compound_type: switch (T) {
+            .@"struct" => Type.Struct,
+            .@"union" => Type.Union,
+            .@"enum" => Type.Enum,
+        } = try .init(compiler.alloc, type_decl.name, switch (T) {
+            .@"struct" => null,
+            .@"enum" => getTagType(type_decl.members.items.len),
+            .@"union" => b: {
+                var enum_decl: ast.Statement.EnumDeclaration = .{
+                    .pos = type_decl.pos,
+                    .is_pub = false,
+                    .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                    .members = .empty,
+                    .methods = .empty,
+                };
+
+                for (type_decl.members.items) |member|
+                    try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
+
+                try statements.compile(compiler, &.{ .enum_declaration = enum_decl });
+
+                break :b .{
+                    .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl),
+                };
+            },
+        });
+
+        try compiler.registerSymbol(type_decl.name, .{
+            .type = switch (T) {
+                .@"struct" => .{ .@"struct" = compound_type },
+                .@"union" => .{ .@"union" = compound_type },
+                .@"enum" => .{ .@"enum" = compound_type },
+            },
+        });
+
+        try compiler.pushScope();
+        defer compiler.popScope();
+
+        var enum_last_value: usize = 0;
+        for (type_decl.members.items) |member| {
+            if (compound_type.getProperty(member.name)) |_| return utils.printErr(
+                error.DuplicateMember,
+                "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",
+                .{ member.name, type_decl.name, type_decl.pos },
+                .red,
+            );
+
+            try compound_type.members.put(member.name, switch (T) {
+                // TODO: default values
+                .@"struct" => b: {
+                    const member_type = try compiler.alloc.create(Type);
+                    member_type.* = try .fromAst(compiler, member.type);
+                    break :b member_type;
+                },
+                .@"union" => b: {
+                    const member_type = try compiler.alloc.create(Type);
+                    member_type.* = if (member.type) |t|
+                        try .fromAst(compiler, t)
+                    else
+                        .void;
+                    break :b member_type;
+                },
+                .@"enum" => if (member.value) |value| b: {
+                    enum_last_value = (try compiler.solveComptimeExpression(value)).u64;
+                    break :b enum_last_value;
+                } else b: {
+                    const val = enum_last_value;
+                    enum_last_value += 1;
+                    break :b val;
+                },
+            });
+        }
+
+        for (type_decl.methods.items) |method| {
+            var params: std.ArrayList(Function.Param) = try .initCapacity(
+                compiler.alloc,
+                method.parameters.items.len,
+            );
+
+            for (method.parameters.items) |p|
+                params.appendAssumeCapacity(.{
+                    .name = p.name,
+                    .type = try .fromAst(compiler, p.type),
+                });
+
+            const return_type = try compiler.alloc.create(Self);
+            return_type.* = try .fromAst(compiler, method.return_type);
+            try compound_type.methods.put(method.name, .{
+                .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{s}", .{
+                    type_decl.name,
+                    method.name,
+                }), // TODO mangling
+                .params = params,
+                .return_type = return_type,
+            });
+        }
+
+        return compound_type;
     }
 
     fn inferArrayInstantiationExpression(compiler: *Compiler, array: ast.Expression.ArrayInstantiation) !Self {
@@ -502,7 +641,7 @@ pub const Type = union(enum) {
             .function => |function| {
                 _ = try writer.write("fn (");
                 for (function.params.items, 1..) |param, i| {
-                    try writer.print("{f}", .{param});
+                    try writer.print("{f}", .{param.type});
                     if (i < function.params.items.len) _ = try writer.write(", ");
                 }
                 try writer.print(") {f}", .{function.return_type});
@@ -541,9 +680,7 @@ pub const Type = union(enum) {
                 },
 
                 .function => |f| {
-                    for (f.params.items) |p| {
-                        h.update(std.mem.asBytes(&ctx.hash(p.*)));
-                    }
+                    for (f.params.items) |p| h.update(std.mem.asBytes(&ctx.hash(p.type)));
                     h.update(std.mem.asBytes(&ctx.hash(f.return_type.*)));
                 },
 
@@ -570,9 +707,8 @@ pub const Type = union(enum) {
                         var eh = std.hash.Wyhash.init(0);
                         eh.update(entry.key_ptr.*);
 
-                        for (entry.value_ptr.params.items) |p| {
-                            eh.update(std.mem.asBytes(&ctx.hash(p.*)));
-                        }
+                        for (entry.value_ptr.params.items) |p|
+                            eh.update(std.mem.asBytes(&ctx.hash(p.type)));
                         eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.return_type.*)));
 
                         const mixed = eh.final();
@@ -598,9 +734,9 @@ pub const Type = union(enum) {
                         var eh = std.hash.Wyhash.init(0);
                         eh.update(entry.key_ptr.*);
 
-                        for (entry.value_ptr.params.items) |p| {
-                            eh.update(std.mem.asBytes(&ctx.hash(p.*)));
-                        }
+                        for (entry.value_ptr.params.items) |p|
+                            eh.update(std.mem.asBytes(&ctx.hash(p.type)));
+
                         eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.return_type.*)));
 
                         const mixed = eh.final();
@@ -668,7 +804,7 @@ pub const Type = union(enum) {
                         const b_method = b_methods.get(name) orelse return false;
 
                         for (0..a_method.params.items.len) |i|
-                            if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*))
+                            if (!ctx.eql(a_method.params.items[i].type, b_method.params.items[i].type))
                                 return false;
 
                         if (!ctx.eql(a_method.return_type.*, b_method.return_type.*))
@@ -697,7 +833,7 @@ pub const Type = union(enum) {
                         const b_method = b.@"enum".methods.get(name) orelse return false;
 
                         for (0..a_method.params.items.len) |i| {
-                            if (!ctx.eql(a_method.params.items[i].*, b_method.params.items[i].*)) return false;
+                            if (!ctx.eql(a_method.params.items[i].type, b_method.params.items[i].type)) return false;
                         }
 
                         if (!ctx.eql(a_method.return_type.*, b_method.return_type.*)) return false;
@@ -714,7 +850,7 @@ pub const Type = union(enum) {
                     if (ta.params.items.len != b.function.params.items.len) return false;
 
                     for (0..ta.params.items.len) |i| {
-                        if (!ctx.eql(ta.params.items[i].*, b.function.params.items[i].*)) return false;
+                        if (!ctx.eql(ta.params.items[i].type, b.function.params.items[i].type)) return false;
                     }
 
                     return ctx.eql(ta.return_type.*, b.function.return_type.*);

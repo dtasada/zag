@@ -143,6 +143,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     // other expressions
     try self.nud(.open_brace, expressions.block);
     try self.nud(.@"if", expressions.@"if");
+    try self.nud(.match, expressions.match);
     try self.nud(.@"&", expressions.reference);
     try self.led(.dot_dot, .relational, expressions.range);
     try self.led(.dot_dot_equals, .relational, expressions.range);
@@ -161,6 +162,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.@"if", statements.@"if");
     try self.statement(.import, statements.import);
     try self.statement(.@"pub", statements.@"pub");
+    try self.statement(.match, statements.match);
 
     while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
         try self.output.append(self.alloc, try statements.parse(self));

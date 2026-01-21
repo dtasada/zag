@@ -44,85 +44,11 @@ fn compoundTypeDeclaration(
         .@"enum" => ast.Statement.EnumDeclaration,
     },
 ) CompilerError!void {
-    // register struct in scope
-    var compound_type: switch (T) {
-        .@"struct" => Type.Struct,
-        .@"union" => Type.Union,
-        .@"enum" => Type.Enum,
-    } = try .init(self.alloc, type_decl.name, switch (T) {
-        .@"struct" => null,
-        .@"union", .@"enum" => Type.getTagType(type_decl.members.items.len),
-    });
-
-    try self.registerSymbol(type_decl.name, .{
-        .type = switch (T) {
-            .@"struct" => .{ .@"struct" = compound_type },
-            .@"union" => .{ .@"union" = compound_type },
-            .@"enum" => .{ .@"enum" = compound_type },
-        },
-    });
-
-    try self.pushScope();
-    defer self.popScope();
-
-    var enum_last_value: usize = 0;
-    for (type_decl.members.items) |member| {
-        if (compound_type.getProperty(member.name)) |_| return utils.printErr(
-            error.DuplicateMember,
-            "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",
-            .{ member.name, type_decl.name, type_decl.pos },
-            .red,
-        );
-
-        try compound_type.members.put(member.name, switch (T) {
-            // TODO: default values
-            .@"struct" => b: {
-                const member_type = try self.alloc.create(Type);
-                member_type.* = try .fromAst(self, member.type);
-                break :b member_type;
-            },
-            .@"union" => b: {
-                const member_type = try self.alloc.create(Type);
-                member_type.* = if (member.type) |t|
-                    try .fromAst(self, t)
-                else
-                    .void;
-                break :b member_type;
-            },
-            .@"enum" => if (member.value) |value| b: {
-                enum_last_value = (try self.solveComptimeExpression(value)).u64;
-                break :b enum_last_value;
-            } else b: {
-                const val = enum_last_value + 1;
-                enum_last_value += 1;
-                break :b val;
-            },
-        });
-    }
-
-    for (type_decl.methods.items) |method| {
-        var params: std.ArrayList(*const Type) = try .initCapacity(
-            self.alloc,
-            method.parameters.items.len,
-        );
-
-        for (method.parameters.items) |p| {
-            const param_type = try self.alloc.create(Type);
-            param_type.* = try .fromAst(self, p.type);
-            params.appendAssumeCapacity(param_type);
-        }
-
-        const return_type = try self.alloc.create(Type);
-        return_type.* = try .fromAst(self, method.return_type);
-        try compound_type.methods.put(method.name, .{
-            .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
-                type_decl.name,
-                method.name,
-            }), // TODO mangling
-            .params = params,
-            .return_type = return_type,
-        });
-    }
+    const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (T) {
+        .@"struct" => .@"struct",
+        .@"union" => .@"union",
+        .@"enum" => .@"enum",
+    }, type_decl);
 
     const output_writer = self.writer;
     if (type_decl.is_pub and self.module_header != null) self.writer = &self.module_header.?;
@@ -164,7 +90,7 @@ fn compoundTypeDeclaration(
                 try self.write(";\n");
             },
             .@"enum" => try self.print("__zag_{s}_{s} = {},\n", .{
-                type_decl.name,
+                compound_type.name,
                 member.key_ptr.*,
                 member.value_ptr.*,
             }),
@@ -177,7 +103,7 @@ fn compoundTypeDeclaration(
     }
 
     self.indent_level -= 1;
-    try self.print("}} {s};\n\n", .{type_decl.name});
+    try self.print("}} {s};\n\n", .{compound_type.name});
 
     self.writer = output_writer;
 
@@ -185,17 +111,14 @@ fn compoundTypeDeclaration(
         try self.pushScope();
         defer self.popScope();
 
-        try self.registerSymbol(method.name, .{ .symbol = .{
-            .type = try .fromAst(self, method.getType()),
-        } });
+        try self.registerSymbol(method.name, .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
 
         if (type_decl.is_pub and self.module_header != null) {
             self.writer = &self.module_header.?;
             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
-            try self.print(" __zag_{s}_{s}(", .{ type_decl.name, method.name });
-            for (method.parameters.items, 1..) |parameter, i| {
-                const parameter_type: Type = try .fromAst(self, parameter.type);
-                try self.compileVariableSignature(parameter.name, parameter_type, .{});
+            try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
+            for (method.parameters.items, 1..) |parameter_type, i| {
+                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{});
                 if (i < method.parameters.items.len) try self.write(", ");
             }
             try self.write(");\n");
@@ -203,11 +126,11 @@ fn compoundTypeDeclaration(
         }
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
-        try self.print(" __zag_{s}_{s}(", .{ type_decl.name, method.name }); // TODO: mangling generics
+        try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
-            const parameter_type: Type = try .fromAst(self, parameter.type);
-            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = parameter_type } });
-            try self.compileVariableSignature(parameter.name, parameter_type, .{});
+            const param_type: Type = try .fromAst(self, parameter.type);
+            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type } });
+            try self.compileVariableSignature(parameter.name, param_type, .{});
             if (i < method.parameters.items.len) try self.write(", ");
         }
         try self.write(") ");
