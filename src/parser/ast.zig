@@ -321,21 +321,21 @@ pub const Statement = union(enum) {
 
     pub const While = struct {
         pos: utils.Position,
-        condition: *const ast.Expression,
+        condition: ast.Expression,
         capture: ?[]const u8 = null,
         body: *const Statement,
     };
 
     pub const For = struct {
         pos: utils.Position,
-        iterator: *const ast.Expression,
+        iterator: ast.Expression,
         capture: ?[]const u8,
         body: *const Statement,
     };
 
     pub const If = struct {
         pos: utils.Position,
-        condition: *const ast.Expression,
+        condition: ast.Expression,
         capture: ?[]const u8 = null,
         body: *const Statement,
         @"else": ?*const Statement = null,

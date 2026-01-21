@@ -38,8 +38,8 @@ pub const Type = union(enum) {
             };
 
             name: []const u8,
-            members: std.ArrayList(MemberType),
-            methods: std.ArrayList(Method),
+            members: *std.StringArrayHashMap(MemberType),
+            methods: *std.StringArrayHashMap(Method),
             tag_type: ?*const Type, // only for unions and enums
 
             /// get member or method. returns `null` if no member or method is found with `name`.
@@ -244,6 +244,12 @@ pub const Type = union(enum) {
         };
     }
 
+    pub fn fromAstPtr(compiler: *Compiler, t: ast.Type) Compiler.CompilerError!*Self {
+        const ptr = try compiler.alloc.create(Self);
+        ptr.* = try fromAst(compiler, t);
+        return ptr;
+    }
+
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
             .ident => |ident| compiler.getSymbolType(ident.ident) catch return errors.unknownSymbol(
@@ -442,19 +448,8 @@ pub const Type = union(enum) {
 
             try compound_type.members.put(member.name, switch (T) {
                 // TODO: default values
-                .@"struct" => b: {
-                    const member_type = try compiler.alloc.create(Type);
-                    member_type.* = try .fromAst(compiler, member.type);
-                    break :b member_type;
-                },
-                .@"union" => b: {
-                    const member_type = try compiler.alloc.create(Type);
-                    member_type.* = if (member.type) |t|
-                        try .fromAst(compiler, t)
-                    else
-                        .void;
-                    break :b member_type;
-                },
+                .@"struct" => try fromAstPtr(compiler, member.type),
+                .@"union" => if (member.type) |t| try fromAstPtr(compiler, t) else &.void,
                 .@"enum" => if (member.value) |value| b: {
                     enum_last_value = (try compiler.solveComptimeExpression(value)).u64;
                     break :b enum_last_value;
@@ -478,8 +473,7 @@ pub const Type = union(enum) {
                     .type = try .fromAst(compiler, p.type),
                 });
 
-            const return_type = try compiler.alloc.create(Self);
-            return_type.* = try .fromAst(compiler, method.return_type);
+            const return_type = try fromAstPtr(compiler, method.return_type);
             try compound_type.methods.put(method.name, .{
                 .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{s}", .{
                     type_decl.name,
@@ -494,8 +488,7 @@ pub const Type = union(enum) {
     }
 
     fn inferArrayInstantiationExpression(compiler: *Compiler, array: ast.Expression.ArrayInstantiation) !Self {
-        const t = try compiler.alloc.create(Type);
-        t.* = try .fromAst(compiler, array.type);
+        const t = try fromAstPtr(compiler, array.type);
 
         const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident.ident, "_"))
             array.contents.items.len

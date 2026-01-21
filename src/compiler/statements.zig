@@ -229,7 +229,7 @@ fn conditional(
     }});
 
     if (statement.capture) |capture|
-        if (T != .@"for" and try Type.infer(self, statement.condition.*) != .optional)
+        if (T != .@"for" and try Type.infer(self, statement.condition) != .optional)
             return utils.printErr(
                 error.IllegalExpression,
                 "comperr: {s} statement contains capture '{s}' but condition is not an optional ({f}).\n",
@@ -239,8 +239,8 @@ fn conditional(
 
     var capture_ident: []const u8 = undefined;
     switch (T) {
-        .@"if", .@"while" => switch (try Type.infer(self, statement.condition.*)) {
-            .bool, .optional => try expressions.compile(self, statement.condition, .{}),
+        .@"if", .@"while" => switch (try Type.infer(self, statement.condition)) {
+            .bool, .optional => try expressions.compile(self, &statement.condition, .{}),
             else => |t| return utils.printErr(
                 error.IllegalExpression,
                 "comperr: Illegal expression: {s} statement condition must be a boolean or an optional, received {f} ({f}).\n",
@@ -249,7 +249,7 @@ fn conditional(
             ),
         },
         .@"for" => {
-            switch (statement.iterator.*) {
+            switch (statement.iterator) {
                 .range => |range| {
                     capture_ident = statement.capture orelse
                         try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
@@ -278,7 +278,7 @@ fn conditional(
                         try self.print(" {s} = 0", .{capture_ident});
                         try self.print("; {s} < ", .{capture_ident});
                         try self.write("(");
-                        try expressions.compile(self, statement.iterator, .{});
+                        try expressions.compile(self, &statement.iterator, .{});
                         try self.write(").len");
                         try self.print("; {s}++", .{capture_ident});
                     },
@@ -305,14 +305,14 @@ fn conditional(
         switch (T) {
             .@"for" => .{
                 .iterator = if (statement.capture) |c| .{
-                    .iter_expr = statement.iterator,
+                    .iter_expr = &statement.iterator,
                     .capture_name = c,
                     .index = capture_ident,
                 } else null,
             },
             else => .{
                 .capture = if (statement.capture) |c| .{
-                    .condition = statement.condition,
+                    .condition = &statement.condition,
                     .name = c,
                 } else null,
             },

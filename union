@@ -1,0 +1,48 @@
+var compound_type: Type.Union = try .init(
+    self.alloc,
+    union_decl.name,
+    Type.getTagType(union_decl.members.items.len),
+);
+try self.registerSymbol(union_decl.name, .{
+    .type = .{ .@"union" = compound_type },
+});
+
+for (union_decl.members.items) |member| {
+    try compound_type.members.put(member.name, b: {
+        const member_type = try self.alloc.create(Type);
+        member_type.* = if (member.type) |t| try .fromAst(self, t) else .void;
+        break :b member_type;
+    });
+}
+
+// Populate methods
+for (union_decl.methods.items) |method| {
+    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
+        self.alloc,
+        method.parameters.items.len,
+    );
+    for (method.parameters.items) |p|
+        params.appendAssumeCapacity(.{
+            .name = p.name,
+            .type = try .fromAst(self, p.type),
+        });
+
+    const return_type = try self.alloc.create(Type);
+    return_type.* = try .fromAst(self, method.return_type);
+    try compound_type.methods.put(method.name, .{
+        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
+            union_decl.name,
+            method.name,
+        }),
+        .params = params,
+        .return_type = return_type,
+    });
+}
+
+if (union_decl.is_pub) {
+    try self.exported_symbols.put(union_decl.name, .{
+        .name = union_decl.name,
+        .is_pub = true,
+        .type = .{ .@"union" = compound_type },
+    });
+}

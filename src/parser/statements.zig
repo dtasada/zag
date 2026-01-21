@@ -298,8 +298,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "for" keyeword and parse from there.
 
     try self.expect(self.advance(), Lexer.Token.open_paren, "for statement iterator", "(");
-    const iterator = try self.alloc.create(ast.Expression);
-    iterator.* = try expressions.parse(self, .default);
+    const iterator = try expressions.parse(self, .default);
     try self.expect(self.advance(), Lexer.Token.close_paren, "for statement iterator", ")");
 
     const capture = if (self.expect(self.advance(), .@"|", "for statement capture", "|") catch null) |_| b: {
@@ -343,8 +342,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
     try self.expect(self.advance(), Lexer.Token.open_paren, context, "(");
 
-    const condition = try self.alloc.create(ast.Expression);
-    condition.* = try expressions.parse(self, .default);
+    const condition = try expressions.parse(self, .default);
 
     try self.expect(self.advance(), Lexer.Token.close_paren, context, ")");
 

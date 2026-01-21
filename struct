@@ -1,0 +1,45 @@
+var compound_type: Type.Struct = try .init(self.alloc, struct_decl.name, null);
+try self.registerSymbol(struct_decl.name, .{
+    .type = .{ .@"struct" = compound_type },
+});
+
+// Populate members
+// var enum_last_value: usize = 0;
+for (struct_decl.members.items) |member| {
+    try compound_type.members.put(member.name, b: {
+        const member_type = try self.alloc.create(Type);
+        member_type.* = try .fromAst(self, member.type);
+        break :b member_type;
+    });
+}
+
+// Populate methods
+for (struct_decl.methods.items) |method| {
+    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
+        self.alloc,
+        method.parameters.items.len,
+    );
+    for (method.parameters.items) |p|
+        params.appendAssumeCapacity(.{
+            .name = p.name,
+            .type = try .fromAst(self, p.type),
+        });
+    const return_type = try self.alloc.create(Type);
+    return_type.* = try .fromAst(self, method.return_type);
+    try compound_type.methods.put(method.name, .{
+        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
+            struct_decl.name,
+            method.name,
+        }),
+        .params = params,
+        .return_type = return_type,
+    });
+}
+
+if (struct_decl.is_pub) {
+    try self.exported_symbols.put(struct_decl.name, .{
+        .name = struct_decl.name,
+        .is_pub = true,
+        .type = .{ .@"struct" = compound_type },
+    });
+}

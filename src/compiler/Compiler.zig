@@ -392,20 +392,49 @@ pub fn analyze(self: *Self) CompilerError!void {
                     });
                 }
             },
-            .struct_declaration => |*struct_decl| {
-                var compound_type: Type.Struct = try .init(self.alloc, struct_decl.name, null);
-                try self.registerSymbol(struct_decl.name, .{
-                    .type = .{ .@"struct" = compound_type },
-                });
+            inline .struct_declaration, .union_declaration, .enum_declaration => |struct_decl| {
+                var compound_type: switch (@TypeOf(struct_decl)) {
+                    ast.Statement.StructDeclaration => Type.Struct,
+                    ast.Statement.UnionDeclaration => Type.Union,
+                    ast.Statement.EnumDeclaration => Type.Enum,
+                    else => unreachable,
+                } = try .init(self.alloc, struct_decl.name, null);
+
+                const symbol_type = @unionInit(Type, switch (@TypeOf(struct_decl)) {
+                    ast.Statement.StructDeclaration => "struct",
+                    ast.Statement.UnionDeclaration => "union",
+                    ast.Statement.EnumDeclaration => "enum",
+                    else => unreachable,
+                }, compound_type);
+
+                try self.registerSymbol(struct_decl.name, .{ .type = symbol_type });
 
                 // Populate members
-                // var enum_last_value: usize = 0;
-                for (struct_decl.members.items) |member| {
-                    try compound_type.members.put(member.name, b: {
-                        const member_type = try self.alloc.create(Type);
-                        member_type.* = try .fromAst(self, member.type);
-                        break :b member_type;
-                    });
+                switch (@TypeOf(struct_decl)) {
+                    ast.Statement.StructDeclaration => for (struct_decl.members.items) |member| {
+                        try compound_type.members.put(member.name, try .fromAstPtr(self, member.type));
+                    },
+                    ast.Statement.UnionDeclaration => for (struct_decl.members.items) |member| {
+                        try compound_type.members.put(member.name, b: {
+                            const member_type = try self.alloc.create(Type);
+                            member_type.* = if (member.type) |t| try .fromAst(self, t) else .void;
+                            break :b member_type;
+                        });
+                    },
+                    ast.Statement.EnumDeclaration => {
+                        var enum_last_value: usize = 0;
+                        for (struct_decl.members.items) |member| {
+                            try compound_type.members.put(member.name, if (member.value) |value| b: {
+                                enum_last_value = (try self.solveComptimeExpression(value)).u64;
+                                break :b enum_last_value;
+                            } else b: {
+                                const val = enum_last_value + 1;
+                                enum_last_value += 1;
+                                break :b val;
+                            });
+                        }
+                    },
+                    else => unreachable,
                 }
 
                 // Populate methods
@@ -419,8 +448,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                             .name = p.name,
                             .type = try .fromAst(self, p.type),
                         });
-                    const return_type = try self.alloc.create(Type);
-                    return_type.* = try .fromAst(self, method.return_type);
+                    const return_type: *Type = try .fromAstPtr(self, method.return_type);
                     try compound_type.methods.put(method.name, .{
                         .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
                             struct_decl.name,
@@ -435,112 +463,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                     try self.exported_symbols.put(struct_decl.name, .{
                         .name = struct_decl.name,
                         .is_pub = true,
-                        .type = .{ .@"struct" = compound_type },
-                    });
-                }
-            },
-            .enum_declaration => |*enum_decl| {
-                var compound_type: Type.Enum = try .init(
-                    self.alloc,
-                    enum_decl.name,
-                    Type.getTagType(enum_decl.members.items.len),
-                );
-
-                try self.registerSymbol(enum_decl.name, .{
-                    .type = .{ .@"enum" = compound_type },
-                });
-
-                var enum_last_value: usize = 0;
-                for (enum_decl.members.items) |member| {
-                    try compound_type.members.put(member.name, if (member.value) |value| b: {
-                        enum_last_value = (try self.solveComptimeExpression(value)).u64;
-                        break :b enum_last_value;
-                    } else b: {
-                        const val = enum_last_value + 1;
-                        enum_last_value += 1;
-                        break :b val;
-                    });
-                }
-
-                // Populate methods
-                for (enum_decl.methods.items) |method| {
-                    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
-                        self.alloc,
-                        method.parameters.items.len,
-                    );
-                    for (method.parameters.items) |p|
-                        params.appendAssumeCapacity(.{
-                            .name = p.name,
-                            .type = try .fromAst(self, p.type),
-                        });
-
-                    const return_type = try self.alloc.create(Type);
-                    return_type.* = try .fromAst(self, method.return_type);
-                    try compound_type.methods.put(method.name, .{
-                        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
-                            enum_decl.name,
-                            method.name,
-                        }),
-                        .params = params,
-                        .return_type = return_type,
-                    });
-                }
-
-                if (enum_decl.is_pub) {
-                    try self.exported_symbols.put(enum_decl.name, .{
-                        .name = enum_decl.name,
-                        .is_pub = true,
-                        .type = .{ .@"enum" = compound_type },
-                    });
-                }
-            },
-            .union_declaration => |*union_decl| {
-                var compound_type: Type.Union = try .init(
-                    self.alloc,
-                    union_decl.name,
-                    Type.getTagType(union_decl.members.items.len),
-                );
-                try self.registerSymbol(union_decl.name, .{
-                    .type = .{ .@"union" = compound_type },
-                });
-
-                for (union_decl.members.items) |member| {
-                    try compound_type.members.put(member.name, b: {
-                        const member_type = try self.alloc.create(Type);
-                        member_type.* = if (member.type) |t| try .fromAst(self, t) else .void;
-                        break :b member_type;
-                    });
-                }
-
-                // Populate methods
-                for (union_decl.methods.items) |method| {
-                    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
-                        self.alloc,
-                        method.parameters.items.len,
-                    );
-                    for (method.parameters.items) |p|
-                        params.appendAssumeCapacity(.{
-                            .name = p.name,
-                            .type = try .fromAst(self, p.type),
-                        });
-
-                    const return_type = try self.alloc.create(Type);
-                    return_type.* = try .fromAst(self, method.return_type);
-                    try compound_type.methods.put(method.name, .{
-                        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
-                            union_decl.name,
-                            method.name,
-                        }),
-                        .params = params,
-                        .return_type = return_type,
-                    });
-                }
-
-                if (union_decl.is_pub) {
-                    try self.exported_symbols.put(union_decl.name, .{
-                        .name = union_decl.name,
-                        .is_pub = true,
-                        .type = .{ .@"union" = compound_type },
+                        .type = symbol_type,
                     });
                 }
             },
