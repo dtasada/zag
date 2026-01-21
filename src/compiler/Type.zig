@@ -38,8 +38,8 @@ pub const Type = union(enum) {
             };
 
             name: []const u8,
-            members: *std.StringArrayHashMap(MemberType),
-            methods: *std.StringArrayHashMap(Method),
+            members: std.ArrayList(MemberType),
+            methods: std.ArrayList(Method),
             tag_type: ?*const Type, // only for unions and enums
 
             /// get member or method. returns `null` if no member or method is found with `name`.
