@@ -236,7 +236,7 @@ pub fn unexpectedToken(
     environment: []const u8,
     expected_token: []const u8,
     actual: Lexer.Token,
-) error{ NoSpaceLeft, UnexpectedToken } {
+) error{UnexpectedToken} {
     const pos = std.math.clamp(self.pos - 1, 0, self.lexer.source_map.items.len - 1);
 
     return utils.printErr(
@@ -255,7 +255,7 @@ pub fn unexpectedToken(
 /// Returns active tag if active type of `actual` is the same as `expected`. Errors otherwise.
 /// `environment` and `expected_token` are strings for the error message.
 /// example: "function definition" and "function name" respectively yields
-/// "Unexpected token in function definition '<bad_token>' at <line>:<col>. Expected 'function_name'",
+/// "Unexpected token in function definition '<bad_token>' at <source_file>:<line>:<col>. Expected 'function_name'",
 pub fn expect(
     self: *const Self,
     actual: Lexer.Token,

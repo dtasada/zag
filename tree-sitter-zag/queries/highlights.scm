@@ -15,6 +15,7 @@
  "while"
  "bind"
  "pub"
+ "match"
 ] @keyword
 
 (while_statement "while" @repeat)

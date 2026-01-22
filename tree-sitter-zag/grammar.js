@@ -23,6 +23,10 @@ export default grammar({
     $.comment,
   ],
 
+  conflicts: $ => [
+    [$._statement, $.expression],
+  ],
+
   rules: {
     source_file: $ => repeat($._statement),
 
@@ -39,6 +43,7 @@ export default grammar({
       $.while_statement,
       $.for_statement,
       $.expression_statement,
+      $.match_expression,
     ),
 
     expression_statement: $ => seq($.expression, ";"),
@@ -65,6 +70,24 @@ export default grammar({
       $.if_expression,
       $.range_expression,
       $.reference_expression,
+      $.match_expression,
+    ),
+
+    match_expression: $ => seq(
+      "match",
+      "(",
+      $.expression,
+      ")",
+      "{",
+      commaSep(seq(
+        choice(
+          commaSep($.expression),
+          "else",
+        ),
+        "->",
+        $._statement,
+      )),
+      "}",
     ),
 
     function_definition: $ => seq(
