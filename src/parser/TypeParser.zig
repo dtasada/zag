@@ -43,13 +43,13 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
         .led_lookup = .init(alloc),
     };
 
-    try self.nud(Lexer.Token.ident, parseSymbolType);
-    try self.nud(Lexer.Token.open_bracket, parseArrayType);
-    try self.nud(Lexer.Token.@"&", parseReferenceType);
-    try self.nud(Lexer.Token.@"?", parseOptionalType);
-    try self.nud(Lexer.Token.@"!", parseInferredErrorType);
-    try self.nud(Lexer.Token.open_paren, parseGroupType);
-    try self.led(Lexer.Token.@"!", .logical, parseErrorType);
+    try self.nud(.ident, parseSymbolType);
+    try self.nud(.@"[", parseArrayType);
+    try self.nud(.@"&", parseReferenceType);
+    try self.nud(.@"?", parseOptionalType);
+    try self.nud(.@"!", parseInferredErrorType);
+    try self.nud(.@"(", parseGroupType);
+    try self.led(.@"!", .logical, parseErrorType);
     return self;
 }
 
@@ -83,7 +83,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
     const position = self.parent_parser.currentPosition();
     const ident = try self.parent_parser.expect(
         self.parent_parser.advance(),
-        Lexer.Token.ident,
+        .ident,
         "type descriptor",
         "type name",
     );
@@ -95,7 +95,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
     const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '&'
 
-    const is_mut = self.parent_parser.currentTokenKind() == Lexer.Token.mut;
+    const is_mut = self.parent_parser.currentTokenKind() == .mut;
     if (is_mut) _ = self.parent_parser.advance(); // consume `mut`
 
     const inner = try alloc.create(ast.Type);
@@ -155,14 +155,14 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     var size: ?*ast.Expression = null;
 
-    if (self.parent_parser.currentTokenKind() != Lexer.Token.close_bracket) {
+    if (self.parent_parser.currentTokenKind() != .@"]") {
         size = try alloc.create(ast.Expression);
         size.?.* = try expression.parse(self.parent_parser, .default);
     }
 
     try self.parent_parser.expect(
         self.parent_parser.advance(),
-        Lexer.Token.close_bracket,
+        .@"]",
         "array type descriptor",
         "]",
     );
@@ -185,9 +185,9 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 }
 
 pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
-    try self.parent_parser.expect(self.parent_parser.advance(), Lexer.Token.open_paren, "group expression", "(");
+    try self.parent_parser.expect(self.parent_parser.advance(), .@"(", "group expression", "(");
     const @"type" = try parseType(self, alloc, .default);
-    try self.parent_parser.expect(self.parent_parser.advance(), Lexer.Token.close_paren, "group expression", ")");
+    try self.parent_parser.expect(self.parent_parser.advance(), .@")", "group expression", ")");
 
     return @"type";
 }

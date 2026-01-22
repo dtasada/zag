@@ -23,7 +23,7 @@ const LedHandler = *const fn (*Self, *const ast.Expression, BindingPower) Parser
 /// Binding power. Order of this enum is functional, so don't change it.
 pub const BindingPower = enum {
     default,
-    comma,
+    @",",
     assignment,
     logical,
     relational,
@@ -132,22 +132,22 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(.ident, expressions.primary);
     try self.nud(.string, expressions.primary);
     try self.nud(.@"-", expressions.prefix);
-    try self.nud(.open_paren, expressions.group);
+    try self.nud(.@"(", expressions.group);
 
     // Call/member expressions
     try self.led(.@".", .member, expressions.member);
-    try self.led(.open_brace, .call, expressions.structInstantiation);
-    try self.led(.open_paren, .call, expressions.call);
-    try self.nud(.open_bracket, expressions.arrayInstantiation);
+    try self.led(.@"{", .call, expressions.structInstantiation);
+    try self.led(.@"(", .call, expressions.call);
+    try self.nud(.@"[", expressions.arrayInstantiation);
 
     // other expressions
-    try self.nud(.open_brace, expressions.block);
+    try self.nud(.@"{", expressions.block);
     try self.nud(.@"if", expressions.@"if");
     try self.nud(.match, expressions.match);
     try self.nud(.@"&", expressions.reference);
-    try self.led(.dot_dot, .relational, expressions.range);
-    try self.led(.dot_dot_equals, .relational, expressions.range);
-    try self.led(.open_bracket, .call, expressions.index);
+    try self.led(.@"..", .relational, expressions.range);
+    try self.led(.@"..=", .relational, expressions.range);
+    try self.led(.@"[", .call, expressions.index);
 
     // Statements
     try self.statement(.let, statements.variableDeclaration);
@@ -164,7 +164,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.@"pub", statements.@"pub");
     try self.statement(.match, statements.match);
 
-    while (std.meta.activeTag(self.currentToken()) != Lexer.Token.eof)
+    while (std.meta.activeTag(self.currentToken()) != .eof)
         try self.output.append(self.alloc, try statements.parse(self));
 
     return self;
@@ -326,8 +326,8 @@ pub fn parseGenericArguments(self: *Self) ParserError!ast.ArgumentList {
 }
 
 fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ArgumentList {
-    const opening_token: Lexer.Token = if (is_generic) .@"<" else .open_paren;
-    const closing_token: Lexer.Token = if (is_generic) .@">" else .close_paren;
+    const opening_token: Lexer.Token = if (is_generic) .@"<" else .@"(";
+    const closing_token: Lexer.Token = if (is_generic) .@">" else .@")";
     const environment = if (is_generic) "generic argument list" else "argument list";
 
     var args: ast.ArgumentList = .empty;
@@ -340,7 +340,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
         const bp: BindingPower = if (is_generic) .relational else .default;
         try args.append(self.alloc, try expressions.parse(self, bp));
 
-        self.expectSilent(self.currentToken(), .comma) catch {
+        self.expectSilent(self.currentToken(), .@",") catch {
             try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
             break;
         };
@@ -354,20 +354,20 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 pub fn parseBlock(self: *Self) !ast.Block {
     var block: ast.Block = .empty;
 
-    try self.expect(self.advance(), .open_brace, "block", "{");
+    try self.expect(self.advance(), .@"{", "block", "{");
 
-    while (self.currentTokenKind() != .eof and self.currentTokenKind() != .close_brace)
+    while (self.currentTokenKind() != .eof and self.currentTokenKind() != .@"}")
         try block.append(self.alloc, try statements.parse(self));
 
-    try self.expect(self.advance(), .close_brace, "block", "}");
+    try self.expect(self.advance(), .@"}", "block", "}");
 
     return block;
 }
 
 pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ParameterList {
     const context = if (is_generic) "generic parameter list" else "parameter list";
-    const opening_token = if (is_generic) .@"<" else .open_paren;
-    const closing_token = if (is_generic) .@">" else .close_paren;
+    const opening_token = if (is_generic) .@"<" else .@"(";
+    const closing_token = if (is_generic) .@">" else .@")";
 
     var params: ast.ParameterList = .empty;
     try self.expect(
@@ -396,7 +396,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
             const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
             try param_names.append(self.alloc, .{ .name = first_name, .pos = first_pos });
 
-            while (self.currentTokenKind() == .comma) {
+            while (self.currentTokenKind() == .@",") {
                 _ = self.advance();
                 const pos = self.currentPosition();
                 const name = try self.expect(self.advance(), .ident, context, "parameter name");
@@ -405,13 +405,13 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
 
             var param_type: ast.Type = .{ .inferred = .{ .position = first_pos } };
             if (is_generic) {
-                param_type = if (self.currentTokenKind() == Lexer.Token.colon) b: {
+                param_type = if (self.currentTokenKind() == .@":") b: {
                     _ = self.advance();
                     break :b try self.type_parser.parseType(self.alloc, .default);
                 } else .{ .inferred = .{ .position = first_pos } };
             } else switch (self.advance()) {
-                .colon => param_type = try self.type_parser.parseType(self.alloc, .default),
-                .dot_dot_dot => {
+                .@":" => param_type = try self.type_parser.parseType(self.alloc, .default),
+                .@"..." => {
                     param_type = .{ .variadic = .{ .position = first_pos } };
                     last_arg = true;
                 },
@@ -433,10 +433,10 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 try params.append(self.alloc, .{ .name = p.name, .type = param_type });
             }
 
-            self.expectSilent(self.currentToken(), .comma) catch {
+            self.expectSilent(self.currentToken(), .@",") catch {
                 try self.expect(
                     self.advance(),
-                    if (is_generic) .@">" else .close_paren,
+                    if (is_generic) .@">" else .@")",
                     context,
                     if (is_generic) ">" else ")",
                 );

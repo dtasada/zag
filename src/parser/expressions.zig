@@ -137,15 +137,15 @@ pub fn prefix(self: *Self) ParserError!ast.Expression {
 }
 
 pub fn group(self: *Self) ParserError!ast.Expression {
-    try self.expect(self.advance(), Lexer.Token.open_paren, "group expression", "(");
+    try self.expect(self.advance(), .@"(", "group expression", "(");
     const expr = try parse(self, .default);
-    try self.expect(self.advance(), Lexer.Token.close_paren, "group expression", ")");
+    try self.expect(self.advance(), .@")", "group expression", ")");
 
     return expr;
 }
 
 pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
-    try self.expect(self.advance(), Lexer.Token.open_brace, "struct instantiation", "{");
+    try self.expect(self.advance(), .@"{", "struct instantiation", "{");
 
     var @"struct": ast.Expression.StructInstantiation = .{
         .pos = lhs.getPosition(),
@@ -153,19 +153,19 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
         .members = .init(self.alloc),
     };
 
-    while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
-        const member_name = try self.expect(self.advance(), Lexer.Token.ident, "struct instantiation", "struct member name");
-        try self.expect(self.advance(), Lexer.Token.colon, "struct instantiation", ":");
+    while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
+        const member_name = try self.expect(self.advance(), .ident, "struct instantiation", "struct member name");
+        try self.expect(self.advance(), .@":", "struct instantiation", ":");
         const member_value = try parse(self, .default);
 
         try @"struct".members.put(member_name, member_value);
 
-        if (self.currentTokenKind() != Lexer.Token.close_brace) {
-            try self.expect(self.advance(), Lexer.Token.comma, "struct instantiation", ",");
+        if (self.currentTokenKind() != .@"}") {
+            try self.expect(self.advance(), .@",", "struct instantiation", ",");
         }
     }
 
-    try self.expect(self.advance(), Lexer.Token.close_brace, "struct instantiation", "}");
+    try self.expect(self.advance(), .@"}", "struct instantiation", "}");
 
     return .{ .struct_instantiation = @"struct" };
 }
@@ -173,10 +173,10 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
 pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
 
-    try self.expect(self.advance(), Lexer.Token.open_bracket, "array instantiation", "[");
+    try self.expect(self.advance(), .@"[", "array instantiation", "[");
     const length = try self.alloc.create(ast.Expression);
     length.* = try parse(self, .default);
-    try self.expect(self.advance(), Lexer.Token.close_bracket, "array instantiation", "]");
+    try self.expect(self.advance(), .@"]", "array instantiation", "]");
 
     var array: ast.Expression.ArrayInstantiation = .{
         .pos = pos,
@@ -184,14 +184,14 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
         .length = length,
     };
 
-    try self.expect(self.advance(), Lexer.Token.open_brace, "array instantiation", "{");
-    while (self.currentToken() != .eof and self.currentTokenKind() != Lexer.Token.close_brace) {
+    try self.expect(self.advance(), .@"{", "array instantiation", "{");
+    while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
         try array.contents.append(self.alloc, try parse(self, .logical));
 
-        if (self.currentTokenKind() != Lexer.Token.close_brace)
-            try self.expect(self.advance(), Lexer.Token.comma, "array literal", ",");
+        if (self.currentTokenKind() != .@"}")
+            try self.expect(self.advance(), .@",", "array literal", ",");
     }
-    try self.expect(self.advance(), Lexer.Token.close_brace, "array instantiation", "}");
+    try self.expect(self.advance(), .@"}", "array instantiation", "}");
 
     return .{ .array_instantiation = array };
 }
@@ -227,7 +227,7 @@ fn isGenericLookahead(self: *Self) bool {
                 depth -= 1;
                 if (depth == 0) return true;
             },
-            .open_paren, .close_paren, .open_brace, .close_brace, .semicolon => return false,
+            .@"(", .@")", .@"{", .@"}", .@";" => return false,
             else => {},
         }
         i += 1;
@@ -247,19 +247,19 @@ pub fn generic(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserE
 
 pub fn @"if"(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
-    try self.expect(self.advance(), Lexer.Token.@"if", "if expression", "if");
+    try self.expect(self.advance(), .@"if", "if expression", "if");
 
-    try self.expect(self.advance(), Lexer.Token.open_paren, "if expression", "(");
+    try self.expect(self.advance(), .@"(", "if expression", "(");
 
     const condition = try self.alloc.create(ast.Expression);
     condition.* = try parse(self, .default);
 
-    try self.expect(self.advance(), Lexer.Token.close_paren, "if expression", ")");
+    try self.expect(self.advance(), .@")", "if expression", ")");
 
     const capture: ?[]const u8 = switch (self.currentToken()) {
         .@"|" => blk: {
             _ = self.advance(); // consume opening pipe
-            const capture_name = try self.expect(self.advance(), Lexer.Token.ident, "capture", "capture name");
+            const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
             try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
             break :blk capture_name;
         },
@@ -267,19 +267,19 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
     };
 
     const body = try self.alloc.create(ast.Expression);
-    body.* = if (self.currentTokenKind() == .open_brace)
+    body.* = if (self.currentTokenKind() == .@"{")
         try block(self)
     else
         try parse(self, .default);
 
     var @"else": ?*ast.Expression = null;
-    if (self.currentTokenKind() == .open_brace) {
+    if (self.currentTokenKind() == .@"{") {
         // block
-    } else if (self.currentTokenKind() == Lexer.Token.@"else") {
+    } else if (self.currentTokenKind() == .@"else") {
         _ = self.advance(); // consume `else`
 
         @"else" = try self.alloc.create(ast.Expression);
-        @"else".?.* = if (self.currentTokenKind() == .open_brace)
+        @"else".?.* = if (self.currentTokenKind() == .@"{")
             try block(self)
         else
             try parse(self, .default);
@@ -300,12 +300,12 @@ pub fn match(self: *Self) ParserError!ast.Expression {
     const position = self.currentPosition();
     _ = self.advance(); // consume `match` keyword
 
-    try self.expect(self.advance(), .open_paren, "match statement", "(");
+    try self.expect(self.advance(), .@"(", "match statement", "(");
     const condition = try self.alloc.create(ast.Expression);
     condition.* = try parse(self, .default);
-    try self.expect(self.advance(), .close_paren, "match statement", ")");
+    try self.expect(self.advance(), .@")", "match statement", ")");
 
-    try self.expect(self.advance(), .open_brace, "match statement", "{");
+    try self.expect(self.advance(), .@"{", "match statement", "{");
 
     var cases: std.ArrayList(ast.Expression.Match.Case) = .empty;
     while (true) {
@@ -319,7 +319,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
             var conds: std.ArrayList(ast.Expression) = .empty;
             try conds.append(self.alloc, try parse(self, .default));
 
-            while (self.currentToken() == .comma) {
+            while (self.currentToken() == .@",") {
                 _ = self.advance();
                 try conds.append(self.alloc, try parse(self, .default));
             }
@@ -327,7 +327,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
             break :b .{ .opts = conds };
         };
 
-        try self.expect(self.advance(), .arrow, "match statement case", "->");
+        try self.expect(self.advance(), .@"->", "match statement case", "->");
 
         const result: ast.Statement = b: {
             if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn|
@@ -338,12 +338,12 @@ pub fn match(self: *Self) ParserError!ast.Expression {
 
         try cases.append(self.alloc, .{ .condition = cond, .pos = pos, .result = result });
 
-        self.expectSilent(self.currentToken(), .comma) catch break;
+        self.expectSilent(self.currentToken(), .@",") catch break;
         _ = self.advance();
-        if (self.currentToken() == .close_brace) break;
+        if (self.currentToken() == .@"}") break;
     }
 
-    try self.expect(self.advance(), .close_brace, "match statement", "}");
+    try self.expect(self.advance(), .@"}", "match statement", "}");
 
     return .{
         .match = .{
@@ -369,7 +369,7 @@ pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
             .pos = lhs.getPosition(),
             .start = lhs,
             .end = end,
-            .inclusive = token != .dot_dot,
+            .inclusive = token != .@"..",
         },
     };
 }
@@ -380,7 +380,7 @@ pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
     const i = try self.alloc.create(ast.Expression);
     i.* = try parse(self, .default);
 
-    try self.expect(self.advance(), .close_bracket, "index expression", "]");
+    try self.expect(self.advance(), .@"]", "index expression", "]");
 
     return .{
         .index = .{
@@ -395,7 +395,7 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     _ = self.advance(); // consume `&`
 
-    const is_mut = self.currentTokenKind() == Lexer.Token.mut;
+    const is_mut = self.currentTokenKind() == .mut;
     if (is_mut) _ = self.advance(); // consume `mut`
 
     const inner = try self.alloc.create(ast.Expression);

@@ -46,15 +46,15 @@ pub const Token = union(enum) {
     float: f64,
 
     // special characters
-    open_paren,
-    close_paren,
-    open_bracket,
-    close_bracket,
-    open_brace,
-    close_brace,
-    semicolon,
-    colon,
-    comma,
+    @"(",
+    @")",
+    @"[",
+    @"]",
+    @"{",
+    @"}",
+    @";",
+    @":",
+    @",",
     @".",
 
     // keywords
@@ -78,10 +78,10 @@ pub const Token = union(enum) {
     match,
     mut,
 
-    dot_dot,
-    dot_dot_equals,
-    dot_dot_dot,
-    arrow,
+    @"..",
+    @"..=",
+    @"...",
+    @"->",
 
     // unary operators
     @"!",
@@ -256,15 +256,15 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
             const char = self.currentChar();
             switch (char) {
                 '+', '-', '*', '/', '%', '=', '!', '>', '<', '&', '|', '^', '.' => try self.parseBinaryOperator(alloc),
-                '(' => try self.appendAndNext(alloc, .open_paren),
-                ')' => try self.appendAndNext(alloc, .close_paren),
-                '[' => try self.appendAndNext(alloc, .open_bracket),
-                ']' => try self.appendAndNext(alloc, .close_bracket),
-                '{' => try self.appendAndNext(alloc, .open_brace),
-                '}' => try self.appendAndNext(alloc, .close_brace),
-                ';' => try self.appendAndNext(alloc, .semicolon),
-                ':' => try self.appendAndNext(alloc, .colon),
-                ',' => try self.appendAndNext(alloc, .comma),
+                '(' => try self.appendAndNext(alloc, .@"("),
+                ')' => try self.appendAndNext(alloc, .@")"),
+                '[' => try self.appendAndNext(alloc, .@"["),
+                ']' => try self.appendAndNext(alloc, .@"]"),
+                '{' => try self.appendAndNext(alloc, .@"{"),
+                '}' => try self.appendAndNext(alloc, .@"}"),
+                ';' => try self.appendAndNext(alloc, .@";"),
+                ':' => try self.appendAndNext(alloc, .@":"),
+                ',' => try self.appendAndNext(alloc, .@","),
                 '?' => try self.appendAndNext(alloc, .@"?"),
                 '\'' => {
                     _ = self.advance();
@@ -342,7 +342,7 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
                 _ = self.advance();
                 break :blk switch (first_token) {
                     .@">" => .@">>",
-                    .@"-" => .arrow,
+                    .@"-" => .@"->",
                     else => first_token,
                 };
             },
@@ -356,7 +356,7 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
             '.' => blk: {
                 _ = self.advance();
                 break :blk switch (first_token) {
-                    .@"." => .dot_dot,
+                    .@"." => .@"..",
                     else => first_token,
                 };
             },
@@ -370,14 +370,14 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
                 break :blk switch (double_token) {
                     .@">>" => .@">>=",
                     .@"<<" => .@"<<=",
-                    .dot_dot => .dot_dot_equals,
+                    .@".." => .@"..=",
                     else => double_token,
                 };
             },
             '.' => blk: {
                 _ = self.advance();
                 break :blk switch (double_token) {
-                    .dot_dot => .dot_dot_dot,
+                    .@".." => .@"...",
                     else => double_token,
                 };
             },
