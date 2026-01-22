@@ -140,26 +140,33 @@ pub fn compile(
             );
         },
         .generic => |_| @panic(""),
-        .match => |match| switch (try Type.infer(self, match.condition.*)) {
-            .@"union" => |@"union"| {
-                try self.write("switch ((");
-                try compile(self, match.condition, .{});
-                try self.write(").tag) {\n");
-                self.indent_level += 1;
+        .match => |m| try match(self, m),
+        .bad_node => unreachable,
+    }
+}
 
-                for (match.cases.items) |case| {
-                    for (case.cases.items) |c| {
+fn match(self: *Self, m: ast.Expression.Match) !void {
+    switch (try Type.infer(self, m.condition.*)) {
+        .@"union" => |@"union"| {
+            try self.write("switch ((");
+            try compile(self, m.condition, .{});
+            try self.write(").tag) {\n");
+            self.indent_level += 1;
+
+            for (m.cases.items) |case| {
+                switch (case.condition) {
+                    .opts => |cases| for (cases.items) |c| {
                         try self.indent();
                         try self.write("case ");
                         switch (c) {
                             .ident => |ident| {
-                                const m = @"union".getMember(ident.ident) catch return utils.printErr(
+                                const mem = @"union".getMember(ident.ident) catch return utils.printErr(
                                     error.IllegalExpression,
                                     "comperr: Union type '{s}' doesn't have member '{s}' ({f}).\n",
                                     .{ @"union".name, ident.ident, c.getPosition() },
                                     .red,
                                 );
-                                try self.print("__zag_{s}_tag_type_{s}", .{ @"union".name, m.member_name });
+                                try self.print("__zag_{s}_tag_type_{s}", .{ @"union".name, mem.member_name });
                             },
                             else => return utils.printErr(
                                 error.IllegalExpression,
@@ -168,20 +175,29 @@ pub fn compile(
                                 .red,
                             ),
                         }
-                        try self.write(": ");
-                    }
-
-                    try statements.compile(self, &case.result);
-                    try self.indent();
-                    try self.write("break;\n");
+                        try self.write(":\n");
+                    },
+                    .@"else" => {
+                        try self.indent();
+                        try self.write("default:\n");
+                    },
                 }
+                self.indent_level += 1;
+
+                try self.indent();
+                std.debug.print("case.result: {}\n", .{case.result});
+                try statements.compile(self, &case.result);
+                try self.indent();
+                try self.write(";break;\n");
 
                 self.indent_level -= 1;
-                try self.write("}");
-            },
-            else => @panic("unimplemented!"),
+            }
+
+            self.indent_level -= 1;
+            try self.indent();
+            try self.write("}");
         },
-        .bad_node => unreachable,
+        else => @panic("unimplemented!"),
     }
 }
 

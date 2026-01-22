@@ -16,8 +16,8 @@ pub const Position = struct {
 
 const Color = enum { white, red, green, blue, yellow };
 
+var buf: [1024]u8 = undefined;
 pub fn print(comptime fmt: []const u8, args: anytype, comptime color: Color) void {
-    var buf: [1024]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&buf);
     var stdout = &stdout_writer.interface;
 
@@ -25,8 +25,8 @@ pub fn print(comptime fmt: []const u8, args: anytype, comptime color: Color) voi
         switch (color) {
             .white => "",
             .red => "\x1b[0;31m",
-            .green => "\x1b[0;34m",
-            .blue => "\x1b[0;32m",
+            .green => "\x1b[0;32m",
+            .blue => "\x1b[0;34m",
             .yellow => "\x1b[0;33m",
         } ++ fmt ++ "\x1b[0m",
         args,
@@ -45,8 +45,8 @@ pub inline fn printErr(
     return err;
 }
 
+var prng: std.Random.DefaultPrng = .init(0);
 pub fn randInt(comptime T: type) T {
-    var prng: std.Random.DefaultPrng = .init(0);
     const rand = prng.random();
     return rand.int(T);
 }

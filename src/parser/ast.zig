@@ -99,8 +99,13 @@ pub const Expression = union(enum) {
 
     pub const Match = struct {
         pub const Case = struct {
+            pub const Condition = union(enum) {
+                opts: std.ArrayList(Expression),
+                @"else",
+            };
+
             pos: utils.Position,
-            cases: std.ArrayList(Expression),
+            condition: Condition,
             result: Statement,
         };
 

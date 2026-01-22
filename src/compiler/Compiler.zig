@@ -216,7 +216,7 @@ pub fn init(
         .module_header = null,
         .zag_header = null,
         .zag_source = null,
-        .zag_header_contents = .initContext(alloc, .{ .visited = &visited }), // TODO: will probably change in the future, when compiling files
+        .zag_header_contents = .initContext(alloc, .{ .visited = &visited }),
         .writer = null,
     };
 
@@ -570,7 +570,7 @@ pub fn compileBlock(
     self.indent_level -= 1;
 
     try self.indent();
-    try self.write("}\n\n");
+    try self.write("}\n");
 }
 
 pub fn compileType(

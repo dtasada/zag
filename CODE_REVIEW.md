@@ -1,130 +1,134 @@
-# Zag Code Review
+# Zag Project Code Audit
 
-This document contains a review of the Zag compiler codebase, including suggestions for improvements in optimization, code clarity, and feature completeness.
+This document contains a comprehensive audit of the Zag project, identifying issues ranging from critical safety bugs to performance bottlenecks and architectural flaws.
 
-## Overall Architecture
+## 🚨 Critical Bugs & Safety Issues
 
-The project is a C transpiler with a classic `Lexer -> Parser -> Transpiler` pipeline. The overall architecture is sound. The code is generally well-structured and makes good use of Zig's features.
+### 1. Unsafe Implicit Integer Conversions
+**File:** `src/compiler/Type.zig`
+**Function:** `convertsTo`
+**Severity:** Critical
+**Description:** The compiler allows implicit conversion between **all** integer types, regardless of sign or size. A `u64` can be assigned to a `u8`, or an `i64` to a `u64`, without any warning or error.
+**Snippet:**
+```zig
+.i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => switch (src) {
+    .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true, // <--- ALLOWS EVERYTHING
+    else => false,
+},
+```
+**Impact:** Silent data loss and integer overflows/underflows in compiled code.
 
-### High-Level Recommendations
+### 4. Naive String Parsing (No Escape Sequences)
+**File:** `src/Lexer.zig`
+**Function:** `tokenize`
+**Severity:** Medium
+**Description:** The lexer parses strings by simply scanning for the next `"`. It does not handle escaped quotes (`\"`) or any other escape sequences (`\n`, `\t`).
+**Snippet:**
+```zig
+if (std.mem.indexOfScalar(u8, self.input[self.pos..], '"')) |string_end| { ... }
+```
+**Impact:** Users cannot write strings containing double quotes.
 
-1.  **Decouple Hardcoded Paths**: The input file path in `src/main.zig` and the C compiler path in `src/compiler/Compiler.zig` are hardcoded. These should be made configurable, for example, via command-line arguments.
-2.  **Fix Unsafe Type Conversions**: The compiler currently allows implicit casting between all integer types (e.g., `i64` to `u8`) without warnings or errors. This is unsafe and can lead to data loss.
-3.  **Enhance Language Features**: The lexer and compiler have limitations, such as lack of string escape sequences, missing multi-line comments, and limited compile-time expression evaluation.
+### 5. Compiler Panics on Unimplemented Comptime Expressions
+**File:** `src/compiler/Compiler.zig`
+**Function:** `solveComptimeExpression`
+**Severity:** Medium
+**Description:** The function panics if it encounters an expression type it can't handle (like an identifier), instead of returning a proper error.
+**Impact:** Valid code like `const N = 10; let a: [N]u8;` will crash the compiler because it can't resolve `N` at comptime (it expects a literal).
 
----
+## 🏗 Logic & Architecture Flaws
 
-## Detailed Review & Suggestions
+### 1. Bizarre Comment Handling
+**File:** `src/Lexer.zig`
+**Function:** `parseBinaryOperator`
+**Description:** Single-line comments (`//`) are handled *inside* the `parseBinaryOperator` function. This is structurally incorrect.
+**Snippet:**
+```zig
+// Inside parseBinaryOperator...
+if (self.pos + 2 <= self.input.len and std.mem.eql(u8, self.input[self.pos .. self.pos + 2], "//")) { ... }
+```
+**Why it's bad:** Comments should be treated as whitespace/extras at the top level of the tokenizer loop, not as a special case of operator parsing (triggered by `/`).
 
-### `src/Lexer.zig`
+### 2. Hardcoded Source Limits
+**File:** `src/compiler/Compiler.zig`
+**Function:** `getAST`
+**Description:** The source file reading is hardcoded to a maximum of 1MB (`1 << 20`).
+**Snippet:**
+```zig
+const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20) catch |err|
+```
+**Impact:** The compiler will fail on source files larger than 1MB.
 
-The lexer is well-structured and functional for the current state of the language.
+### 4. Limited Parser/Lexer State Management
+**File:** `src/Lexer.zig`
+**Description:** Line and column tracking (`advanceN`) is somewhat manual and brittle.
 
-1.  **String Literal Parsing**: The current implementation doesn't support escape sequences.
-    ```zig
-    // It simply scans until the next '"'
-    if (std.mem.indexOfScalar(u8, self.input[self.pos..], '"')) |string_end| { ... }
-    ```
-    *   **Suggestion**: Iterate character by character to handle backslash escapes (e.g., `\"`, `\n`).
+## 🚀 Performance Bottlenecks
 
-2.  **Lack of Multi-line Comments**: No support for `/* ... */`.
-    *   **Suggestion**: Add logic to detect `/*` and scan until `*/`.
+### 1. Heavy Type Hashing/Equality
+**File:** `src/compiler/Type.zig`
+**Function:** `Context.hash`, `Context.eql`
+**Description:** These functions allocate new `std.ArrayList`s for visited nodes on *every* call to handle recursive types.
+**Snippet:**
+```zig
+var buf: [128]Context.Visited = undefined;
+var list: std.ArrayList(Context.Visited) = .initBuffer(&buf);
+// ... implies overhead for every type comparison
+```
+**Impact:** Type checking involves massive amounts of small allocations/deallocations (or at least list initializations), slowing down compilation significantly for large projects.
 
-3.  **Misplaced Comment-Handling Logic**: The logic for `//` is inside `parseBinaryOperator`.
-    *   **Suggestion**: Move this to the main `tokenize` loop to properly disambiguate between `/` operator and comments.
+## 🔍 Other Observations
 
-4.  **Error Handling in `parseNumber`**: Prints directly to stdout instead of returning an error for the caller to handle.
-    *   **Suggestion**: Return a `bad_token` with a specific error code.
+### 1. Hardcoded Paths in Build System
+**File:** `build.zig`
+**Description:** The build script hardcodes `src/main.zig` as the root source file.
 
-### `src/parser/*`
+## ✨ Missing Language Features
 
-The parser uses a Pratt parser design, which is excellent for expression precedence.
+The following standard features are currently absent from the Zag language and its compiler:
 
-1.  **Boolean Flag in `parseParametersGeneric`**:
-    ```zig
-    pub fn parseParametersGeneric(self: *Self, type_is_optional: bool) ParserError!ast.ParameterList
-    ```
-    *   **Suggestion**: Split into `parseParameters` and `parseGenericParameters` for clarity, rather than passing a `true/false` flag that obscures intent at the call site.
+### 1. Control Flow
+-   **Loop Control (`break` / `continue`)**: Keywords exist in some contexts but are not implemented in the parser or compiler.
+-   **Match Exhaustiveness**: The compiler does not verify that all possible cases (enum variants or union tags) are handled in a `match` expression.
+-   **Match Catch-all**: No support for a default/wildcard branch (`else` or `_`) in `match`.
+-   **Defer**: No mechanism to schedule cleanup code at the end of a scope.
 
-2.  **Panicking `fromLexerToken` functions**:
-    *   In `src/parser/ast.zig`, functions like `BinaryOperator.fromLexerToken` panic on invalid input.
-    *   **Suggestion**: Return an optional or error to allow graceful failure handling.
+### 2. Type System & Safety
+-   **Explicit Casting (`as`)**: The keyword is recognized by the lexer but has no implementation in the parser or compiler.
+-   **Error Handling (`try` / `catch`)**: No syntactic sugar for handling or propagating error unions.
+-   **Traits / Interfaces**: No support for defining shared behavior across types (runtime or compile-time polymorphism).
+-   **Tuples**: No support for anonymous grouped types.
 
-### `src/compiler/*`
+### 3. Memory & Data Structures
+-   **Slices**: No "view" type for arrays, necessitating manual pointer management or expensive copies.
+-   **Closures / Lambdas**: Function types are limited to top-level or static function pointers; no environment capture.
 
-The compiler generates C code (`.c`) and a header (`zag.h`).
+### 4. Syntax & UX
+-   **String Interpolation**: No support for embedding expressions in strings.
+-   **Multi-line Strings**: String literals are restricted to a single line.
+-   **Refined Method Visibility**: Cross-module visibility checks for methods are largely unimplemented.
 
-1.  **Hardcoded C Compiler Path**:
-    ```zig
-    const cmd_args: []const []const u8 = &.{ "/usr/bin/cc", ... };
-    ```
-    *   **Problem**: Non-portable. Fails on Windows or systems without `cc` at that path.
-    *   **Suggestion**: Make the compiler path configurable via CLI args or environment variables.
+## 👯 Code Duplication & Redundancy
 
-2.  **Unsafe Implicit Integer Conversions**:
-    *   In `src/compiler/Type.zig`, the `convertsTo` function returns `true` for any integer-to-integer conversion.
-    *   **Problem**: `checkType` relies on this, allowing `i64` to be assigned to `u8` silently.
-    *   **Suggestion**: Implement strict type checking. Only allow implicit widening (e.g., `u8` -> `u16`), and require explicit casts for narrowing.
+### 1. Function Parsing & Compilation
+-   **Locations**: `src/parser/statements.zig` and `src/compiler/statements.zig`.
+-   **Issue**: `functionDefinition` and `bindingFunctionDeclaration` share 90% of their logic (parsing name, generics, parameters, return type). They only differ in the function body (block vs. semicolon).
+-   **Recommendation**: Extract a common `FunctionSignature` struct and helper methods (`parseFunctionSignature`, `compileFunctionSignature`) to handle the shared parts.
 
-3.  **Limited Compile-Time Evaluation**:
-    *   `solveComptimeExpression` in `Compiler.zig` panics if it encounters an identifier.
-    *   **Problem**: Cannot use constants in array sizes if they are defined as variables (e.g., `const N = 10; let a: [N]i32 = ...`).
-    *   **Suggestion**: Implement symbol lookup in `solveComptimeExpression` to resolve constant identifiers.
+### 2. Dual Declaration Logic (Analysis vs. Emit)
+-   **Locations**: `src/compiler/Compiler.zig` (analyze) vs `src/compiler/statements.zig` (emit) vs `src/compiler/Type.zig`.
+-   **Issue**: The logic for processing `struct`, `union`, and `enum` declarations is tripled.
+    1.  `Compiler.analyze` parses declarations to populate the symbol table.
+    2.  `Type.fromCompoundTypeDeclaration` parses declarations to build the internal `Type` representation.
+    3.  `statements.compoundTypeDeclaration` parses declarations to emit C typedefs.
+-   **Risk**: If you add a new feature to structs (e.g., alignment), you must update it in **three** places. If they desync, the compiler will see one thing but emit another.
 
-4.  **Risky `cc` Output Redirection**:
-    *   `cc.stdout_behavior = .Pipe;` with `readToEndAlloc` can consume too much memory or fail on large outputs.
-    *   **Suggestion**: Inherit streams or use a streaming reader.
+### 3. Redundant Pratt Parsers
+-   **Locations**: `src/parser/Parser.zig` and `src/parser/TypeParser.zig`.
+-   **Issue**: Both files implement their own Pratt parser engine (NUD/LED/BindingPower lookup tables). `TypeParser` is essentially a copy-paste of the expression parser but for types.
+-   **Recommendation**: Abstract the core Pratt parsing loop and handler management into a generic `PrattParser(T)` struct.
 
-5.  **Output Directory Structure**:
-    *   Mirrors `src/` into `.zag-out/src/`. This might become complex.
-    *   **Suggestion**: Flatten output or use a designated build directory.
-
-### `src/main.zig`
-
-1.  **Hardcoded Input File Path**:
-    ```zig
-    const file_path = try std.fs.path.join(alloc, &.{ "src", "main.zag" });
-    ```
-    *   **Problem**: Limits the compiler to one specific file.
-    *   **Suggestion**: Accept input file path as a CLI argument.
-
-### `src/utils.zig`
-
-1.  **Color Codes Swapped**: `.green` uses the code for blue (`34`), and `.blue` uses green (`32`).
-2.  **Buffer Overflow**: `print` uses a fixed 1024-byte buffer. Use `std.io.getStdOut().writer()` for safety.
-
-
-
-
-### TODO
-1. Incomplete Export Analysis (The Biggest Gap)
-   * Structs, Enums, and Unions: In src/compiler/Compiler.zig, the analyze function completely ignores enum and union declarations. It also doesn't fully "export" struct definitions to
-     the C output of the importer.
-       * Consequence: You cannot currently import and use an enum or union from another file. If you try to use an imported struct type in a C function signature, the C compiler might
-         complain about "incomplete types" because I didn't generate the typedef struct ... in the importing file's C output.
-   * Global Variables: I registered them in the symbol table, but I didn't add logic to src/compiler/statements.zig's import function to generate extern declarations for them.
-       * Consequence: Accessing a global variable from another module will result in a C compile error (undeclared identifier).
-
-2. Fragile C Output Generation
-   * String Escaping: I investigated adding proper string escaping (e.g., converting a newline byte back to \n for the C string literal) but abandoned it to focus on the critical
-     "use-after-free" bug.
-       * Consequence: If your source string contains weird control characters or certain escapes, they are written as raw bytes to the C file. This works for simple text but is
-         technically unsafe C generation.
-   * Unsafe "Analysis" Writer: In Compiler.init, when in .analysis mode, I left self.writer as undefined.
-       * Consequence: If the analyze phase accidentally calls any function that tries to write to the file (like print), the compiler will crash (segfault) instead of doing nothing. A
-         proper implementation would use a "dummy" writer that discards input.
-
-3. Code Duplication
-   * Struct Parsing Logic: To implement analyze for structs, I copied and pasted the logic for parsing members and methods from statements.zig into Compiler.zig.
-       * Consequence: If you change how structs are defined or handled in the future, you have to remember to update it in two places, or the analysis phase will desync from the
-         compilation phase.
-
-4. General "TODOs" I Skipped
-   * Name Mangling: I am printing raw symbol names (symbol.name).
-       * Consequence: If two modules define a function with the same name (e.g., helper), and you import both (or link them), the C linker will fail with "duplicate symbol" errors
-         because I'm not namespacing them (e.g., module_helper vs other_helper).
-   * Generics: There are comments like // TODO: name mangling for generics which I haven't touched.
-
-If you'd like, I can tackle any of these specific areas to make the system more robust. Exporting Structs/Enums or Name Mangling would probably be the most important next steps for a
-usable language.
-
+### 4. Repeated Error Handling Patterns
+-   **Locations**: Throughout the compiler.
+-   **Issue**: Manual calls to `utils.printErr` with format strings are scattered everywhere.
+-   **Recommendation**: Centralize error reporting in `src/compiler/errors.zig` for all error types, ensuring consistent formatting and easier refactoring.

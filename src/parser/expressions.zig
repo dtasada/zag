@@ -310,14 +310,22 @@ pub fn match(self: *Self) ParserError!ast.Expression {
     var cases: std.ArrayList(ast.Expression.Match.Case) = .empty;
     while (true) {
         const pos = self.currentPosition();
-        var opts: std.ArrayList(ast.Expression) = .empty;
 
-        try opts.append(self.alloc, try parse(self, .default));
-
-        while (self.currentToken() == .comma) {
+        // var cond: std.ArrayList(ast.Expression) = .empty;
+        const cond: ast.Expression.Match.Case.Condition = if (self.currentToken() == .@"else") b: {
             _ = self.advance();
-            try opts.append(self.alloc, try parse(self, .default));
-        }
+            break :b .@"else";
+        } else b: {
+            var conds: std.ArrayList(ast.Expression) = .empty;
+            try conds.append(self.alloc, try parse(self, .default));
+
+            while (self.currentToken() == .comma) {
+                _ = self.advance();
+                try conds.append(self.alloc, try parse(self, .default));
+            }
+
+            break :b .{ .opts = conds };
+        };
 
         try self.expect(self.advance(), .arrow, "match statement case", "->");
 
@@ -328,7 +336,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
             break :b .{ .expression = try parse(self, .default) };
         };
 
-        try cases.append(self.alloc, .{ .cases = opts, .pos = pos, .result = result });
+        try cases.append(self.alloc, .{ .condition = cond, .pos = pos, .result = result });
 
         self.expectSilent(self.currentToken(), .comma) catch break;
         _ = self.advance();
