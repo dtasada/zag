@@ -93,6 +93,17 @@ indent_level: usize = 0,
 /// Stack of scopes.
 scopes: std.ArrayList(Scope) = .empty,
 
+/// Pending generic function instantiations to be compiled.
+pending_instantiations: std.ArrayList(Instantiation),
+
+current_return_type: ?Type = null,
+
+pub const Instantiation = struct {
+    func: Type.Function,
+    args: std.ArrayList(Value),
+    name: []const u8,
+};
+
 /// Maps a symbol name to the symbol's type and inner name.
 pub const Scope = std.StringHashMap(ScopeItem);
 pub const ScopeItem = union(enum) {
@@ -219,6 +230,8 @@ pub fn init(
         .zag_source = null,
         .zag_header_contents = .initContext(alloc, .{ .visited = &visited }),
         .writer = null,
+        .pending_instantiations = .empty,
+        .current_return_type = null,
     };
 
     switch (mode) {
@@ -283,6 +296,7 @@ pub fn deinit(self: *Self) void {
     if (self.module_header) |*h| h.deinit(self.alloc);
     if (self.zag_header) |*z| z.deinit(self.alloc);
     self.scopes.deinit(self.alloc);
+    self.pending_instantiations.deinit(self.alloc);
 }
 
 /// Prints formatted content to whichever file handle `self.writer` is pointing to at the moment.
@@ -328,6 +342,55 @@ pub fn emit(self: *Self) CompilerError!void {
     for (self.input.items) |*statement|
         try statements.compile(self, statement);
 
+    while (self.pending_instantiations.pop()) |inst| {
+        if (inst.func.def) |def| {
+            try self.compileType(inst.func.return_type.*, .{});
+            try self.print(" {s}(", .{inst.name});
+            for (inst.func.params.items, 0..) |param, i| {
+                if (i > 0) try self.write(", ");
+                try self.compileVariableSignature(param.name, param.type, .{});
+            }
+            try self.write(") ");
+
+            try self.pushScope();
+            defer self.popScope();
+
+            if (inst.func.module_path) |path| {
+                if (self.module_registry.get(path)) |mod| {
+                    var it = mod.symbols.iterator();
+                    while (it.next()) |entry| {
+                        try self.registerSymbol(entry.key_ptr.*, .{ .symbol = .{
+                            .type = entry.value_ptr.type,
+                            .is_mut = false, // exports are immutable?
+                        } });
+                    }
+                }
+            }
+
+            // Register generic params
+            for (inst.func.generic_params.items, 0..) |param, i| {
+                switch (inst.args.items[i]) {
+                    .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
+                    else => {}, // TODO: value generics
+                }
+            }
+            
+            // Register function params
+            for (inst.func.params.items) |param| {
+                try self.registerSymbol(param.name, .{ .symbol = .{ .type = param.type } });
+            }
+
+            // Register function itself for return type lookup
+            try self.registerSymbol(inst.name, .{ .symbol = .{ .type = .{ .function = inst.func } } });
+
+            const previous_return_type = self.current_return_type;
+            self.current_return_type = inst.func.return_type.*;
+            defer self.current_return_type = previous_return_type;
+
+            try self.compileBlock(def.body, .{});
+        }
+    }
+
     try self.output.?.flush();
 
     try self.zag_header.?.write("\n#endif");
@@ -349,7 +412,8 @@ pub fn analyze(self: *Self) CompilerError!void {
                 _ = try self.processImport(import_stmt);
             },
             .function_definition => |*func| {
-                const t = try Type.fromAst(self, func.getType());
+                var t = try Type.fromAst(self, func.getType());
+                t.function.def = func;
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
                 if (func.is_pub) {
                     try self.exported_symbols.put(func.name, .{
@@ -524,6 +588,19 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     // We need to duplicate the path key because it will be freed
     const key = try self.alloc.dupe(u8, full_path);
     try self.module_registry.put(key, mod);
+
+    // Update symbols with module path
+    var sym_it = mod.symbols.iterator();
+    while (sym_it.next()) |entry| {
+        switch (entry.value_ptr.type) {
+            .function => |*f| f.module_path = key,
+            .generic => |*g| switch (g.type) {
+                .function => |*f| f.module_path = key,
+                else => {},
+            },
+            else => {},
+        }
+    }
 
     return mod;
 }
@@ -718,7 +795,10 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         .char => |char| .{ .u8 = char.char },
         .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
             .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
-        .ident => |ident| .{ .type = try self.getSymbolType(ident.ident) },
+        .ident => |ident| switch (try self.getScopeItem(ident.ident)) {
+            .type => |t| .{ .type = t.type },
+            else => error.ExpressionCannotBeEvaluatedAtCompileTime,
+        },
         else => error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
 }
@@ -802,12 +882,13 @@ fn registerConstants(self: *Self) !void {
             .type = .{
                 .function = .{
                     .name = "sizeof",
-                    .params = .empty,
-                    .return_type = &.usize,
-                    .generic_params = b: {
-                        var param = [_]Type.Function.Param{.{ .name = "T", .type = .type }};
-                        break :b .fromOwnedSlice(&param);
+                    .params = b: {
+                        var params = std.ArrayList(Type.Function.Param).initCapacity(self.alloc, 1) catch unreachable;
+                        params.appendAssumeCapacity(.{ .name = "T", .type = .type });
+                        break :b params;
                     },
+                    .return_type = &.usize,
+                    .generic_params = .empty,
                 },
             },
         },
@@ -819,10 +900,23 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     while (it.next()) |scope|
         return switch (scope.get(symbol) orelse continue) {
             .module => |module| .{ .module = module },
-            inline .symbol, .type => |s| s.type,
+            .symbol => |s| s.type,
+            .type => .type,
         };
 
     // return primitive type
+    return error.UnknownSymbol;
+}
+
+pub fn resolveType(self: *const Self, symbol: []const u8) !Type {
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope|
+        return switch (scope.get(symbol) orelse continue) {
+            .type => |s| s.type,
+            .module => |m| .{ .module = m },
+            else => continue,
+        };
+
     return error.UnknownSymbol;
 }
 

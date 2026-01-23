@@ -16,7 +16,7 @@ pub fn compile(
     statement: *const ast.Statement,
 ) CompilerError!void {
     switch (statement.*) {
-        .function_definition => |fn_def| try functionDefinition(self, fn_def),
+        .function_definition => |*fn_def| try functionDefinition(self, fn_def),
         .import => |import_statement| try import(self, import_statement),
         .binding_function_declaration => |bind| try bindingFunctionDeclaration(self, bind),
         .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
@@ -141,7 +141,7 @@ fn compoundTypeDeclaration(
 }
 
 fn @"return"(self: *Self, r: ast.Statement.Return) CompilerError!void {
-    const expected_type: Type = b: {
+    const expected_type: Type = if (self.current_return_type) |t| t else b: {
         var scopes = std.mem.reverseIterator(self.scopes.items);
         while (scopes.next()) |scope| {
             var symbols = scope.iterator();
@@ -170,6 +170,12 @@ fn @"return"(self: *Self, r: ast.Statement.Return) CompilerError!void {
             .red,
         );
     };
+
+    if (self.current_return_type) |t| {
+        const received_type: Type = if (r.@"return") |expr| try Type.infer(self, expr) else .void;
+        if (!self.checkType(t, received_type))
+            return errors.typeMismatch(t, received_type, r.pos);
+    }
 
     try self.write("return");
     if (r.@"return") |*expression| {
@@ -332,10 +338,13 @@ fn conditional(
 
 fn functionDefinition(
     self: *Self,
-    function_def: ast.Statement.FunctionDefinition,
+    function_def: *const ast.Statement.FunctionDefinition,
 ) CompilerError!void {
+    var fn_type = try Type.fromAst(self, function_def.getType());
+    fn_type.function.def = function_def;
+
     try self.registerSymbol(function_def.name, .{ .symbol = .{
-        .type = try .fromAst(self, function_def.getType()),
+        .type = fn_type,
     } });
 
     if (function_def.generic_parameters.items.len > 0) return;
@@ -372,6 +381,10 @@ fn functionDefinition(
         });
     }
     try self.write(") ");
+
+    const previous_return_type = self.current_return_type;
+    self.current_return_type = fn_type.function.return_type.*;
+    defer self.current_return_type = previous_return_type;
 
     try self.compileBlock(function_def.body, .{});
 }

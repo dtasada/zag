@@ -72,16 +72,19 @@ pub fn compile(
             });
             try compile(self, prefix.rhs, .{});
         },
-        .ident => |ident| if (self.getSymbolType(ident.ident) catch null) |_|
-            try self.write(ident.ident)
-        else
-            return utils.printErr(
-                error.UnknownSymbol,
-                "comperr: Unknown symbol '{s}' at {f}.\n",
-                .{ ident.ident, expression.getPosition() },
-                .red,
-            ),
-        .struct_instantiation => |struct_inst| switch (try Type.infer(self, struct_inst.type_expr.*)) {
+        .ident => |ident| if (self.getScopeItem(ident.ident) catch null) |item| {
+            switch (item) {
+                .symbol => |s| try self.write(s.inner_name),
+                .type => |t| try self.compileType(t.type, .{}),
+                .module => |m| try self.write(m.name),
+            }
+        } else return utils.printErr(
+            error.UnknownSymbol,
+            "comperr: Unknown symbol '{s}' at {f}.\n",
+            .{ ident.ident, expression.getPosition() },
+            .red,
+        ),
+        .struct_instantiation => |struct_inst| switch ((try tryResolveStaticType(self, struct_inst.type_expr.*)).?) {
             .@"struct" => |s| try structInstantiation(self, struct_inst, s),
             .@"union" => |u| try unionInstantiation(self, struct_inst, u),
             else => unreachable,
@@ -139,7 +142,10 @@ pub fn compile(
                 .red,
             );
         },
-        .generic => |_| @panic(""),
+        .generic => |_| {
+            const t = try Type.infer(self, expression.*);
+            try self.write(t.generic.inner_name);
+        },
         .match => |m| try match(self, m),
         .bad_node => unreachable,
     }
@@ -391,21 +397,18 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| try functionCall(self, function, call_expr),
+            .generic => |generic| switch (generic.type) {
+                .function => |function| try functionCall(self, function, call_expr),
+                else => return errors.expressionNotCallable(.{ .generic = generic }, call_expr.callee.getPosition()),
+            },
             else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
         },
     }
 }
 
-fn tryResolveStaticType(self: *Self, expr: ast.Expression) !?Type {
+pub fn tryResolveStaticType(self: *Self, expr: ast.Expression) !?Type {
     switch (expr) {
-        .ident => |ident| {
-            const item = self.getScopeItem(ident.ident) catch return null;
-            return switch (item) {
-                .type => |t| t.type,
-                .module => |m| .{ .module = m },
-                else => null,
-            };
-        },
+        .ident => |ident| return self.resolveType(ident.ident) catch null,
         .member => |m| {
             const parent = (try tryResolveStaticType(self, m.parent.*)) orelse return null;
             switch (parent) {

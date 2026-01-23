@@ -25,6 +25,8 @@ pub const Type = union(enum) {
         params: std.ArrayList(Param),
         generic_params: std.ArrayList(Param),
         return_type: *const Self,
+        def: ?*const ast.Statement.FunctionDefinition = null,
+        module_path: ?[]const u8 = null,
     };
 
     fn CompoundType(T: enum { @"struct", @"enum", @"union" }) type {
@@ -40,6 +42,7 @@ pub const Type = union(enum) {
                 params: std.ArrayList(Function.Param),
                 generic_params: std.ArrayList(Function.Param),
                 return_type: *const Self,
+                def: ?*const ast.Statement.FunctionDefinition = null,
             };
 
             name: []const u8,
@@ -199,7 +202,7 @@ pub const Type = union(enum) {
     /// `infer` is the expression with which the type is inferred.
     pub fn fromAst(compiler: *Compiler, t: ast.Type) Compiler.CompilerError!Self {
         return switch (t) {
-            .symbol => |symbol| compiler.getSymbolType(symbol.symbol) catch return errors.unknownSymbol(
+            .symbol => |symbol| compiler.resolveType(symbol.symbol) catch return errors.unknownSymbol(
                 symbol.symbol,
                 symbol.position,
             ),
@@ -238,6 +241,8 @@ pub const Type = union(enum) {
                         break :b generic_params;
                     },
                     .return_type = try .fromAstPtr(compiler, function.return_type.*),
+                    .def = null,
+                    .module_path = null,
                 },
             },
             .array => |array| .{
@@ -334,7 +339,15 @@ pub const Type = union(enum) {
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .range => @panic("invalid"),
             .assignment => .void,
-            .struct_instantiation => |struct_inst| Type.infer(compiler, struct_inst.type_expr.*),
+            .struct_instantiation => |struct_inst| if (try expressions.tryResolveStaticType(compiler, struct_inst.type_expr.*)) |t|
+                t
+            else
+                utils.printErr(
+                    error.UndeclaredType,
+                    "comperr: Undeclared type in struct instantiation at {f}.\n",
+                    .{struct_inst.type_expr.getPosition()},
+                    .red,
+                ),
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => .void,
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
@@ -431,13 +444,41 @@ pub const Type = union(enum) {
                         generic.type.toType().hash(),
                     });
 
-                    _ = name;
                     if (compiler.zag_header_contents.get(generic.type.toType()) == null) {
                         compiler.writer = &compiler.zag_header.?;
-                        defer compiler.writer = &compiler.output.?;
+                        
+                        switch (generic.type) {
+                            .function => |func| {
+                                try compiler.compileType(func.return_type.*, .{});
+                                try compiler.print(" {s}(", .{name});
+                                for (func.params.items, 0..) |param, i| {
+                                    if (i > 0) try compiler.write(", ");
+                                    try compiler.compileVariableSignature(param.name, param.type, .{});
+                                }
+                                try compiler.write(");\n");
+
+                                try compiler.pending_instantiations.append(compiler.alloc, .{
+                                    .func = func,
+                                    .args = try generic.args.clone(compiler.alloc),
+                                    .name = name,
+                                });
+                            },
+                            else => {},
+                        }
+
+                        compiler.writer = &compiler.output.?;
+                        try compiler.zag_header_contents.put(generic.type.toType(), name);
                     }
 
-                    @panic("");
+                    switch (generic.type) {
+                        .function => |func| return func.return_type.*,
+                        else => return utils.printErr(
+                            error.IllegalExpression,
+                            "comperr: Generic type '{f}' is not callable ({f})\n",
+                            .{ generic.type.toType(), call.pos },
+                            .red,
+                        ),
+                    }
                 },
                 else => |t| utils.printErr(
                     error.IllegalExpression,
@@ -558,6 +599,7 @@ pub const Type = union(enum) {
                 .generic_params = generic_params,
                 .params = params,
                 .return_type = return_type,
+                .def = null, // TODO: method generics
             });
         }
 
