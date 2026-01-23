@@ -79,17 +79,18 @@ zag_source: ?File,
 /// The header file for the module being compiled (e.g. `lib.zag.h`).
 module_header: ?File,
 
-/// Maps a type to its inner name.
-zag_header_contents: std.HashMap(
-    Type,
-    []const u8,
-    Type.Context,
-    std.hash_map.default_max_load_percentage,
-),
+    /// Maps a type to its inner name.
+    zag_header_contents: std.HashMap(
+        Type,
+        []const u8,
+        Type.Context,
+        std.hash_map.default_max_load_percentage,
+    ),
 
-/// Keeps track of how many spaces should be printed when formatting code.
-indent_level: usize = 0,
+    emitted_instances: std.StringHashMap(void),
 
+    /// Keeps track of how many spaces should be printed when formatting code.
+    indent_level: usize = 0,
 /// Stack of scopes.
 scopes: std.ArrayList(Scope) = .empty,
 
@@ -229,6 +230,7 @@ pub fn init(
         .zag_header = null,
         .zag_source = null,
         .zag_header_contents = .initContext(alloc, .{ .visited = &visited }),
+        .emitted_instances = .init(alloc),
         .writer = null,
         .pending_instantiations = .empty,
         .current_return_type = null,
@@ -297,6 +299,7 @@ pub fn deinit(self: *Self) void {
     if (self.zag_header) |*z| z.deinit(self.alloc);
     self.scopes.deinit(self.alloc);
     self.pending_instantiations.deinit(self.alloc);
+    self.emitted_instances.deinit();
 }
 
 /// Prints formatted content to whichever file handle `self.writer` is pointing to at the moment.
@@ -371,7 +374,20 @@ pub fn emit(self: *Self) CompilerError!void {
             for (inst.func.generic_params.items, 0..) |param, i| {
                 switch (inst.args.items[i]) {
                     .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
-                    else => {}, // TODO: value generics
+                    else => |val| {
+                        const val_str = switch (val) {
+                            .i8, .i16, .i32, .i64 => |v| try std.fmt.allocPrint(self.alloc, "{}", .{v}),
+                            .u8, .u16, .u32, .u64, .usize => |v| try std.fmt.allocPrint(self.alloc, "{}", .{v}),
+                            .bool => |v| try std.fmt.allocPrint(self.alloc, "{}", .{v}),
+                            .f32, .f64 => |v| try std.fmt.allocPrint(self.alloc, "{d}", .{v}),
+                            else => @panic("TODO: stringify other values"),
+                        };
+                        try self.registerSymbol(param.name, .{ .symbol = .{
+                            .type = param.type,
+                            .is_mut = false,
+                            .inner_name = val_str,
+                        } });
+                    },
                 }
             }
             
@@ -819,7 +835,7 @@ pub fn registerSymbol(
     self: *Self,
     name: []const u8,
     symbol_or_type: union(enum) {
-        symbol: struct { is_mut: bool = false, type: Type },
+        symbol: struct { is_mut: bool = false, type: Type, inner_name: ?[]const u8 = null },
         type: Type,
         module: Module,
     },
@@ -832,7 +848,7 @@ pub fn registerSymbol(
                 .type = symbol.type,
                 // UNIMPLEMENTED: Name mangling is not implemented.
                 // Symbols are emitted with their raw names, which will cause link errors if multiple modules define the same symbol.
-                .inner_name = name,
+                .inner_name = symbol.inner_name orelse name,
             },
         },
         .type => |@"type"| .{

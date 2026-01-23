@@ -14,6 +14,7 @@ pub const Value = union(enum) {
     u16: u16,
     u32: u32,
     u64: u64,
+    usize: usize,
 
     f32: f32,
     f64: f64,
@@ -126,5 +127,22 @@ pub const Value = union(enum) {
             },
             else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),
         };
+    }
+
+    pub fn hash(self: Value) u64 {
+        var h = std.hash.Wyhash.init(0);
+        const tag = std.meta.activeTag(self);
+        h.update(std.mem.asBytes(&tag));
+
+        switch (self) {
+            .i8, .i16, .i32, .i64 => |v| h.update(std.mem.asBytes(&v)),
+            .u8, .u16, .u32, .u64, .usize => |v| h.update(std.mem.asBytes(&v)),
+            .f32, .f64 => |v| h.update(std.mem.asBytes(&v)),
+            .bool => |v| h.update(std.mem.asBytes(&v)),
+            .type => |t| h.update(std.mem.asBytes(&t.hash())),
+            else => @panic("TODO: hash other values"),
+        }
+
+        return h.final();
     }
 };

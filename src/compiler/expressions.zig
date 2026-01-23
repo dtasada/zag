@@ -397,11 +397,38 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| try functionCall(self, function, call_expr),
-            .generic => |generic| switch (generic.type) {
-                .function => |function| try functionCall(self, function, call_expr),
-                else => return errors.expressionNotCallable(.{ .generic = generic }, call_expr.callee.getPosition()),
-            },
-            else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
+                            .generic => |generic| switch (generic.type) {
+                                .function => |function| {
+                                    const name = generic.inner_name;
+                    
+                                    if (!self.emitted_instances.contains(name)) {
+                                        self.writer = &self.zag_header.?;                                try self.compileType(function.return_type.*, .{});
+                                try self.print(" {s}(", .{name});
+                                for (function.params.items, 0..) |param, i| {
+                                    if (i > 0) try self.write(", ");
+                                    try self.compileVariableSignature(param.name, param.type, .{});
+                                }
+                                try self.write(");\n");
+            
+                                try self.pending_instantiations.append(self.alloc, .{
+                                    .func = function,
+                                    .args = try generic.args.clone(self.alloc),
+                                    .name = name,
+                                });
+            
+                                self.writer = &self.output.?;
+                                try self.emitted_instances.put(name, {});
+                            }
+            
+                            try functionCall(self, .{
+                                .name = name,
+                                .params = function.params,
+                                .generic_params = function.generic_params,
+                                .return_type = function.return_type,
+                            }, call_expr);
+                        },
+                        else => return errors.expressionNotCallable(.{ .generic = generic }, call_expr.callee.getPosition()),
+                    },            else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
         },
     }
 }

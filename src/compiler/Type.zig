@@ -409,7 +409,11 @@ pub const Type = union(enum) {
                                 inline .@"struct", .@"union", .function => |n| n.name,
                                 else => unreachable,
                             },
-                            instantiation_type.hash(),
+                            instantiation_type.hash() +% b2: {
+                                var h: u64 = 0;
+                                for (args.items) |arg| h +%= arg.hash();
+                                break :b2 h;
+                            },
                         }),
                         .args = args,
                         .type = .fromType(instantiation_type),
@@ -444,7 +448,7 @@ pub const Type = union(enum) {
                         generic.type.toType().hash(),
                     });
 
-                    if (compiler.zag_header_contents.get(generic.type.toType()) == null) {
+                    if (!compiler.emitted_instances.contains(name)) {
                         compiler.writer = &compiler.zag_header.?;
                         
                         switch (generic.type) {
@@ -467,7 +471,7 @@ pub const Type = union(enum) {
                         }
 
                         compiler.writer = &compiler.output.?;
-                        try compiler.zag_header_contents.put(generic.type.toType(), name);
+                        try compiler.emitted_instances.put(name, {});
                     }
 
                     switch (generic.type) {

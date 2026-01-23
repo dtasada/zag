@@ -15,6 +15,10 @@ union MyUnion {
     }
 }
 
+fn print_num<N: i32>() void {
+    lib.printf("N is %d\n", N);
+}
+
 fn main() i32 {
     let a = 1;
     let b = 2;
@@ -37,4 +41,6 @@ fn main() i32 {
     }
 
     mu.print();
+
+    print_num<42>();
 }
