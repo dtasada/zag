@@ -382,7 +382,7 @@ pub const Type = union(enum) {
     inferred: struct { position: utils.Position },
     symbol: struct { position: utils.Position, symbol: []const u8 },
     optional: struct { position: utils.Position, inner: *const Type },
-    arraylist: struct { position: utils.Position, inner: *const Type },
+    slice: struct { position: utils.Position, inner: *const Type },
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,

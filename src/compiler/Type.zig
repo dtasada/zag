@@ -153,7 +153,7 @@ pub const Type = union(enum) {
     @"enum": Enum,
     @"union": Union,
     optional: *const Self,
-    arraylist: *const Self,
+    slice: *const Self,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
@@ -173,11 +173,7 @@ pub const Type = union(enum) {
             .variadic => .variadic,
             .reference => |reference| .{
                 .reference = .{
-                    .inner = b: {
-                        const ref_type = try compiler.alloc.create(Self);
-                        ref_type.* = try fromAst(compiler, reference.inner.*);
-                        break :b ref_type;
-                    },
+                    .inner = try .fromAstPtr(compiler, reference.inner.*),
                     .is_mut = reference.is_mut,
                 },
             },
@@ -195,41 +191,20 @@ pub const Type = union(enum) {
                             });
                         break :b params;
                     },
-                    .return_type = b: {
-                        const return_type = try compiler.alloc.create(Self);
-                        return_type.* = try fromAst(compiler, function.return_type.*);
-                        break :b return_type;
-                    },
+                    .return_type = try .fromAstPtr(compiler, function.return_type.*),
                 },
             },
             .array => |array| .{
                 .array = .{
-                    .inner = b: {
-                        const array_type = try compiler.alloc.create(Self);
-                        array_type.* = try fromAst(compiler, array.inner.*);
-                        break :b array_type;
-                    },
+                    .inner = try .fromAstPtr(compiler, array.inner.*),
                     .size = (try compiler.solveComptimeExpression(array.size.*)).u64,
                 },
             },
-            .arraylist => |arraylist| .{
-                .arraylist = b: {
-                    const t_ptr = try compiler.alloc.create(Type);
-                    t_ptr.* = try fromAst(compiler, arraylist.inner.*);
-                    break :b t_ptr;
-                },
-            },
-            .optional => |optional| .{
-                .optional = b: {
-                    const t_ptr = try compiler.alloc.create(Type);
-                    t_ptr.* = try fromAst(compiler, optional.inner.*);
-                    break :b t_ptr;
-                },
-            },
+            .slice => |slice| .{ .slice = try .fromAstPtr(compiler, slice.inner.*) },
+            .optional => |optional| .{ .optional = try .fromAstPtr(compiler, optional.inner.*) },
             .error_union => |error_union| .{
                 .error_union = b: {
-                    const success = try compiler.alloc.create(Type);
-                    success.* = try fromAst(compiler, error_union.success.*);
+                    const success: *Type = try .fromAstPtr(compiler, error_union.success.*);
 
                     const failure: *Type = try compiler.alloc.create(Type);
                     failure.* = if (error_union.failure) |err|
@@ -622,7 +597,7 @@ pub const Type = union(enum) {
                 _ = try writer.write("]");
                 try writer.print("{f}", .{array.inner});
             },
-            .arraylist => |array| {
+            .slice => |array| {
                 _ = try writer.write("[");
                 _ = try writer.write("]");
                 try writer.print("{f}", .{array.*});

@@ -177,7 +177,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
             .size = s,
         },
     } else .{
-        .arraylist = .{
+        .slice = .{
             .position = position,
             .inner = inner,
         },

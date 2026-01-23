@@ -272,17 +272,17 @@ fn conditional(
                         try self.print("{}", .{array.size});
                         try self.print("; {s}++", .{capture_ident});
                     },
-                    .arraylist => {
-                        capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
-
-                        try self.compileType(.usize, .{});
-                        try self.print(" {s} = 0", .{capture_ident});
-                        try self.print("; {s} < ", .{capture_ident});
-                        try self.write("(");
-                        try expressions.compile(self, &statement.iterator, .{});
-                        try self.write(").len");
-                        try self.print("; {s}++", .{capture_ident});
-                    },
+                    // .arraylist => {
+                    //     capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+                    //
+                    //     try self.compileType(.usize, .{});
+                    //     try self.print(" {s} = 0", .{capture_ident});
+                    //     try self.print("; {s} < ", .{capture_ident});
+                    //     try self.write("(");
+                    //     try expressions.compile(self, &statement.iterator, .{});
+                    //     try self.write(").len");
+                    //     try self.print("; {s}++", .{capture_ident});
+                    // },
                     else => |t| return utils.printErr(
                         error.IllegalExpression,
                         "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
@@ -299,7 +299,7 @@ fn conditional(
         switch (statement.body.*) {
             .block => |block| block.block,
             else => b: {
-                var slice = [1]ast.Statement{statement.body.*};
+                var slice = [_]ast.Statement{statement.body.*};
                 break :b ast.Block.fromOwnedSlice(&slice);
             },
         },
