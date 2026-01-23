@@ -521,7 +521,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
         },
         else => |other| return utils.printErr(
             error.IllegalExpression,
-            "comperr: Member expression on {s} is illegal ({f}).\n",
+            "comperr: Member expression on '{s}' is illegal ({f}).\n",
             .{ @tagName(other), m.pos },
             .red,
         ),

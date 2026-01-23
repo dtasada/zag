@@ -20,6 +20,8 @@ pub const Value = union(enum) {
 
     bool: bool,
 
+    type: Type,
+
     void,
 
     @"struct": CompoundType(.@"struct"),

@@ -21,6 +21,7 @@ pub const CompilerError = error{
     AssignmentToImmutableVariable,
     BadMutability,
     DuplicateMember,
+    ExpressionCannotBeEvaluatedAtCompileTime,
     FailedToCreateParser,
     FailedToReadSource,
     FailedToTokenizeSource,
@@ -717,7 +718,8 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         .char => |char| .{ .u8 = char.char },
         .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
             .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
-        else => std.debug.panic("unimplemented comptime expression for {s}\n", .{@tagName(expression)}),
+        .ident => |ident| .{ .type = try self.getSymbolType(ident.ident) },
+        else => error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
 }
 

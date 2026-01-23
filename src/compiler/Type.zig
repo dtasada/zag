@@ -7,6 +7,7 @@ const statements = @import("statements.zig");
 const expressions = @import("expressions.zig");
 const errors = @import("errors.zig");
 
+const Value = @import("Value.zig").Value;
 const Compiler = @import("Compiler.zig");
 const Module = @import("Module.zig");
 const CompilerError = Compiler.CompilerError;
@@ -124,6 +125,11 @@ pub const Type = union(enum) {
         failure: *const Self,
     };
 
+    pub const Generic = struct {
+        type: *const Self,
+        args: std.ArrayList(Value),
+    };
+
     i8,
     i16,
     i32,
@@ -162,7 +168,7 @@ pub const Type = union(enum) {
     function: Function,
     module: Module,
     variadic,
-    generic,
+    generic: Generic,
 
     /// Converts an AST type to a Compiler type.
     /// `infer` is the expression with which the type is inferred.
@@ -341,9 +347,29 @@ pub const Type = union(enum) {
                     .is_mut = reference.is_mut,
                 },
             },
-            .generic => |_| {
-                // if (compiler.zag_header_contents.get(key: Type))
-                @panic("");
+            .generic => |generic| b: {
+                var args: std.ArrayList(Value) = .empty;
+                for (generic.arguments.items) |arg| {
+                    try args.append(compiler.alloc, compiler.solveComptimeExpression(arg) catch |err| switch (err) {
+                        error.ExpressionCannotBeEvaluatedAtCompileTime => return utils.printErr(
+                            error.ExpressionCannotBeEvaluatedAtCompileTime,
+                            "comperr: Expression can't be evaluated at compile time. Generic parameters must be compile time values ({f}).\n",
+                            .{generic.pos},
+                            .red,
+                        ),
+                        else => return err,
+                    });
+                }
+
+                const instantiation_type = try compiler.alloc.create(Self);
+                instantiation_type.* = try infer(compiler, generic.lhs.*);
+
+                break :b .{
+                    .generic = .{
+                        .args = args,
+                        .type = instantiation_type,
+                    },
+                };
             },
             .match => |_| @panic("unimplemented"),
             .bad_node => unreachable,
@@ -363,6 +389,7 @@ pub const Type = union(enum) {
             },
             else => switch (try infer(compiler, call.callee.*)) {
                 .function => |function| function.return_type.*,
+                .generic => |_| @panic("unimplemented"),
                 else => |t| utils.printErr(
                     error.IllegalExpression,
                     "comperr: Member expression on '{f}' is illegal ({f})\n",
