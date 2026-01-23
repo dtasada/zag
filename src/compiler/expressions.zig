@@ -72,10 +72,12 @@ pub fn compile(
             });
             try compile(self, prefix.rhs, .{});
         },
-        .ident => |ident| if (self.getScopeItem(ident.ident) catch null) |item| {
+        .ident => |ident| {
+            if (std.mem.eql(u8, ident.ident, "sizeof")) try self.write("DEBUG_SIZEOF_IDENT");
+            if (self.getScopeItem(ident.ident) catch null) |item| {
             switch (item) {
                 .symbol => |s| try self.write(s.inner_name),
-                .type => |t| try self.compileType(t.type, .{}),
+                .type => |t| try self.compileType(t.type, .{}), // Suppress const for type expressions (like in sizeof)
                 .module => |m| try self.write(m.name),
             }
         } else return utils.printErr(
@@ -83,7 +85,8 @@ pub fn compile(
             "comperr: Unknown symbol '{s}' at {f}.\n",
             .{ ident.ident, expression.getPosition() },
             .red,
-        ),
+        );
+        },
         .struct_instantiation => |struct_inst| switch ((try tryResolveStaticType(self, struct_inst.type_expr.*)).?) {
             .@"struct" => |s| try structInstantiation(self, struct_inst, s),
             .@"union" => |u| try unionInstantiation(self, struct_inst, u),
@@ -397,38 +400,52 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| try functionCall(self, function, call_expr),
-                            .generic => |generic| switch (generic.type) {
-                                .function => |function| {
-                                    const name = generic.inner_name;
-                    
-                                    if (!self.emitted_instances.contains(name)) {
-                                        self.writer = &self.zag_header.?;                                try self.compileType(function.return_type.*, .{});
-                                try self.print(" {s}(", .{name});
-                                for (function.params.items, 0..) |param, i| {
-                                    if (i > 0) try self.write(", ");
-                                    try self.compileVariableSignature(param.name, param.type, .{});
-                                }
-                                try self.write(");\n");
-            
-                                try self.pending_instantiations.append(self.alloc, .{
-                                    .func = function,
-                                    .args = try generic.args.clone(self.alloc),
-                                    .name = name,
-                                });
-            
-                                self.writer = &self.output.?;
-                                try self.emitted_instances.put(name, {});
-                            }
-            
-                            try functionCall(self, .{
-                                .name = name,
-                                .params = function.params,
-                                .generic_params = function.generic_params,
-                                .return_type = function.return_type,
-                            }, call_expr);
-                        },
-                        else => return errors.expressionNotCallable(.{ .generic = generic }, call_expr.callee.getPosition()),
-                    },            else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
+            .generic => |generic| switch (generic.type) {
+                .function => |function| {
+                    const name = generic.inner_name;
+
+                    if (!self.emitted_instances.contains(name)) {
+                        self.writer = &self.zag_header.?;
+
+                        const ret_type = try function.return_type.substitute(self.alloc, function.generic_params, generic.args);
+                        try self.compileType(ret_type, .{ .binding_mut = true });
+                        try self.print(" {s}(", .{name});
+
+                        for (function.params.items, 0..) |param, i| {
+                            if (i > 0) try self.write(", ");
+                            const param_type = try param.type.substitute(self.alloc, function.generic_params, generic.args);
+                            try self.compileVariableSignature(param.name, param_type, .{});
+                        }
+
+                        try self.write(");\n");
+                        try self.pending_instantiations.append(self.alloc, .{
+                            .func = function,
+                            .args = try generic.args.clone(self.alloc),
+                            .name = name,
+                        });
+
+                        self.writer = &self.output.?;
+                        try self.emitted_instances.put(name, {});
+                    }
+
+                    var substituted_params = try std.ArrayList(Type.Function.Param).initCapacity(self.alloc, function.params.items.len);
+                    for (function.params.items) |p| {
+                        substituted_params.appendAssumeCapacity(.{
+                            .name = p.name,
+                            .type = try p.type.substitute(self.alloc, function.generic_params, generic.args),
+                        });
+                    }
+
+                    try functionCall(self, .{
+                        .name = name,
+                        .params = substituted_params,
+                        .generic_params = function.generic_params,
+                        .return_type = function.return_type,
+                    }, call_expr);
+                },
+                else => return errors.expressionNotCallable(.{ .generic = generic }, call_expr.callee.getPosition()),
+            },
+            else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
         },
     }
 }

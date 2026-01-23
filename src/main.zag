@@ -19,28 +19,19 @@ fn print_num<N: i32>() void {
     lib.printf("N is %d\n", N);
 }
 
-fn main() i32 {
-    let a = 1;
-    let b = 2;
-    let c = 3;
-    let d = 4;
+fn id<T>(val: T) T {
+    return val;
+}
 
+fn main() i32 {
     let mu = MyUnion { i: 65 };
 
     let ms = lib.alloc<MyStruct>();
 
-    while (a > 0) {
-        break;
-    }
-
-    match (mu) {
-        f -> {"1"; "2";},
-        i -> "2",
-        c -> "3",
-        else -> "4",
-    }
-
     mu.print();
 
     print_num<42>();
+
+    let x: i32 = id<i32>(10);
+    lib.printf("x: %d\n", x);
 }

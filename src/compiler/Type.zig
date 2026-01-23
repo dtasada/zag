@@ -197,6 +197,7 @@ pub const Type = union(enum) {
     module: Module,
     variadic,
     generic: Generic,
+    generic_param: []const u8,
 
     /// Converts an AST type to a Compiler type.
     /// `infer` is the expression with which the type is inferred.
@@ -213,37 +214,45 @@ pub const Type = union(enum) {
                     .is_mut = reference.is_mut,
                 },
             },
-            .function => |function| .{
-                .function = .{
-                    .name = function.name,
-                    .params = b: {
-                        var params: std.ArrayList(Function.Param) = try .initCapacity(
-                            compiler.alloc,
-                            function.parameters.items.len,
-                        );
-                        for (function.parameters.items) |p|
-                            params.appendAssumeCapacity(.{
-                                .name = p.name,
-                                .type = try fromAst(compiler, p.type),
-                            });
-                        break :b params;
+            .function => |function| b: {
+                try compiler.pushScope();
+                defer compiler.popScope();
+
+                var generic_params: std.ArrayList(Function.Param) = try .initCapacity(
+                    compiler.alloc,
+                    function.generic_parameters.items.len,
+                );
+                for (function.generic_parameters.items) |p| {
+                    const t_val = if (p.type == .inferred) .type else try fromAst(compiler, p.type);
+                    generic_params.appendAssumeCapacity(.{
+                        .name = p.name,
+                        .type = t_val,
+                    });
+                    
+                    // Register generic param in scope so it can be used in function signature
+                    try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } });
+                }
+
+                var params: std.ArrayList(Function.Param) = try .initCapacity(
+                    compiler.alloc,
+                    function.parameters.items.len,
+                );
+                for (function.parameters.items) |p|
+                    params.appendAssumeCapacity(.{
+                        .name = p.name,
+                        .type = try fromAst(compiler, p.type),
+                    });
+
+                break :b .{
+                    .function = .{
+                        .name = function.name,
+                        .params = params,
+                        .generic_params = generic_params,
+                        .return_type = try .fromAstPtr(compiler, function.return_type.*),
+                        .def = null,
+                        .module_path = null,
                     },
-                    .generic_params = b: {
-                        var generic_params: std.ArrayList(Function.Param) = try .initCapacity(
-                            compiler.alloc,
-                            function.generic_parameters.items.len,
-                        );
-                        for (function.generic_parameters.items) |p|
-                            generic_params.appendAssumeCapacity(.{
-                                .name = p.name,
-                                .type = if (p.type == .inferred) .type else try .fromAst(compiler, p.type),
-                            });
-                        break :b generic_params;
-                    },
-                    .return_type = try .fromAstPtr(compiler, function.return_type.*),
-                    .def = null,
-                    .module_path = null,
-                },
+                };
             },
             .array => |array| .{
                 .array = .{
@@ -440,49 +449,14 @@ pub const Type = union(enum) {
             },
             else => switch (callee_type) {
                 .function => |function| function.return_type.*,
-                .generic => |generic| {
-                    const name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{}", .{
-                        switch (generic.type) {
-                            inline else => |n| n.name,
-                        },
-                        generic.type.toType().hash(),
-                    });
-
-                    if (!compiler.emitted_instances.contains(name)) {
-                        compiler.writer = &compiler.zag_header.?;
-                        
-                        switch (generic.type) {
-                            .function => |func| {
-                                try compiler.compileType(func.return_type.*, .{});
-                                try compiler.print(" {s}(", .{name});
-                                for (func.params.items, 0..) |param, i| {
-                                    if (i > 0) try compiler.write(", ");
-                                    try compiler.compileVariableSignature(param.name, param.type, .{});
-                                }
-                                try compiler.write(");\n");
-
-                                try compiler.pending_instantiations.append(compiler.alloc, .{
-                                    .func = func,
-                                    .args = try generic.args.clone(compiler.alloc),
-                                    .name = name,
-                                });
-                            },
-                            else => {},
-                        }
-
-                        compiler.writer = &compiler.output.?;
-                        try compiler.emitted_instances.put(name, {});
-                    }
-
-                    switch (generic.type) {
-                        .function => |func| return func.return_type.*,
-                        else => return utils.printErr(
-                            error.IllegalExpression,
-                            "comperr: Generic type '{f}' is not callable ({f})\n",
-                            .{ generic.type.toType(), call.pos },
-                            .red,
-                        ),
-                    }
+                .generic => |generic| switch (generic.type) {
+                    .function => |func| try func.return_type.substitute(compiler.alloc, func.generic_params, generic.args),
+                    else => utils.printErr(
+                        error.IllegalExpression,
+                        "comperr: Generic type '{f}' is not callable ({f})\n",
+                        .{ generic.type.toType(), call.pos },
+                        .red,
+                    ),
                 },
                 else => |t| utils.printErr(
                     error.IllegalExpression,
@@ -491,6 +465,40 @@ pub const Type = union(enum) {
                     .red,
                 ),
             },
+        };
+    }
+
+    pub fn substitute(self: Type, alloc: std.mem.Allocator, params: std.ArrayList(Function.Param), args: std.ArrayList(Value)) CompilerError!Type {
+        return switch (self) {
+            .generic_param => |name| b: {
+                for (params.items, 0..) |param, i| {
+                    if (std.mem.eql(u8, param.name, name)) {
+                        switch (args.items[i]) {
+                            .type => |t| break :b t,
+                            else => {},
+                        }
+                    }
+                }
+                break :b self;
+            },
+            .reference => |r| .{
+                .reference = .{
+                    .inner = b: {
+                        const ptr = try alloc.create(Type);
+                        ptr.* = try r.inner.substitute(alloc, params, args);
+                        break :b ptr;
+                    },
+                    .is_mut = r.is_mut,
+                },
+            },
+            .optional => |opt| .{
+                .optional = b: {
+                    const ptr = try alloc.create(Type);
+                    ptr.* = try opt.substitute(alloc, params, args);
+                    break :b ptr;
+                },
+            },
+            else => self,
         };
     }
 

@@ -347,11 +347,14 @@ pub fn emit(self: *Self) CompilerError!void {
 
     while (self.pending_instantiations.pop()) |inst| {
         if (inst.func.def) |def| {
-            try self.compileType(inst.func.return_type.*, .{});
+            const ret_type = try inst.func.return_type.substitute(self.alloc, inst.func.generic_params, inst.args);
+
+            try self.compileType(ret_type, .{ .binding_mut = true });
             try self.print(" {s}(", .{inst.name});
             for (inst.func.params.items, 0..) |param, i| {
                 if (i > 0) try self.write(", ");
-                try self.compileVariableSignature(param.name, param.type, .{});
+                const param_type = try param.type.substitute(self.alloc, inst.func.generic_params, inst.args);
+                try self.compileVariableSignature(param.name, param_type, .{});
             }
             try self.write(") ");
 
@@ -393,14 +396,15 @@ pub fn emit(self: *Self) CompilerError!void {
             
             // Register function params
             for (inst.func.params.items) |param| {
-                try self.registerSymbol(param.name, .{ .symbol = .{ .type = param.type } });
+                const param_type = try param.type.substitute(self.alloc, inst.func.generic_params, inst.args);
+                try self.registerSymbol(param.name, .{ .symbol = .{ .type = param_type } });
             }
 
             // Register function itself for return type lookup
             try self.registerSymbol(inst.name, .{ .symbol = .{ .type = .{ .function = inst.func } } });
 
             const previous_return_type = self.current_return_type;
-            self.current_return_type = inst.func.return_type.*;
+            self.current_return_type = ret_type;
             defer self.current_return_type = previous_return_type;
 
             try self.compileBlock(def.body, .{});
