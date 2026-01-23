@@ -239,14 +239,17 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        generic_parameters: ?ParameterList,
+        generic_parameters: ParameterList,
         parameters: ParameterList,
         return_type: Type,
         body: ast.Block,
+
         pub fn getType(self: *const FunctionDefinition) Type {
             return .{
                 .function = .{
+                    .name = self.name,
                     .position = self.pos,
+                    .generic_parameters = self.generic_parameters,
                     .parameters = self.parameters,
                     .return_type = &self.return_type,
                 },
@@ -311,14 +314,16 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        generic_parameters: ?ParameterList,
+        generic_parameters: ParameterList,
         parameters: ParameterList,
         return_type: Type,
         pub fn getType(self: *const BindingFunctionDefinition) Type {
             return .{
                 .function = .{
+                    .name = self.name,
                     .position = self.pos,
                     .parameters = self.parameters,
+                    .generic_parameters = self.generic_parameters,
                     .return_type = &self.return_type,
                 },
             };
@@ -374,14 +379,10 @@ pub const Type = union(enum) {
     };
 
     const Function = struct {
-        const GenericParam = struct {
-            name: []const u8,
-            type: ?Type,
-        };
-
         position: utils.Position,
-        parameters: ParameterList = .empty,
-        generic_parameters: std.ArrayList(GenericParam) = .empty,
+        name: []const u8,
+        parameters: ParameterList,
+        generic_parameters: ParameterList,
         return_type: *const Type,
     };
 

@@ -215,8 +215,8 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume "fn" keyword
     const function_name = try self.expect(self.advance(), .ident, "function definition", "function name");
-    const generic_parameters = switch (self.currentToken()) {
-        .@"(" => null,
+    const generic_parameters: ast.ParameterList = switch (self.currentToken()) {
+        .@"(" => .empty,
         .@"<" => try self.parseGenericParameters(),
         else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
     };
@@ -252,8 +252,8 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "bind" keyword
     try self.expect(self.advance(), .@"fn", "binding function declaration", "fn");
     const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
-    const generic_parameters = switch (self.currentToken()) {
-        .@"(" => null,
+    const generic_parameters: ast.ParameterList = switch (self.currentToken()) {
+        .@"(" => .empty,
         .@"<" => try self.parseGenericParameters(),
         else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
     };

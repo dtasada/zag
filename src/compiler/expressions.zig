@@ -364,6 +364,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                         .member => |member_type| return errors.expressionNotCallable(member_type.*, call_expr.callee.getPosition()),
                         .method => |method| {
                             try functionCall(self, .{
+                                .name = method.name,
                                 .generic_params = method.generic_params,
                                 .params = method.params,
                                 .return_type = method.return_type,

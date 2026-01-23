@@ -451,15 +451,15 @@ pub fn analyze(self: *Self) CompilerError!void {
                         });
 
                     var generic_params: std.ArrayList(Type.Function.Param) = .empty;
-                    if (method.generic_parameters) |gp| {
-                        for (gp.items) |p| generic_params.appendAssumeCapacity(.{
+                    for (method.generic_parameters.items) |p|
+                        generic_params.appendAssumeCapacity(.{
                             .name = p.name,
-                            .type = try .fromAst(self, p.type),
+                            .type = if (p.type == .inferred) .type else try .fromAst(self, p.type),
                         });
-                    }
 
                     const return_type: *Type = try .fromAstPtr(self, method.return_type);
                     try compound_type.methods.put(method.name, .{
+                        .name = method.name,
                         .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
                             struct_decl.name,
                             method.name,
@@ -801,6 +801,7 @@ fn registerConstants(self: *Self) !void {
             .is_mut = false,
             .type = .{
                 .function = .{
+                    .name = "sizeof",
                     .params = .empty,
                     .return_type = &.usize,
                     .generic_params = b: {

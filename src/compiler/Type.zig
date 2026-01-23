@@ -21,6 +21,7 @@ pub const Type = union(enum) {
             type: Type,
         };
 
+        name: []const u8,
         params: std.ArrayList(Param),
         generic_params: std.ArrayList(Param),
         return_type: *const Self,
@@ -34,6 +35,7 @@ pub const Type = union(enum) {
             };
 
             const Method = struct {
+                name: []const u8,
                 inner_name: []const u8,
                 params: std.ArrayList(Function.Param),
                 generic_params: std.ArrayList(Function.Param),
@@ -126,8 +128,31 @@ pub const Type = union(enum) {
     };
 
     pub const Generic = struct {
-        type: *const Self,
+        type: union(enum) {
+            @"struct": Struct,
+            @"union": Union,
+            function: Function,
+
+            pub fn toType(self: *const @This()) Self {
+                return switch (self.*) {
+                    .@"struct" => |@"struct"| .{ .@"struct" = @"struct" },
+                    .@"union" => |@"union"| .{ .@"union" = @"union" },
+                    .function => |function| .{ .function = function },
+                };
+            }
+
+            pub fn fromType(t: Type) @This() {
+                return switch (t) {
+                    .@"struct" => |@"struct"| .{ .@"struct" = @"struct" },
+                    .@"union" => |@"union"| .{ .@"union" = @"union" },
+                    .function => |function| .{ .function = function },
+                    else => unreachable,
+                };
+            }
+        },
+
         args: std.ArrayList(Value),
+        inner_name: []const u8,
     };
 
     i8,
@@ -187,6 +212,7 @@ pub const Type = union(enum) {
             },
             .function => |function| .{
                 .function = .{
+                    .name = function.name,
                     .params = b: {
                         var params: std.ArrayList(Function.Param) = try .initCapacity(
                             compiler.alloc,
@@ -207,7 +233,7 @@ pub const Type = union(enum) {
                         for (function.generic_parameters.items) |p|
                             generic_params.appendAssumeCapacity(.{
                                 .name = p.name,
-                                .type = if (p.type) |pt| try fromAst(compiler, pt) else .type,
+                                .type = if (p.type == .inferred) .type else try .fromAst(compiler, p.type),
                             });
                         break :b generic_params;
                     },
@@ -361,13 +387,19 @@ pub const Type = union(enum) {
                     });
                 }
 
-                const instantiation_type = try compiler.alloc.create(Self);
-                instantiation_type.* = try infer(compiler, generic.lhs.*);
+                const instantiation_type = try infer(compiler, generic.lhs.*);
 
                 break :b .{
                     .generic = .{
+                        .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{}", .{
+                            switch (instantiation_type) {
+                                inline .@"struct", .@"union", .function => |n| n.name,
+                                else => unreachable,
+                            },
+                            instantiation_type.hash(),
+                        }),
                         .args = args,
-                        .type = instantiation_type,
+                        .type = .fromType(instantiation_type),
                     },
                 };
             },
@@ -377,6 +409,8 @@ pub const Type = union(enum) {
     }
 
     fn inferCallExpression(compiler: *Compiler, call: ast.Expression.Call) !Self {
+        const callee_type: Type = try infer(compiler, call.callee.*);
+
         return switch (call.callee.*) {
             .member => |m| switch (try inferMemberExpression(compiler, m)) {
                 .function => |function| function.return_type.*,
@@ -387,9 +421,24 @@ pub const Type = union(enum) {
                     .red,
                 ),
             },
-            else => switch (try infer(compiler, call.callee.*)) {
+            else => switch (callee_type) {
                 .function => |function| function.return_type.*,
-                .generic => |_| @panic("unimplemented"),
+                .generic => |generic| {
+                    const name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{}", .{
+                        switch (generic.type) {
+                            inline else => |n| n.name,
+                        },
+                        generic.type.toType().hash(),
+                    });
+
+                    _ = name;
+                    if (compiler.zag_header_contents.get(generic.type.toType()) == null) {
+                        compiler.writer = &compiler.zag_header.?;
+                        defer compiler.writer = &compiler.output.?;
+                    }
+
+                    @panic("");
+                },
                 else => |t| utils.printErr(
                     error.IllegalExpression,
                     "comperr: Member expression on '{f}' is illegal ({f})\n",
@@ -400,7 +449,7 @@ pub const Type = union(enum) {
         };
     }
 
-    ///
+    /// Returns a type from an AST compound type declaration statement.
     pub fn fromCompoundTypeDeclaration(
         compiler: *Compiler,
         comptime T: enum { @"struct", @"union", @"enum" },
@@ -493,15 +542,15 @@ pub const Type = union(enum) {
                 compiler.alloc,
                 method.parameters.items.len,
             );
-            if (method.generic_parameters) |gp| {
-                for (gp.items) |p| generic_params.appendAssumeCapacity(.{
+            for (method.generic_parameters.items) |p|
+                generic_params.appendAssumeCapacity(.{
                     .name = p.name,
-                    .type = try .fromAst(compiler, p.type),
+                    .type = if (p.type == .inferred) .type else try .fromAst(compiler, p.type),
                 });
-            }
 
             const return_type = try fromAstPtr(compiler, method.return_type);
             try compound_type.methods.put(method.name, .{
+                .name = method.name,
                 .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{s}", .{
                     type_decl.name,
                     method.name,
@@ -556,6 +605,7 @@ pub const Type = union(enum) {
                     .method => |method| return .{
                         .function = .{
                             .params = method.params,
+                            .name = member.member_name,
                             .generic_params = method.generic_params,
                             .return_type = method.return_type,
                         },
@@ -696,6 +746,8 @@ pub const Type = union(enum) {
                     h.update(std.mem.asBytes(&a.size));
                 },
 
+                .slice => |s| h.update(std.mem.asBytes(&ctx.hash(s.*))),
+
                 .error_union => |e| {
                     h.update(std.mem.asBytes(&ctx.hash(e.success.*)));
                     h.update(std.mem.asBytes(&ctx.hash(e.failure.*)));
@@ -766,7 +818,13 @@ pub const Type = union(enum) {
                     }
                 },
 
-                else => {}, // all primitives
+                .generic => |generic| {
+                    h.update(std.mem.asBytes(&ctx.hash(generic.type.toType())));
+
+                    for (generic.args.items) |arg| h.update(std.mem.asBytes(&arg));
+                },
+
+                else => {}, // all primitives // TODO: some new non-primitive types might be getting caught into the else block
             }
 
             return h.final();

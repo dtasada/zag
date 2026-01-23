@@ -338,9 +338,7 @@ fn functionDefinition(
         .type = try .fromAst(self, function_def.getType()),
     } });
 
-    if (function_def.generic_parameters) |_| {
-        return;
-    }
+    if (function_def.generic_parameters.items.len > 0) return;
 
     try self.pushScope();
     defer self.popScope();
