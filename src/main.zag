@@ -23,11 +23,15 @@ fn main() i32 {
 
     let mu = MyUnion { i: 65 };
 
+    while (a > 0) {
+        break;
+    }
+
     match (mu) {
         f -> {"1"; "2";},
         i -> "2",
         c -> "3",
-        else -> {"4";},
+        else -> "4",
     }
 
     mu.print();

@@ -44,6 +44,8 @@ export default grammar({
       $.for_statement,
       $.expression_statement,
       $.match_expression,
+      $.break_statement,
+      $.continue_statement,
     ),
 
     expression_statement: $ => seq($.expression, ";"),
@@ -72,6 +74,9 @@ export default grammar({
       $.reference_expression,
       $.match_expression,
     ),
+
+    break_statement: $ => seq("break", ";"),
+    continue_statement: $ => seq("continue", ";"),
 
     match_expression: $ => seq(
       "match",

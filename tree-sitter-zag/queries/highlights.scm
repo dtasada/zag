@@ -1,21 +1,23 @@
 "return" @keyword.return
 
 [
- "let"
- "mut"
- "struct"
- "enum"
- "union"
- "import"
  "as"
- "fn"
- "if"
- "else"
- "for"
- "while"
  "bind"
- "pub"
+ "break"
+ "continue"
+ "else"
+ "enum"
+ "fn"
+ "for"
+ "if"
+ "import"
+ "let"
  "match"
+ "mut"
+ "pub"
+ "struct"
+ "union"
+ "while"
 ] @keyword
 
 (while_statement "while" @repeat)
@@ -28,7 +30,7 @@
 (assignment_operator) @operator
 [".." "..=" "&" "!" "?" "="] @operator
 
-[";" "." "," ":" "..."] @punctuation.delimiter
+[";" "." "," ":" "..." "->"] @punctuation.delimiter
 
 [
  "(" ")"

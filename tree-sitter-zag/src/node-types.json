@@ -289,6 +289,14 @@
           "named": true
         },
         {
+          "type": "break_statement",
+          "named": true
+        },
+        {
+          "type": "continue_statement",
+          "named": true
+        },
+        {
           "type": "enum_declaration",
           "named": true
         },
@@ -340,6 +348,11 @@
     }
   },
   {
+    "type": "break_statement",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "call_expression",
     "named": true,
     "fields": {
@@ -383,6 +396,11 @@
   },
   {
     "type": "char_literal",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "continue_statement",
     "named": true,
     "fields": {}
   },
@@ -600,6 +618,14 @@
         "types": [
           {
             "type": "binding_function_declaration",
+            "named": true
+          },
+          {
+            "type": "break_statement",
+            "named": true
+          },
+          {
+            "type": "continue_statement",
             "named": true
           },
           {
@@ -853,6 +879,14 @@
             "named": true
           },
           {
+            "type": "break_statement",
+            "named": true
+          },
+          {
+            "type": "continue_statement",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -928,6 +962,14 @@
         "types": [
           {
             "type": "binding_function_declaration",
+            "named": true
+          },
+          {
+            "type": "break_statement",
+            "named": true
+          },
+          {
+            "type": "continue_statement",
             "named": true
           },
           {
@@ -1011,6 +1053,14 @@
       "types": [
         {
           "type": "binding_function_declaration",
+          "named": true
+        },
+        {
+          "type": "break_statement",
+          "named": true
+        },
+        {
+          "type": "continue_statement",
           "named": true
         },
         {
@@ -1265,6 +1315,14 @@
       "types": [
         {
           "type": "binding_function_declaration",
+          "named": true
+        },
+        {
+          "type": "break_statement",
+          "named": true
+        },
+        {
+          "type": "continue_statement",
           "named": true
         },
         {
@@ -1653,6 +1711,14 @@
             "named": true
           },
           {
+            "type": "break_statement",
+            "named": true
+          },
+          {
+            "type": "continue_statement",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -1905,6 +1971,10 @@
     "named": false
   },
   {
+    "type": "break",
+    "named": false
+  },
+  {
     "type": "but",
     "named": false
   },
@@ -1920,6 +1990,10 @@
     "type": "comment",
     "named": true,
     "extra": true
+  },
+  {
+    "type": "continue",
+    "named": false
   },
   {
     "type": "else",

@@ -451,6 +451,18 @@ pub fn match(self: *Self) ParserError!ast.Statement {
     return .{ .expression = try expressions.parse(self, .primary) };
 }
 
+pub fn @"break"(self: *Self) ParserError!ast.Statement {
+    _ = self.advance();
+    try self.expect(self.advance(), .@";", "break statement", ";");
+    return .@"break";
+}
+
+pub fn @"continue"(self: *Self) ParserError!ast.Statement {
+    _ = self.advance();
+    try self.expect(self.advance(), .@";", "break statement", ";");
+    return .@"continue";
+}
+
 pub fn @"pub"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume `pub` keyword
     return parse(self);

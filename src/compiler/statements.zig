@@ -32,6 +32,7 @@ pub fn compile(
         .block => |block| try self.compileBlock(block.block, .{}),
         .enum_declaration => |enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl),
         .union_declaration => |union_decl| try compoundTypeDeclaration(self, .@"union", union_decl),
+        .@"break", .@"continue" => try self.print("{s};\n", .{@tagName(statement.*)}),
     }
 }
 

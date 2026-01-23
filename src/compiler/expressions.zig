@@ -185,7 +185,6 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
                 self.indent_level += 1;
 
                 try self.indent();
-                std.debug.print("case.result: {}\n", .{case.result});
                 try statements.compile(self, &case.result);
                 try self.indent();
                 try self.write(";break;\n");

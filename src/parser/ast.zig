@@ -212,26 +212,27 @@ pub const Expression = union(enum) {
 };
 
 pub const Statement = union(enum) {
+    @"break",
+    @"continue",
+    @"for": For,
+    @"if": If,
     @"return": Return,
-    expression: Expression,
-    variable_definition: VariableDefinition,
-    struct_declaration: StructDeclaration,
-    enum_declaration: EnumDeclaration,
-    union_declaration: UnionDeclaration,
-    function_definition: FunctionDefinition,
+    @"while": While,
     binding_function_declaration: BindingFunctionDefinition,
     block: ast.Expression.Block,
+    enum_declaration: EnumDeclaration,
+    expression: Expression,
+    function_definition: FunctionDefinition,
     import: Import,
-    @"if": If,
-    @"while": While,
-    @"for": For,
+    struct_declaration: StructDeclaration,
+    union_declaration: UnionDeclaration,
+    variable_definition: VariableDefinition,
 
-    pub const Return = struct { pos: utils.Position, @"return": ?ast.Expression };
-
-    pub const Import = struct {
+    pub const For = struct {
         pos: utils.Position,
-        module_name: std.ArrayList([]const u8),
-        alias: ?[]const u8,
+        iterator: ast.Expression,
+        capture: ?[]const u8,
+        body: *const Statement,
     };
 
     pub const FunctionDefinition = struct {
@@ -242,7 +243,6 @@ pub const Statement = union(enum) {
         parameters: ParameterList,
         return_type: Type,
         body: ast.Block,
-
         pub fn getType(self: *const FunctionDefinition) Type {
             return .{
                 .function = .{
@@ -254,32 +254,23 @@ pub const Statement = union(enum) {
         }
     };
 
-    pub const BindingFunctionDefinition = struct {
+    pub const If = struct {
         pos: utils.Position,
-        is_pub: bool,
-        name: []const u8,
-        generic_parameters: ?ParameterList,
-        parameters: ParameterList,
-        return_type: Type,
-
-        pub fn getType(self: *const BindingFunctionDefinition) Type {
-            return .{
-                .function = .{
-                    .position = self.pos,
-                    .parameters = self.parameters,
-                    .return_type = &self.return_type,
-                },
-            };
-        }
+        condition: ast.Expression,
+        capture: ?[]const u8 = null,
+        body: *const Statement,
+        @"else": ?*const Statement = null,
     };
 
-    pub const VariableDefinition = struct {
+    pub const Import = struct {
         pos: utils.Position,
-        is_pub: bool,
-        is_mut: bool,
-        variable_name: []const u8,
-        type: Type,
-        assigned_value: ast.Expression,
+        module_name: std.ArrayList([]const u8),
+        alias: ?[]const u8,
+    };
+
+    pub const Return = struct {
+        pos: utils.Position,
+        @"return": ?ast.Expression,
     };
 
     pub const StructDeclaration = struct {
@@ -288,24 +279,10 @@ pub const Statement = union(enum) {
             type: Type,
             default_value: ?ast.Expression = null,
         };
-
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
         generic_types: ?ParameterList = null,
-        members: std.ArrayList(Member) = .empty,
-        methods: std.ArrayList(FunctionDefinition) = .empty,
-    };
-
-    pub const EnumDeclaration = struct {
-        const Member = struct {
-            name: []const u8,
-            value: ?ast.Expression = null,
-        };
-
-        pos: utils.Position,
-        is_pub: bool,
-        name: []const u8,
         members: std.ArrayList(Member) = .empty,
         methods: std.ArrayList(FunctionDefinition) = .empty,
     };
@@ -315,7 +292,6 @@ pub const Statement = union(enum) {
             name: []const u8,
             type: ?Type,
         };
-
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
@@ -331,19 +307,43 @@ pub const Statement = union(enum) {
         body: *const Statement,
     };
 
-    pub const For = struct {
+    pub const BindingFunctionDefinition = struct {
         pos: utils.Position,
-        iterator: ast.Expression,
-        capture: ?[]const u8,
-        body: *const Statement,
+        is_pub: bool,
+        name: []const u8,
+        generic_parameters: ?ParameterList,
+        parameters: ParameterList,
+        return_type: Type,
+        pub fn getType(self: *const BindingFunctionDefinition) Type {
+            return .{
+                .function = .{
+                    .position = self.pos,
+                    .parameters = self.parameters,
+                    .return_type = &self.return_type,
+                },
+            };
+        }
     };
 
-    pub const If = struct {
+    pub const EnumDeclaration = struct {
+        const Member = struct {
+            name: []const u8,
+            value: ?ast.Expression = null,
+        };
         pos: utils.Position,
-        condition: ast.Expression,
-        capture: ?[]const u8 = null,
-        body: *const Statement,
-        @"else": ?*const Statement = null,
+        is_pub: bool,
+        name: []const u8,
+        members: std.ArrayList(Member) = .empty,
+        methods: std.ArrayList(FunctionDefinition) = .empty,
+    };
+
+    pub const VariableDefinition = struct {
+        pos: utils.Position,
+        is_pub: bool,
+        is_mut: bool,
+        variable_name: []const u8,
+        type: Type,
+        assigned_value: ast.Expression,
     };
 };
 

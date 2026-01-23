@@ -59,6 +59,8 @@ pub const Token = union(enum) {
 
     // keywords
     @"and",
+    @"break",
+    @"continue",
     @"else",
     @"enum",
     @"fn",
@@ -202,6 +204,8 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
         .{ "and", .@"and" },
         .{ "as", .as },
         .{ "bind", .bind },
+        .{ "break", .@"break" },
+        .{ "continue", .@"continue" },
         .{ "but", .but },
         .{ "else", .@"else" },
         .{ "enum", .@"enum" },
@@ -214,6 +218,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
         .{ "mut", .mut },
         .{ "or", .@"or" },
         .{ "pub", .@"pub" },
+        .{ "return", .@"return" },
         .{ "return", .@"return" },
         .{ "struct", .@"struct" },
         .{ "union", .@"union" },
@@ -248,6 +253,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
 
             const word = try atom.toOwnedSlice(alloc);
 
+            // TODO: try to replace with std.meta.stringToEnum(comptime T: type, str: []const u8)
             const token: Token = keywords.get(word) orelse .{ .ident = word };
             try self.appendToken(alloc, token);
         } else if (std.ascii.isDigit(self.currentChar())) {
