@@ -88,9 +88,7 @@ var list: std.ArrayList(Context.Visited) = .initBuffer(&buf);
 The following standard features are currently absent from the Zag language and its compiler:
 
 ### 1. Control Flow
--   **Loop Control (`break` / `continue`)**: Keywords exist in some contexts but are not implemented in the parser or compiler.
 -   **Match Exhaustiveness**: The compiler does not verify that all possible cases (enum variants or union tags) are handled in a `match` expression.
--   **Match Catch-all**: No support for a default/wildcard branch (`else` or `_`) in `match`.
 -   **Defer**: No mechanism to schedule cleanup code at the end of a scope.
 
 ### 2. Type System & Safety

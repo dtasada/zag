@@ -21,6 +21,7 @@ pub const Type = union(enum) {
         };
 
         params: std.ArrayList(Param),
+        generic_params: std.ArrayList(Param),
         return_type: *const Self,
     };
 
@@ -34,6 +35,7 @@ pub const Type = union(enum) {
             const Method = struct {
                 inner_name: []const u8,
                 params: std.ArrayList(Function.Param),
+                generic_params: std.ArrayList(Function.Param),
                 return_type: *const Self,
             };
 
@@ -191,6 +193,18 @@ pub const Type = union(enum) {
                             });
                         break :b params;
                     },
+                    .generic_params = b: {
+                        var generic_params: std.ArrayList(Function.Param) = try .initCapacity(
+                            compiler.alloc,
+                            function.generic_parameters.items.len,
+                        );
+                        for (function.generic_parameters.items) |p|
+                            generic_params.appendAssumeCapacity(.{
+                                .name = p.name,
+                                .type = if (p.type) |pt| try fromAst(compiler, pt) else .type,
+                            });
+                        break :b generic_params;
+                    },
                     .return_type = try .fromAstPtr(compiler, function.return_type.*),
                 },
             },
@@ -327,9 +341,9 @@ pub const Type = union(enum) {
                     .is_mut = reference.is_mut,
                 },
             },
-            .generic => |generic| {
-                _ = generic;
-                @panic("unimplemented");
+            .generic => |_| {
+                // if (compiler.zag_header_contents.get(key: Type))
+                @panic("");
             },
             .match => |_| @panic("unimplemented"),
             .bad_node => unreachable,
@@ -448,12 +462,24 @@ pub const Type = union(enum) {
                     .type = try .fromAst(compiler, p.type),
                 });
 
+            var generic_params: std.ArrayList(Function.Param) = try .initCapacity(
+                compiler.alloc,
+                method.parameters.items.len,
+            );
+            if (method.generic_parameters) |gp| {
+                for (gp.items) |p| generic_params.appendAssumeCapacity(.{
+                    .name = p.name,
+                    .type = try .fromAst(compiler, p.type),
+                });
+            }
+
             const return_type = try fromAstPtr(compiler, method.return_type);
             try compound_type.methods.put(method.name, .{
                 .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{s}", .{
                     type_decl.name,
                     method.name,
                 }), // TODO mangling
+                .generic_params = generic_params,
                 .params = params,
                 .return_type = return_type,
             });
@@ -503,6 +529,7 @@ pub const Type = union(enum) {
                     .method => |method| return .{
                         .function = .{
                             .params = method.params,
+                            .generic_params = method.generic_params,
                             .return_type = method.return_type,
                         },
                     },

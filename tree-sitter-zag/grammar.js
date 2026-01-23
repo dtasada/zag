@@ -25,6 +25,10 @@ export default grammar({
 
   conflicts: $ => [
     [$._statement, $.expression],
+    [$.expression, $.ident_type],
+    [$.call_expression, $.binary_expression, $.reference_expression],
+    [$.call_expression, $.binary_expression, $.prefix_expression],
+    [$.call_expression, $.binary_expression],
   ],
 
   rules: {
@@ -322,16 +326,13 @@ export default grammar({
 
     call_expression: $ => prec(10, seq(
       field("callee", $.expression),
+      optional($.generic_argument_list),
       field("arguments", $.argument_list),
     )),
 
     argument_list: $ => seq(
       "(",
-      repeat(seq(
-        field("argument", $.expression),
-        ",",
-      )),
-      optional(field("argument", $.expression)),
+      commaSep(field("argument", $.expression)),
       ")",
     ),
 
@@ -393,6 +394,7 @@ export default grammar({
 
     struct_instantiation_expression: $ => prec(10, seq(
       field("name", $.ident_type),
+      optional($.generic_argument_list),
       "{",
       commaSep(field("member", $.struct_instantiation_expression_member)),
       "}",
@@ -445,7 +447,13 @@ export default grammar({
 
     generic_parameter_list: $ => seq(
       "<",
-      commaSep(choice($.ident_type, $.variable_signature)),
+      commaSep(choice(field("name", $.ident_type), $.variable_signature)),
+      ">",
+    ),
+
+    generic_argument_list: $ => seq(
+      "<",
+      commaSep(field("argument", $.expression)),
       ">",
     ),
 

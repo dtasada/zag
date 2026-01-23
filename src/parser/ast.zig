@@ -374,8 +374,14 @@ pub const Type = union(enum) {
     };
 
     const Function = struct {
+        const GenericParam = struct {
+            name: []const u8,
+            type: ?Type,
+        };
+
         position: utils.Position,
         parameters: ParameterList = .empty,
+        generic_parameters: std.ArrayList(GenericParam) = .empty,
         return_type: *const Type,
     };
 

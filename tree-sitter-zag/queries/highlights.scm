@@ -56,12 +56,15 @@
 (parameter_list (variable_signature name: (ident) @variable.parameter))
 (parameter_list name: (ident) @variable.parameter)
 
+(generic_parameter_list (variable_signature name: (ident) @variable.parameter))
+; (generic_parameter_list name: (ident) @variable.parameter)
+
 (function_definition name: (ident) @function)
 (binding_function_declaration name: (ident) @function)
 
 (call_expression callee: (expression (ident) @function.call))
-; (call_expression callee: (expression (member_expression (rhs: (ident) @function.call))))
 (argument_list argument: (expression (ident) @variable.parameter))
+(generic_argument_list argument: (expression (ident) @variable.parameter))
 (capture (ident) @variable.parameter)
 
 (comment) @comment

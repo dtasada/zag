@@ -1,4 +1,9 @@
 pub bind fn printf(fmt: &c_char, args...) c_int;
+pub bind fn malloc(size: usize) &mut void;
+
+pub fn alloc<T>(size: usize) &void {
+    return malloc(sizeof(T));
+}
 
 pub struct Vector2 {
     x: i32,

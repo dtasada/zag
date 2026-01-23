@@ -364,6 +364,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                         .member => |member_type| return errors.expressionNotCallable(member_type.*, call_expr.callee.getPosition()),
                         .method => |method| {
                             try functionCall(self, .{
+                                .generic_params = method.generic_params,
                                 .params = method.params,
                                 .return_type = method.return_type,
                             }, call_expr);
@@ -460,11 +461,11 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 if (expected_args < received_args) return errors.tooManyArguments(
                     expected_args,
                     received_args,
-                    call_expr.args.items[0].getPosition(),
+                    call_expr.pos,
                 ) else if (expected_args > received_args) return errors.missingArguments(
                     expected_args,
                     received_args,
-                    call_expr.args.items[0].getPosition(),
+                    call_expr.pos,
                 );
 
                 for (method.params.items[1..], 0..) |expected_param_type, i| {
@@ -543,23 +544,23 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         if (received_args < expected_args - 1) return errors.missingArguments(
             expected_args - 1,
             received_args,
-            call_expr.args.items[0].getPosition(),
+            call_expr.pos,
         );
     } else if (expected_args < received_args) return errors.tooManyArguments(
         expected_args,
         received_args,
-        call_expr.args.items[0].getPosition(),
+        call_expr.pos,
     ) else if (expected_args > received_args) return errors.missingArguments(
         expected_args,
         received_args,
-        call_expr.args.items[0].getPosition(),
+        call_expr.pos,
     );
 
     for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_type, i| {
         const received_expr = call_expr.args.items[i];
         const received_type: Type = try .infer(self, received_expr);
         if (expected_type.type != .variadic and
-            !expected_type.type.eql(try .infer(self, call_expr.args.items[i])))
+            !received_type.convertsTo(expected_type.type))
             return errors.typeMismatch(expected_type.type, received_type, received_expr.getPosition());
     }
 

@@ -338,6 +338,10 @@ fn functionDefinition(
         .type = try .fromAst(self, function_def.getType()),
     } });
 
+    if (function_def.generic_parameters) |_| {
+        return;
+    }
+
     try self.pushScope();
     defer self.popScope();
 
