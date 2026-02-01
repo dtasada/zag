@@ -52,12 +52,12 @@
 ] @constant.builtin
 
 (member_expression rhs: (ident) @field)
+(call_expression callee: (expression (member_expression rhs: (ident) @function.call)))
 
 (parameter_list (variable_signature name: (ident) @variable.parameter))
 (parameter_list name: (ident) @variable.parameter)
 
 (generic_parameter_list (variable_signature name: (ident) @variable.parameter))
-; (generic_parameter_list name: (ident) @variable.parameter)
 
 (function_definition name: (ident) @function)
 (binding_function_declaration name: (ident) @function)

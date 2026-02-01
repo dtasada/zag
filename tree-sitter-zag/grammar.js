@@ -258,6 +258,7 @@ export default grammar({
 
     type: $ => choice(
       $.ident_type,
+      $.generic_type,
       $.primitive_type,
       $.optional_type,
       $.reference_type,
@@ -265,7 +266,13 @@ export default grammar({
       $.error_union,
       $.function_type
     ),
+
     ident_type: $ => alias($.ident, $.ident_type),
+
+    generic_type: $ => seq(
+      $.ident_type,
+      $.generic_parameter_list,
+    ),
 
     primitive_type: $ => choice(
       "i8",
@@ -313,6 +320,7 @@ export default grammar({
 
     function_type: $ => seq(
       "fn",
+      optional($.generic_parameter_list),
       field("params", $.parameter_list),
       field("return_type", $.type),
     ),
@@ -447,13 +455,13 @@ export default grammar({
 
     generic_parameter_list: $ => seq(
       "<",
-      commaSep(choice(field("name", $.ident_type), $.variable_signature)),
+      commaSep1(choice(field("name", $.ident_type), $.variable_signature)),
       ">",
     ),
 
     generic_argument_list: $ => seq(
       "<",
-      commaSep(field("argument", $.expression)),
+      commaSep1(field("argument", $.expression)),
       ">",
     ),
 

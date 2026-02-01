@@ -597,7 +597,39 @@ pub const Type = union(enum) {
             .@"struct" => Type.Struct,
             .@"union" => Type.Union,
             .@"enum" => Type.Enum,
-        } = try .init(compiler.alloc, type_decl.name, switch (T) {
+        } = if (compiler.getSymbolType(type_decl.name)) |existing| b: {
+            switch (T) {
+                .@"struct" => if (existing == .@"struct") break :b existing.@"struct",
+                .@"union" => if (existing == .@"union") break :b existing.@"union",
+                .@"enum" => if (existing == .@"enum") break :b existing.@"enum",
+            }
+            // If type mismatch or not found (logic error in scan?), create new.
+            // But strict forward decl implies we should find it.
+            // However, we fallback to init for safety/standalone usage.
+            break :b try .init(compiler.alloc, type_decl.name, switch (T) {
+                .@"struct" => null,
+                .@"enum" => getTagType(type_decl.members.items.len),
+                .@"union" => b2: {
+                    const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
+                    enum_decl.* = .{
+                        .pos = type_decl.pos,
+                        .is_pub = false,
+                        .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                        .members = .empty,
+                        .methods = .empty,
+                    };
+
+                    for (type_decl.members.items) |member|
+                        try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
+
+                    try statements.compile(compiler, &.{ .enum_declaration = enum_decl.* });
+
+                    break :b2 .{
+                        .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl),
+                    };
+                },
+            });
+        } else |_| try .init(compiler.alloc, type_decl.name, switch (T) {
             .@"struct" => null,
             .@"enum" => getTagType(type_decl.members.items.len),
             .@"union" => b: {
@@ -620,24 +652,47 @@ pub const Type = union(enum) {
                 };
             },
         });
-        
+
+        // If definition is set, it means we already populated this type.
+        if (compound_type.definition != null) return compound_type;
+
+        // If union tag type is missing (forward declaration), create it now.
+        if (T == .@"union" and compound_type.tag_type == null) {
+            const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
+            enum_decl.* = .{
+                .pos = type_decl.pos,
+                .is_pub = false,
+                .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                .members = .empty,
+                .methods = .empty,
+            };
+
+            for (type_decl.members.items) |member|
+                try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
+
+            try statements.compile(compiler, &.{ .enum_declaration = enum_decl.* });
+
+            const tag_t = try compiler.alloc.create(Type);
+            tag_t.* = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
+            compound_type.tag_type = tag_t;
+        }
+
         compound_type.definition = type_decl;
-        
+
         switch (T) {
-             .@"struct", .@"union" => {
-                 if (type_decl.generic_types) |generic_types| {
-                     utils.print("Parsing generic types for {s}: {} items\n", .{type_decl.name, generic_types.items.len}, .white);
-                     for (generic_types.items) |g| {
-                         try compound_type.generic_params.append(compiler.alloc, .{
-                             .name = g.name,
-                             .type = if (g.type == .inferred) .type else try .fromAst(compiler, g.type),
-                         });
-                         // Register generic param in scope as a placeholder
-                         try compiler.registerSymbol(g.name, .{ .type = .generic_param });
-                     }
-                 }
-             },
-             else => {},
+            .@"struct", .@"union" => {
+                if (type_decl.generic_types) |generic_types| {
+                    for (generic_types.items) |g| {
+                        try compound_type.generic_params.append(compiler.alloc, .{
+                            .name = g.name,
+                            .type = if (g.type == .inferred) .type else try .fromAst(compiler, g.type),
+                        });
+                        // Register generic param in scope as a placeholder
+                        try compiler.registerSymbol(g.name, .{ .type = .generic_param });
+                    }
+                }
+            },
+            else => {},
         }
 
         try compiler.registerSymbol(type_decl.name, .{
@@ -748,16 +803,17 @@ pub const Type = union(enum) {
             .@"struct" => |@"struct"| {
                 if (@"struct".getProperty(member.member_name)) |property| switch (property) {
                     .member => |m| return m.*,
-                                .method => |method| return .{
-                                    .function = .{
-                                        .name = method.inner_name,
-                                        .params = method.params,
-                                        .generic_params = method.generic_params,
-                                        .return_type = method.return_type,
-                                        .definition = method.definition,
-                                        .module = @"struct".module,
-                                    },
-                                },                } else return utils.printErr(
+                    .method => |method| return .{
+                        .function = .{
+                            .name = method.inner_name,
+                            .params = method.params,
+                            .generic_params = method.generic_params,
+                            .return_type = method.return_type,
+                            .definition = method.definition,
+                            .module = @"struct".module,
+                        },
+                    },
+                } else return utils.printErr(
                     error.UndeclaredProperty,
                     "comperr: '{f}' has no member '{s}' ({f})\n",
                     .{ parent_type, member.member_name, member.parent.getPosition() },

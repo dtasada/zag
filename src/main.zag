@@ -1,13 +1,5 @@
 import lib;
 
-struct Box<T> {
-    content: T,
-
-    fn print(self: Box<T>) void {
-        lib.printf("box: %d\n", self.content);
-    }
-}
-
 // Test generic parameter in signature
 fn identity<T>(val: T) T {
     return val;
@@ -23,4 +15,12 @@ fn main() i32 {
     let ms = lib.alloc<i32>();
     let b = Box<i32> { content: 123 };
     b.print();
+}
+
+struct Box<T> {
+    content: T,
+
+    fn print(self: Box<T>) void {
+        lib.printf("box: %d\n", self.content);
+    }
 }

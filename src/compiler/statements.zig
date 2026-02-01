@@ -328,12 +328,17 @@ fn functionDefinition(
     self: *Self,
     function_def: *const ast.Statement.FunctionDefinition,
 ) CompilerError!void {
-    var type_obj = try Type.fromAst(self, function_def.getType());
-    type_obj.function.definition = function_def;
-    
-    try self.registerSymbol(function_def.name, .{ .symbol = .{
-        .type = type_obj,
-    } });
+    var type_obj: Type = undefined;
+    if (self.getSymbolType(function_def.name)) |t| {
+        type_obj = t;
+    } else |_| {
+        type_obj = try Type.fromAst(self, function_def.getType());
+        type_obj.function.definition = function_def;
+        
+        try self.registerSymbol(function_def.name, .{ .symbol = .{
+            .type = type_obj,
+        } });
+    }
 
     if (function_def.generic_parameters.items.len > 0) return;
 
@@ -381,9 +386,13 @@ fn bindingFunctionDeclaration(
     self: *Self,
     function_def: ast.Statement.BindingFunctionDefinition,
 ) CompilerError!void {
-    try self.registerSymbol(function_def.name, .{ .symbol = .{
-        .type = try .fromAst(self, function_def.getType()),
-    } });
+    if (self.getSymbolType(function_def.name)) |_| {
+        // Already registered
+    } else |_| {
+        try self.registerSymbol(function_def.name, .{ .symbol = .{
+            .type = try .fromAst(self, function_def.getType()),
+        } });
+    }
 
     const output_writer = self.writer;
     if (function_def.is_pub and self.module_header != null) self.writer = &self.module_header.?;

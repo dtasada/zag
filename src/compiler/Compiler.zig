@@ -311,10 +311,24 @@ pub fn emit(self: *Self) CompilerError!void {
     // register constants
     try self.registerConstants();
 
+    try self.scan();
+
     try self.write("#include <zag.h>\n");
 
-    for (self.input.items) |*statement|
+    // Pass 1: Imports
+    for (self.input.items) |*statement| if (statement.* == .import)
         try statements.compile(self, statement);
+
+    for (self.input.items) |*statement| switch (statement.*) {
+        .struct_declaration, .union_declaration, .enum_declaration => try statements.compile(self, statement),
+        else => {},
+    };
+
+    // Pass 3: Code (Functions, Variables, etc.)
+    for (self.input.items) |*statement| switch (statement.*) {
+        .import, .struct_declaration, .union_declaration, .enum_declaration => {},
+        else => try statements.compile(self, statement),
+    };
 
     try self.solveGenerics();
 
@@ -325,6 +339,49 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.module_header.?.write("\n#endif");
     try self.module_header.?.flush();
+}
+
+pub fn scan(self: *Self) CompilerError!void {
+    for (self.input.items) |*statement| {
+        switch (statement.*) {
+            .import => |*import_stmt| {
+                const module = try self.processImport(import_stmt);
+                const name = import_stmt.alias orelse import_stmt.module_name.getLast();
+                try self.registerSymbol(name, .{ .module = module });
+            },
+            .struct_declaration => |*struct_decl| {
+                const t = try Type.Struct.init(self.alloc, struct_decl.name, null);
+                try self.registerSymbol(struct_decl.name, .{ .type = .{ .@"struct" = t } });
+            },
+            .union_declaration => |*union_decl| {
+                const t = try Type.Union.init(self.alloc, union_decl.name, null);
+                try self.registerSymbol(union_decl.name, .{ .type = .{ .@"union" = t } });
+            },
+            .enum_declaration => |*enum_decl| {
+                const t = try Type.Enum.init(self.alloc, enum_decl.name, Type.getTagType(enum_decl.members.items.len));
+                try self.registerSymbol(enum_decl.name, .{ .type = .{ .@"enum" = t } });
+            },
+            else => {},
+        }
+    }
+
+    for (self.input.items) |*statement| {
+        switch (statement.*) {
+            .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl),
+            .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl),
+            .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl),
+            .function_definition => |*func| {
+                var t = try Type.fromAst(self, func.getType());
+                t.function.definition = func;
+                try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
+            },
+            .binding_function_declaration => |*func| try self.registerSymbol(
+                func.name,
+                .{ .symbol = .{ .type = try Type.fromAst(self, func.getType()) } },
+            ),
+            else => {},
+        }
+    }
 }
 
 pub fn analyze(self: *Self) CompilerError!void {
@@ -754,7 +811,7 @@ fn solveGenerics(self: *Self) !void {
     var i: usize = 0;
     while (i < self.pending_instantiations.items.len) : (i += 1) {
         const instantiation = self.pending_instantiations.items[i];
-        
+
         try self.pushScope();
         defer self.popScope();
 
@@ -777,12 +834,12 @@ fn solveGenerics(self: *Self) !void {
                         }
                     }
                 }
-                
+
                 var s_copy = s;
                 s_copy.name = instantiation.inner_name;
                 s_copy.generic_types = null; // Treat as concrete
                 s_copy.is_pub = true;
-                
+
                 try statements.compile(self, &.{ .struct_declaration = s_copy });
             },
             .@"union" => |u| {
@@ -814,7 +871,7 @@ fn solveGenerics(self: *Self) !void {
                 f_copy.name = instantiation.inner_name;
                 f_copy.generic_parameters = .empty;
                 f_copy.is_pub = true;
-                
+
                 try statements.compile(self, &.{ .function_definition = f_copy });
             },
         }
