@@ -342,28 +342,13 @@ pub fn emit(self: *Self) CompilerError!void {
 }
 
 pub fn scan(self: *Self) CompilerError!void {
-    for (self.input.items) |*statement| {
-        switch (statement.*) {
-            .import => |*import_stmt| {
-                const module = try self.processImport(import_stmt);
-                const name = import_stmt.alias orelse import_stmt.module_name.getLast();
-                try self.registerSymbol(name, .{ .module = module });
-            },
-            .struct_declaration => |*struct_decl| {
-                const t = try Type.Struct.init(self.alloc, struct_decl.name, null);
-                try self.registerSymbol(struct_decl.name, .{ .type = .{ .@"struct" = t } });
-            },
-            .union_declaration => |*union_decl| {
-                const t = try Type.Union.init(self.alloc, union_decl.name, null);
-                try self.registerSymbol(union_decl.name, .{ .type = .{ .@"union" = t } });
-            },
-            .enum_declaration => |*enum_decl| {
-                const t = try Type.Enum.init(self.alloc, enum_decl.name, Type.getTagType(enum_decl.members.items.len));
-                try self.registerSymbol(enum_decl.name, .{ .type = .{ .@"enum" = t } });
-            },
-            else => {},
-        }
-    }
+    for (self.input.items) |*statement| switch (statement.*) {
+        .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }),
+        .struct_declaration => |*struct_decl| try self.registerSymbol(struct_decl.name, .{ .type = .{ .@"struct" = try Type.Struct.init(self.alloc, struct_decl.name, null) } }),
+        .union_declaration => |*union_decl| try self.registerSymbol(union_decl.name, .{ .type = .{ .@"union" = try Type.Union.init(self.alloc, union_decl.name, null) } }),
+        .enum_declaration => |*enum_decl| try self.registerSymbol(enum_decl.name, .{ .type = .{ .@"enum" = try Type.Enum.init(self.alloc, enum_decl.name, Type.getTagType(enum_decl.members.items.len)) } }),
+        else => {},
+    };
 
     for (self.input.items) |*statement| {
         switch (statement.*) {
@@ -392,9 +377,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
     for (self.input.items) |*statement| {
         switch (statement.*) {
-            .import => |*import_stmt| {
-                _ = try self.processImport(import_stmt);
-            },
+            .import => |*import_stmt| _ = try self.processImport(import_stmt),
             .function_definition => |*func| {
                 var t = try Type.fromAst(self, func.getType());
                 t.function.definition = func;
@@ -477,9 +460,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     defer self.alloc.free(full_path);
 
     // Check registry
-    if (self.module_registry.get(full_path)) |mod| {
-        return mod;
-    }
+    if (self.module_registry.get(full_path)) |mod| return mod;
 
     // Analyze new module
     const ast_res = try getAST(self.alloc, full_path); // recursive AST

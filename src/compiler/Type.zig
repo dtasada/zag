@@ -58,6 +58,10 @@ pub const Type = union(enum) {
             tag_type: ?*const Type, // only for unions and enums
             definition: ?*const Definition,
             module: ?*Module = null,
+            generic_instantiation: ?struct {
+                base_name: []const u8,
+                args: []const Value,
+            } = null,
 
             /// get member or method. returns `null` if no member or method is found with `name`.
             pub fn getProperty(self: *const CompoundType(T), name: []const u8) ?union(enum) {
@@ -115,6 +119,7 @@ pub const Type = union(enum) {
                     .tag_type = tag,
                     .definition = null,
                     .module = null,
+                    .generic_instantiation = null,
                 };
             }
         };
@@ -381,13 +386,23 @@ pub const Type = union(enum) {
                     var copy = d.*;
                     copy.name = name;
                     copy.generic_types = null;
-                    break :blk .{ .@"struct" = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy) };
+                    var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy);
+                    t.generic_instantiation = .{
+                        .base_name = base_name,
+                        .args = try compiler.alloc.dupe(Value, args.items),
+                    };
+                    break :blk .{ .@"struct" = t };
                 },
                 .u => |d| blk: {
                     var copy = d.*;
                     copy.name = name;
                     copy.generic_types = null;
-                    break :blk .{ .@"union" = try fromCompoundTypeDeclaration(compiler, .@"union", &copy) };
+                    var t = try fromCompoundTypeDeclaration(compiler, .@"union", &copy);
+                    t.generic_instantiation = .{
+                        .base_name = base_name,
+                        .args = try compiler.alloc.dupe(Value, args.items),
+                    };
+                    break :blk .{ .@"union" = t };
                 },
                 .f => |d| blk: {
                     var copy = d.*;
@@ -914,7 +929,23 @@ pub const Type = union(enum) {
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
         switch (self.*) {
-            inline .@"struct", .@"enum", .@"union" => |compound| _ = try writer.write(compound.name),
+            inline .@"struct", .@"enum", .@"union" => |compound| {
+                if (compound.generic_instantiation) |inst| {
+                    try writer.print("{s}<", .{inst.base_name});
+                    for (inst.args, 0..) |arg, i| {
+                        switch (arg) {
+                            inline .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .bool => |v| try writer.print("{}", .{v}),
+                            .type => |t| try writer.print("{f}", .{t}),
+                            .void => _ = try writer.write("void"),
+                            else => _ = try writer.write(@tagName(arg)),
+                        }
+                        if (i < inst.args.len - 1) _ = try writer.write(", ");
+                    }
+                    _ = try writer.write(">");
+                } else {
+                    _ = try writer.write(compound.name);
+                }
+            },
             .optional => |optional| try writer.print("?{f}", .{optional}),
             .reference => |reference| try writer.print("&{s}{f}", .{
                 if (reference.is_mut) "mut " else "",

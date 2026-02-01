@@ -1,8 +1,11 @@
-pub bind fn printf(fmt: &c_char, args...) c_int;
-pub bind fn malloc(size: usize) &mut void;
+import c;
 
 pub fn alloc<T>() &void {
-    return malloc(sizeof(T));
+    return c.malloc(sizeof(T));
+}
+
+pub fn free<T>(ptr: &T) void {
+    c.free(ptr);
 }
 
 pub struct Vector2 {
@@ -28,9 +31,13 @@ pub enum MyEnum {
 pub fn do_something() void {
     let a = 6;
     let b = 7;
-    printf("hello there! %d\n", a + b);
+    c.printf("hello there! %d\n", a + b);
 }
 
-struct Box<T> {
+pub struct Box<T> {
     content: T,
+
+    fn print(self: Box<T>) void {
+        c.printf("box: %d\n", self.content);
+    }
 }
