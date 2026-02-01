@@ -1,40 +1,26 @@
 import lib;
 
-struct MyStruct {
-    x, y: i32,
-    z: f32
+struct Box<T> {
+    content: T,
+
+    fn print(self: Box<T>) void {
+        lib.printf("box: %d\n", self.content);
+    }
 }
 
-union MyUnion {
-    f: f32,
-    i: i32,
-    c: u8,
-
-    fn print(self: MyUnion) void {
-        lib.printf("self: %c", self.c);
-    }
+// Test generic parameter in signature
+fn identity<T>(val: T) T {
+    return val;
 }
 
 fn main() i32 {
-    let a = 1;
-    let b = 2;
-    let c = 3;
-    let d = 4;
+    let x = identity<i32>(42);
+    lib.printf("identity: %d\n", x);
 
-    let mu = MyUnion { i: 65 };
-
-    let ms = lib.alloc<MyStruct>();
-
-    while (a > 0) {
-        break;
-    }
-
-    match (mu) {
-        f -> {"1"; "2";},
-        i -> "2",
-        c -> "3",
-        else -> "4",
-    }
-
-    mu.print();
+    let y = identity<f32>(42);
+    lib.printf("identity: %f\n", y);
+    
+    let ms = lib.alloc<i32>();
+    let b = Box<i32> { content: 123 };
+    b.print();
 }

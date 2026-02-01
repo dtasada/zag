@@ -9,17 +9,17 @@ const Type = @import("Type.zig").Type;
 const Module = @import("Module.zig");
 
 const Self = @import("Compiler.zig");
-const CompilerError = Self.CompilerError;
+const CompilerError = errors.CompilerError;
 
 pub fn compile(
     self: *Self,
     statement: *const ast.Statement,
 ) CompilerError!void {
     switch (statement.*) {
-        .function_definition => |fn_def| try functionDefinition(self, fn_def),
+        .function_definition => |*fn_def| try functionDefinition(self, fn_def),
         .import => |import_statement| try import(self, import_statement),
         .binding_function_declaration => |bind| try bindingFunctionDeclaration(self, bind),
-        .struct_declaration => |struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
+        .struct_declaration => |*struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
         .@"return" => |return_expr| try @"return"(self, return_expr),
         .variable_definition => |var_decl| try variableDefinition(self, var_decl),
         .expression => |*expr| {
@@ -30,8 +30,8 @@ pub fn compile(
         .@"while" => |while_stmt| try conditional(self, .@"while", while_stmt),
         .@"for" => |for_stmt| try conditional(self, .@"for", for_stmt),
         .block => |block| try self.compileBlock(block.block, .{}),
-        .enum_declaration => |enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl),
-        .union_declaration => |union_decl| try compoundTypeDeclaration(self, .@"union", union_decl),
+        .enum_declaration => |*enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl),
+        .union_declaration => |*union_decl| try compoundTypeDeclaration(self, .@"union", union_decl),
         .@"break", .@"continue" => try self.print("{s};\n", .{@tagName(statement.*)}),
     }
 }
@@ -39,7 +39,7 @@ pub fn compile(
 fn compoundTypeDeclaration(
     self: *Self,
     comptime T: enum { @"struct", @"union", @"enum" },
-    type_decl: switch (T) {
+    type_decl: *const switch (T) {
         .@"struct" => ast.Statement.StructDeclaration,
         .@"union" => ast.Statement.UnionDeclaration,
         .@"enum" => ast.Statement.EnumDeclaration,
@@ -50,6 +50,12 @@ fn compoundTypeDeclaration(
         .@"union" => .@"union",
         .@"enum" => .@"enum",
     }, type_decl);
+
+    switch (T) {
+        .@"struct" => if (type_decl.generic_types) |g| if (g.items.len > 0) return,
+        .@"union" => if (type_decl.generic_types) |g| if (g.items.len > 0) return,
+        else => {},
+    }
 
     const output_writer = self.writer;
     if (type_decl.is_pub and self.module_header != null) self.writer = &self.module_header.?;
@@ -112,6 +118,10 @@ fn compoundTypeDeclaration(
         try self.pushScope();
         defer self.popScope();
 
+        const previous_return_type = self.current_return_type;
+        defer self.current_return_type = previous_return_type;
+        self.current_return_type = try Type.fromAst(self, method.return_type);
+
         try self.registerSymbol(method.name, .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
 
         if (type_decl.is_pub and self.module_header != null) {
@@ -140,43 +150,27 @@ fn compoundTypeDeclaration(
     }
 }
 
-fn @"return"(self: *Self, r: ast.Statement.Return) CompilerError!void {
-    const expected_type: Type = b: {
-        var scopes = std.mem.reverseIterator(self.scopes.items);
-        while (scopes.next()) |scope| {
-            var symbols = scope.iterator();
-            while (symbols.next()) |symbol| switch (symbol.value_ptr.*) {
-                .symbol => |f| switch (f.type) {
-                    .function => |function| {
-                        const expected_type: Type = function.return_type.*;
-                        const received_type: Type =
-                            if (r.@"return") |t| try Type.infer(self, t) else .void;
+fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!void {
+    const expected_type = self.current_return_type orelse return utils.printErr(
+        error.IllegalStatement,
+        "comperr: Return statement outside of function ({f}).\n",
+        .{return_expr.pos},
+        .red,
+    );
 
-                        if (!self.checkType(expected_type, received_type))
-                            return errors.typeMismatch(expected_type, received_type, r.pos);
-
-                        break :b expected_type;
-                    },
-                    else => continue,
-                },
-                .module, .type => continue,
-            };
-        }
-
-        return utils.printErr(
-            error.IllegalStatement,
-            "comperr: return statement not in a function ({f}).\n",
-            .{r.pos},
+    if (return_expr.@"return") |expr| {
+        try self.write("return ");
+        try expressions.compile(self, &expr, .{ .expected_type = expected_type });
+        try self.write(";\n");
+    } else {
+        if (expected_type != .void) return utils.printErr(
+            error.MissingReturnType,
+            "comperr: Expected return value of type '{f}' ({f}).\n",
+            .{ expected_type, return_expr.pos },
             .red,
         );
-    };
-
-    try self.write("return");
-    if (r.@"return") |*expression| {
-        try self.write(" ");
-        try expressions.compile(self, expression, .{ .expected_type = expected_type });
+        try self.write("return;\n");
     }
-    try self.write(";\n");
 }
 
 fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) CompilerError!void {
@@ -332,10 +326,13 @@ fn conditional(
 
 fn functionDefinition(
     self: *Self,
-    function_def: ast.Statement.FunctionDefinition,
+    function_def: *const ast.Statement.FunctionDefinition,
 ) CompilerError!void {
+    var type_obj = try Type.fromAst(self, function_def.getType());
+    type_obj.function.definition = function_def;
+    
     try self.registerSymbol(function_def.name, .{ .symbol = .{
-        .type = try .fromAst(self, function_def.getType()),
+        .type = type_obj,
     } });
 
     if (function_def.generic_parameters.items.len > 0) return;
@@ -344,6 +341,10 @@ fn functionDefinition(
     defer self.popScope();
 
     const output_writer = self.writer;
+
+    const previous_return_type = self.current_return_type;
+    defer self.current_return_type = previous_return_type;
+    self.current_return_type = try Type.fromAst(self, function_def.return_type);
 
     if (function_def.is_pub and self.module_header != null) {
         self.writer = &self.module_header.?;

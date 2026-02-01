@@ -8,9 +8,10 @@ const statements = @import("statements.zig");
 const hash = @import("Parser").hash;
 
 const Self = @import("Compiler.zig");
+const Value = @import("Value.zig").Value;
 const Type = @import("Type.zig").Type;
 
-const CompilerError = Self.CompilerError;
+const CompilerError = errors.CompilerError;
 
 pub fn compile(
     self: *Self,
@@ -81,7 +82,7 @@ pub fn compile(
                 .{ ident.ident, expression.getPosition() },
                 .red,
             ),
-        .struct_instantiation => |struct_inst| switch (try Type.infer(self, struct_inst.type_expr.*)) {
+        .struct_instantiation => |struct_inst| switch ((try self.solveComptimeExpression(struct_inst.type_expr.*)).type) {
             .@"struct" => |s| try structInstantiation(self, struct_inst, s),
             .@"union" => |u| try unionInstantiation(self, struct_inst, u),
             else => unreachable,
@@ -139,9 +140,17 @@ pub fn compile(
                 .red,
             );
         },
-        .generic => |_| @panic(""),
+        .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
         .bad_node => unreachable,
+    }
+}
+
+fn generic(self: *Self, g: ast.Expression.Generic) !void {
+    const t = try Type.infer(self, .{ .generic = g });
+    switch (t) {
+        .function => |f| try self.write(f.name),
+        else => try self.compileType(t, .{}),
     }
 }
 
@@ -357,17 +366,18 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
     switch (call_expr.callee.*) {
         .member => |m| {
-            // Check if member access resolves to a static type (e.g. lib.Vector2.init)
             if (try tryResolveStaticType(self, m.parent.*)) |static_type| {
                 switch (static_type) {
                     .@"struct" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
                         .member => |member_type| return errors.expressionNotCallable(member_type.*, call_expr.callee.getPosition()),
                         .method => |method| {
                             try functionCall(self, .{
-                                .name = method.name,
+                                .name = method.inner_name,
                                 .generic_params = method.generic_params,
                                 .params = method.params,
                                 .return_type = method.return_type,
+                                .definition = method.definition,
+                                .module = @"struct".module,
                             }, call_expr);
                             return;
                         },
@@ -387,7 +397,54 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     else => {},
                 }
             }
-            try methodCall(self, call_expr, m);
+            // Need to resolve method to Type.Function for methodCall
+            const parent = try Type.infer(self, m.parent.*);
+            const method_func = switch (parent) {
+                .@"struct" => |s| if (s.getProperty(m.member_name)) |prop| switch (prop) {
+                    .method => |method| Type.Function {
+                        .name = method.inner_name,
+                        .params = method.params,
+                        .generic_params = method.generic_params,
+                        .return_type = method.return_type,
+                        .definition = method.definition,
+                        .module = s.module,
+                    },
+                    else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+                } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+                .@"union" => |u| if (u.getProperty(m.member_name)) |prop| switch (prop) {
+                    .method => |method| Type.Function {
+                        .name = method.inner_name,
+                        .params = method.params,
+                        .generic_params = method.generic_params,
+                        .return_type = method.return_type,
+                        .definition = method.definition,
+                        .module = u.module,
+                    },
+                    else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+                } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+                else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+            };
+            try methodCall(self, call_expr, m, method_func);
+        },
+        .generic => |g| switch (g.lhs.*) {
+            .member => |m| {
+                const func_type = try Type.infer(self, call_expr.callee.*);
+                switch (func_type) {
+                    .function => |f| {
+                         if (try tryResolveStaticType(self, m.parent.*)) |_| {
+                             try functionCall(self, f, call_expr);
+                         } else {
+                             try methodCall(self, call_expr, m, f);
+                         }
+                         return;
+                    },
+                    else => {},
+                }
+            },
+            else => switch (try Type.infer(self, call_expr.callee.*)) {
+                .function => |function| try functionCall(self, function, call_expr),
+                else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
+            },
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
             .function => |function| try functionCall(self, function, call_expr),
@@ -426,7 +483,7 @@ fn tryResolveStaticType(self: *Self, expr: ast.Expression) !?Type {
     }
 }
 
-fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Member) !void {
+fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Member, method: Type.Function) !void {
     var parent_reference_level: i32 = 0;
     var reference_is_mut = switch (m.parent.*) {
         .ident => |ident| try self.getSymbolMutability(ident.ident),
@@ -435,8 +492,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 
     const parent: Type = try .infer(self, m.parent.*);
     b: switch (parent) {
-        inline .@"struct", .@"union" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
-            .method => |method| {
+        inline .@"struct", .@"union" => |@"struct"| {
                 if (!parent.convertsTo(method.params.items[0].type))
                     return utils.printErr(
                         error.IllegalExpression,
@@ -472,11 +528,10 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 for (method.params.items[1..], 0..) |expected_param_type, i| {
                     const received_expr = call_expr.args.items[i];
                     const received_type: Type = try .infer(self, received_expr);
-                    if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return utils.printErr(
-                        error.TypeMismatch,
-                        "comperr: Type doesn't match method signature at {f}. Expected '{f}', got '{f}'\n",
-                        .{ received_expr.getPosition(), expected_param_type.type, received_type },
-                        .red,
+                    if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
+                        expected_param_type.type,
+                        received_type,
+                        received_expr.getPosition(),
                     );
                 }
 
@@ -491,7 +546,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     }
                     break :b2 self_method_reference_level;
                 };
-                try self.print("{s}(", .{method.inner_name});
+                try self.print("{s}(", .{method.name});
                 for (0..@abs(ref_level_diff)) |_|
                     try self.write(
                         if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
@@ -506,14 +561,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     if (i < call_expr.args.items.len) try self.write(", ");
                 }
                 try self.write(")");
-            },
-            .member => return utils.printErr(
-                error.MemberIsNotAMethod,
-                "comperr: {s}.{s} is not a method\n",
-                .{ @"struct".name, m.member_name },
-                .red,
-            ),
-        } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+        },
         .reference => |reference| {
             if (reference.is_mut) reference_is_mut = true;
 

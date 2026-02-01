@@ -50,34 +50,70 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
     try self.nud(.@"!", parseInferredErrorType);
     try self.nud(.@"(", parseGroupType);
     try self.led(.@"!", .logical, parseErrorType);
+    try self.led(.@"<", .call, parseGenericType);
     return self;
 }
 
-pub fn parseType(self: *Self, alloc: std.mem.Allocator, bp: BindingPower) ParserError!ast.Type {
-    // first parse the NUD
-    const token_kind = self.parent_parser.currentTokenKind();
-    const nud_fn = try self.getHandler(.nud, token_kind);
+fn getBindingPower(self: *Self, token: Lexer.TokenKind) BindingPower {
+    return self.bp_lookup.get(token) orelse .default;
+}
 
-    var lhs = try nud_fn(self, alloc);
+    pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower) ParserError!ast.Type {
+        var token = self.parent_parser.currentToken();
+        var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
+            try nud_handler(self, alloc)
+        else {
+            const pos = self.parent_parser.currentPosition();
+            _ = self.parent_parser.advance();
+            return utils.printErr(
+                error.UnexpectedToken,
+                "Unexpected token '{s}' in type at {f}\n",
+                .{ @tagName(std.meta.activeTag(token)), pos },
+                .red,
+            );
+        };
 
-    // while we have a led and (current bp < bp of current token)
-    // continue parsing lhs
-    while (self.bp_lookup.get(self.parent_parser.currentTokenKind())) |current_bp| {
-        if (@intFromEnum(current_bp) <= @intFromEnum(bp)) break;
+        while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentTokenKind()))) {
+            token = self.parent_parser.advance(); // consume operator
+            if (self.led_lookup.get(std.meta.activeTag(token))) |led_handler| {
+                left = try led_handler(self, alloc, left, self.getBindingPower(std.meta.activeTag(token)));
+            } else {
+                return left;
+            }
+        }
 
-        const led_fn = self.getHandler(.led, self.parent_parser.currentTokenKind()) catch |err|
-            switch (err) {
-                error.HandlerDoesNotExist => {
-                    utils.print("Expected type, received other.", .{}, .red);
-                    return err;
-                },
-                else => return err,
-            };
-        lhs = try led_fn(self, alloc, lhs, current_bp);
+        return left;
     }
 
-    return lhs;
-}
+    pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+        // < is already consumed by parseType loop
+        var args = try std.ArrayList(ast.Expression).initCapacity(alloc, 0);
+        
+        if (self.parent_parser.currentTokenKind() != .@">") {
+            while (true) {
+                const arg = try expression.parse(self.parent_parser, .relational);
+                try args.append(alloc, arg);
+                
+                if (self.parent_parser.currentTokenKind() == .@">") break;
+                try self.parent_parser.expect(self.parent_parser.advance(), .@",", "generic arguments", ",");
+                if (self.parent_parser.currentTokenKind() == .@">") break;
+            }
+        }
+        _ = self.parent_parser.advance(); // consume >
+
+        const ptr = try alloc.create(ast.Type);
+        ptr.* = lhs;
+
+        return .{
+            .generic = .{
+                .position = lhs.getPosition(), // Simplification: use start pos
+                .lhs = ptr,
+                .arguments = args,
+            },
+        };
+    }
+
+// ... existing handlers ...
 
 pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
     const position = self.parent_parser.currentPosition();

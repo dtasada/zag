@@ -17,43 +17,9 @@ const Self = @This();
 
 pub const Module = @import("Module.zig");
 
-pub const CompilerError = error{
-    AssignmentToImmutableVariable,
-    BadMutability,
-    DuplicateMember,
-    ExpressionCannotBeEvaluatedAtCompileTime,
-    FailedToCreateParser,
-    FailedToReadSource,
-    FailedToTokenizeSource,
-    IllegalExpression,
-    IllegalStatement,
-    MemberExpressionOnPrimitiveType,
-    MemberIsNotAMethod,
-    MissingArguments,
-    MissingElseClause,
-    NoSuchMember,
-    OutOfMemory,
-    SymbolNotVariable,
-    TooManyArguments,
-    TypeMismatch,
-    TypeNotPrimitive,
-    UndeclaredField,
-    UndeclaredProperty,
-    UndeclaredType,
-    UndeclaredVariable,
-    UnknownSymbol,
-    UnsupportedExpression,
-    UnsupportedType,
-    VariableRedeclaration,
-} || Parser.ParserError ||
-    Lexer.LexerError ||
-    std.fs.Dir.MakeError ||
-    std.fs.Dir.OpenError ||
-    std.fs.Dir.StatFileError ||
-    std.fs.File.OpenError ||
-    std.Io.Writer.Error;
-
 pub const Mode = enum { emit, analysis };
+
+const CompilerError = errors.CompilerError;
 
 alloc: std.mem.Allocator,
 
@@ -61,7 +27,7 @@ alloc: std.mem.Allocator,
 input: ast.RootNode,
 source_path: []const u8,
 
-module_registry: *std.StringHashMap(Module),
+module_registry: *std.StringHashMap(*Module),
 exported_symbols: std.StringHashMap(Module.Symbol),
 
 /// Points to whichever file should be written to.
@@ -93,6 +59,22 @@ indent_level: usize = 0,
 /// Stack of scopes.
 scopes: std.ArrayList(Scope) = .empty,
 
+current_return_type: ?Type = null,
+
+/// Maps a pending generic type instantiation to its inner name.
+pending_instantiations: std.ArrayList(GenericInstantiation),
+
+const GenericInstantiation = struct {
+    inner_name: []const u8,
+    args: []const Value,
+    module: ?*Module,
+    t: union(enum) {
+        @"struct": ast.Statement.StructDeclaration,
+        @"union": ast.Statement.UnionDeclaration,
+        function: ast.Statement.FunctionDefinition,
+    },
+};
+
 /// Maps a symbol name to the symbol's type and inner name.
 pub const Scope = std.StringHashMap(ScopeItem);
 pub const ScopeItem = union(enum) {
@@ -105,7 +87,11 @@ pub const ScopeItem = union(enum) {
         type: Type,
         inner_name: []const u8,
     },
-    module: Module,
+    constant: struct {
+        type: Type,
+        value: Value,
+    },
+    module: *Module,
 };
 
 pub fn getAST(
@@ -200,7 +186,7 @@ pub fn init(
     alloc: std.mem.Allocator,
     input: ast.RootNode,
     file_path: []const u8,
-    registry: *std.StringHashMap(Module),
+    registry: *std.StringHashMap(*Module),
     mode: Mode,
 ) CompilerError!*Self {
     const self = try alloc.create(Self);
@@ -219,6 +205,7 @@ pub fn init(
         .zag_source = null,
         .zag_header_contents = .initContext(alloc, .{ .visited = &visited }),
         .writer = null,
+        .pending_instantiations = .empty,
     };
 
     switch (mode) {
@@ -283,6 +270,7 @@ pub fn deinit(self: *Self) void {
     if (self.module_header) |*h| h.deinit(self.alloc);
     if (self.zag_header) |*z| z.deinit(self.alloc);
     self.scopes.deinit(self.alloc);
+    self.pending_instantiations.deinit(self.alloc);
 }
 
 /// Prints formatted content to whichever file handle `self.writer` is pointing to at the moment.
@@ -328,6 +316,8 @@ pub fn emit(self: *Self) CompilerError!void {
     for (self.input.items) |*statement|
         try statements.compile(self, statement);
 
+    try self.solveGenerics();
+
     try self.output.?.flush();
 
     try self.zag_header.?.write("\n#endif");
@@ -349,7 +339,8 @@ pub fn analyze(self: *Self) CompilerError!void {
                 _ = try self.processImport(import_stmt);
             },
             .function_definition => |*func| {
-                const t = try Type.fromAst(self, func.getType());
+                var t = try Type.fromAst(self, func.getType());
+                t.function.definition = func;
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
                 if (func.is_pub) {
                     try self.exported_symbols.put(func.name, .{
@@ -400,6 +391,21 @@ pub fn analyze(self: *Self) CompilerError!void {
                     ast.Statement.EnumDeclaration => Type.Enum,
                     else => unreachable,
                 } = try .init(self.alloc, struct_decl.name, null);
+
+                // Populate generics
+                switch (@TypeOf(struct_decl)) {
+                    ast.Statement.StructDeclaration, ast.Statement.UnionDeclaration => {
+                        if (struct_decl.generic_types) |generic_types| {
+                            for (generic_types.items) |g| {
+                                try compound_type.generic_params.append(self.alloc, .{
+                                    .name = g.name,
+                                    .type = if (g.type == .inferred) .type else try .fromAst(self, g.type),
+                                });
+                            }
+                        }
+                    },
+                    else => {},
+                }
 
                 const symbol_type = @unionInit(Type, switch (@TypeOf(struct_decl)) {
                     ast.Statement.StructDeclaration => "struct",
@@ -483,7 +489,7 @@ pub fn analyze(self: *Self) CompilerError!void {
     }
 }
 
-pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!Module {
+pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!*Module {
     var parts: std.ArrayList([]const u8) = .empty;
     defer parts.deinit(self.alloc);
 
@@ -512,12 +518,21 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     try child_compiler.analyze();
 
     // Create module from exports
-    var mod = Module.init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
+    // Allocate on heap to ensure pointer stability
+    var mod = try self.alloc.create(Module);
+    mod.* = Module.init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
     mod.source_buffer = ast_res.source;
 
     var it = child_compiler.exported_symbols.iterator();
     while (it.next()) |entry| {
-        try mod.symbols.put(entry.key_ptr.*, entry.value_ptr.*);
+        var sym = entry.value_ptr.*;
+        switch (sym.type) {
+            .@"struct" => |*s| s.module = mod,
+            .@"union" => |*u| u.module = mod,
+            .function => |*f| f.module = mod,
+            else => {},
+        }
+        try mod.symbols.put(entry.key_ptr.*, sym);
     }
 
     // Register
@@ -718,9 +733,92 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         .char => |char| .{ .u8 = char.char },
         .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
             .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
-        .ident => |ident| .{ .type = try self.getSymbolType(ident.ident) },
+        .ident => |ident| b: {
+            const item = self.getScopeItem(ident.ident) catch |err| switch (err) {
+                error.UnknownSymbol => return err, // Or handle primitive types if not in scope?
+                else => return err,
+            };
+            break :b switch (item) {
+                .constant => |c| c.value,
+                .type => |t| .{ .type = t.type },
+                .module => |m| .{ .type = .{ .module = m } }, // Module as value? Type?
+                .symbol => return error.ExpressionCannotBeEvaluatedAtCompileTime, // Variable cannot be evaluated at comptime (unless const?)
+            };
+        },
+        .generic => .{ .type = try Type.infer(self, expression) },
         else => error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
+}
+
+fn solveGenerics(self: *Self) !void {
+    var i: usize = 0;
+    while (i < self.pending_instantiations.items.len) : (i += 1) {
+        const instantiation = self.pending_instantiations.items[i];
+        
+        try self.pushScope();
+        defer self.popScope();
+
+        if (instantiation.module) |mod| {
+            var it = mod.symbols.iterator();
+            var last = &self.scopes.items[self.scopes.items.len - 1];
+            while (it.next()) |entry| {
+                try last.put(entry.key_ptr.*, .{ .symbol = .{ .type = entry.value_ptr.type, .inner_name = entry.value_ptr.name, .is_mut = false } });
+            }
+        }
+
+        switch (instantiation.t) {
+            .@"struct" => |s| {
+                if (s.generic_types) |params| {
+                    for (params.items, 0..) |param, j| {
+                        const val = instantiation.args[j];
+                        switch (val) {
+                            .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
+                            else => try self.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                        }
+                    }
+                }
+                
+                var s_copy = s;
+                s_copy.name = instantiation.inner_name;
+                s_copy.generic_types = null; // Treat as concrete
+                s_copy.is_pub = true;
+                
+                try statements.compile(self, &.{ .struct_declaration = s_copy });
+            },
+            .@"union" => |u| {
+                if (u.generic_types) |params| {
+                    for (params.items, 0..) |param, j| {
+                        const val = instantiation.args[j];
+                        switch (val) {
+                            .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
+                            else => try self.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                        }
+                    }
+                }
+                var u_copy = u;
+                u_copy.name = instantiation.inner_name;
+                u_copy.generic_types = null;
+                u_copy.is_pub = true;
+
+                try statements.compile(self, &.{ .union_declaration = u_copy });
+            },
+            .function => |f| {
+                for (f.generic_parameters.items, 0..) |param, j| {
+                    const val = instantiation.args[j];
+                    switch (val) {
+                        .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
+                        else => try self.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                    }
+                }
+                var f_copy = f;
+                f_copy.name = instantiation.inner_name;
+                f_copy.generic_parameters = .empty;
+                f_copy.is_pub = true;
+                
+                try statements.compile(self, &.{ .function_definition = f_copy });
+            },
+        }
+    }
 }
 
 /// appends a new empty scope to the scope stack.
@@ -741,7 +839,8 @@ pub fn registerSymbol(
     symbol_or_type: union(enum) {
         symbol: struct { is_mut: bool = false, type: Type },
         type: Type,
-        module: Module,
+        module: *Module,
+        constant: struct { type: Type, value: Value },
     },
 ) !void {
     var last = &self.scopes.items[self.scopes.items.len - 1];
@@ -763,6 +862,7 @@ pub fn registerSymbol(
             },
         },
         .module => |module| .{ .module = module },
+        .constant => |constant| .{ .constant = .{ .type = constant.type, .value = constant.value } },
     });
 }
 
@@ -802,12 +902,18 @@ fn registerConstants(self: *Self) !void {
             .type = .{
                 .function = .{
                     .name = "sizeof",
-                    .params = .empty,
-                    .return_type = &.usize,
-                    .generic_params = b: {
-                        var param = [_]Type.Function.Param{.{ .name = "T", .type = .type }};
-                        break :b .fromOwnedSlice(&param);
+                    .params = b: {
+                        var params: std.ArrayList(Type.Function.Param) = .empty;
+                        try params.append(self.alloc, .{ .name = "T", .type = .type });
+                        break :b params;
                     },
+                    .return_type = b: {
+                        const t = try self.alloc.create(Type);
+                        t.* = .usize;
+                        break :b t;
+                    },
+                    .generic_params = .empty,
+                    .module = null,
                 },
             },
         },
@@ -819,6 +925,7 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
     while (it.next()) |scope|
         return switch (scope.get(symbol) orelse continue) {
             .module => |module| .{ .module = module },
+            .constant => |c| c.type,
             inline .symbol, .type => |s| s.type,
         };
 
@@ -830,7 +937,7 @@ pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| return scope.get(symbol) orelse continue;
 
-    return error.SymbolNotVariable;
+    return error.UnknownSymbol;
 }
 
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
@@ -860,6 +967,12 @@ fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         if (scope.get(symbol)) |item| {
             return switch (item) {
                 .module => |module| module.name,
+                .constant => return utils.printErr(
+                    error.SymbolNotVariable,
+                    "comperr: Symbol '{s}' is a constant, not a variable\n",
+                    .{symbol},
+                    .red,
+                ),
                 inline else => |s| s.inner_name,
             };
         }

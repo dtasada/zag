@@ -1,7 +1,7 @@
 pub bind fn printf(fmt: &c_char, args...) c_int;
 pub bind fn malloc(size: usize) &mut void;
 
-pub fn alloc<T>(size: usize) &void {
+pub fn alloc<T>() &void {
     return malloc(sizeof(T));
 }
 

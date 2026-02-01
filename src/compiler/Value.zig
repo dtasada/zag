@@ -48,6 +48,32 @@ pub const Value = union(enum) {
         };
     }
 
+    pub fn getType(self: Value) Type {
+        return switch (self) {
+            .i8 => .i8,
+            .i16 => .i16,
+            .i32 => .i32,
+            .i64 => .i64,
+            .u8 => .u8,
+            .u16 => .u16,
+            .u32 => .u32,
+            .u64 => .u64,
+            .f32 => .f32,
+            .f64 => .f64,
+            .bool => .bool,
+            .type => .type,
+            .void => .void,
+            .@"struct" => |s| .{ .@"struct" = s.type },
+            .@"union" => |u| .{ .@"union" = u.type },
+            .@"enum" => |e| .{ .@"enum" = e.type },
+            .optional => |opt| opt.type,
+            .reference => |ref| .{ .reference = ref.type },
+            .array => |arr| .{ .array = arr.type },
+            .error_union => |err| .{ .error_union = err.type },
+            .function => |func| .{ .function = func.type },
+        };
+    }
+
     pub fn binaryOperation(lhs: Value, op: ast.BinaryOperator, rhs: Value) !Value {
         if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs))
             @panic("invalid binary operation: the two values are not of the same type\n");

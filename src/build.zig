@@ -9,7 +9,7 @@ const Compiler = @import("Compiler");
 pub fn transpile(
     alloc: std.mem.Allocator,
     file_path: []const u8,
-    registry: *std.StringHashMap(Compiler.Module),
+    registry: *std.StringHashMap(*Compiler.Module),
 ) !void {
     // use ArenaAllocator to avoid too many `.deinit()` methods.
     var arena_back: std.heap.ArenaAllocator = .init(alloc);
@@ -40,48 +40,30 @@ pub fn transpile(
 fn transpileModule(
     alloc: std.mem.Allocator,
     dir_path: []const u8,
-    registry: *std.StringHashMap(Compiler.Module),
+    registry: *std.StringHashMap(*Compiler.Module),
 ) !void {
-    var src = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-    defer src.close();
+    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
+    defer dir.close();
 
-    var files_it = src.iterate();
+    var walker = try dir.walk(alloc);
+    defer walker.deinit();
 
-    while (try files_it.next()) |file| switch (file.kind) {
-        .file => {
-            if (!std.mem.endsWith(u8, file.name, ".zag")) continue;
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, ".zag")) continue;
 
-            const file_path = try std.fs.path.join(alloc, &.{ dir_path, file.name });
-            defer alloc.free(file_path);
+        const file_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir_path, entry.path });
+        defer alloc.free(file_path);
 
-            try transpile(alloc, file_path, registry);
-        },
-        .directory => {
-            const new_path = try std.fs.path.join(alloc, &.{ dir_path, file.name });
-            defer alloc.free(new_path);
-
-            try transpileModule(alloc, new_path, registry);
-        },
-        else => unreachable,
-    };
+        try transpile(alloc, file_path, registry);
+    }
 }
 
-pub fn build() anyerror!void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
+pub fn build() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-
-    var registry = std.StringHashMap(Compiler.Module).init(alloc);
-    defer registry.deinit();
-
+    var registry = std.StringHashMap(*Compiler.Module).init(alloc);
     try transpileModule(alloc, "src", &registry);
-
-    compile(alloc) catch |err| return utils.printErr(
-        error.FailedToCompileTarget,
-        "Build error: {}\n",
-        .{err},
-        .red,
-    );
 }
 
 /// Compiles C code into machine code.

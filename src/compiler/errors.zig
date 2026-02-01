@@ -1,8 +1,46 @@
+const std = @import("std");
 const utils = @import("utils");
 
-const CompilerError = @import("Compiler.zig").CompilerError;
-
 const Type = @import("Type.zig").Type;
+
+pub const CompilerError = error{
+    AssignmentToImmutableVariable,
+    BadMutability,
+    DuplicateMember,
+    ExpressionCannotBeEvaluatedAtCompileTime,
+    FailedToCreateParser,
+    FailedToReadSource,
+    FailedToTokenizeSource,
+    GenericArgumentCountMismatch,
+    GenericInstantiationFailed,
+    IllegalExpression,
+    IllegalStatement,
+    MemberExpressionOnPrimitiveType,
+    MemberIsNotAMethod,
+    MissingArguments,
+    MissingElseClause,
+    NoSuchMember,
+    OutOfMemory,
+    SymbolNotVariable,
+    TooManyArguments,
+    TypeMismatch,
+    TypeNotGeneric,
+    TypeNotPrimitive,
+    UndeclaredField,
+    UndeclaredProperty,
+    UndeclaredType,
+    UndeclaredVariable,
+    UnknownSymbol,
+    UnsupportedExpression,
+    UnsupportedType,
+    VariableRedeclaration,
+} || @import("Parser").ParserError ||
+    @import("Lexer").LexerError ||
+    std.fs.Dir.MakeError ||
+    std.fs.Dir.OpenError ||
+    std.fs.Dir.StatFileError ||
+    std.fs.File.OpenError ||
+    std.Io.Writer.Error;
 
 pub fn typeMismatch(
     expected_type: Type,

@@ -386,6 +386,12 @@ pub const Type = union(enum) {
         return_type: *const Type,
     };
 
+    const Generic = struct {
+        position: utils.Position,
+        lhs: *const Type,
+        arguments: ArgumentList,
+    };
+
     inferred: struct { position: utils.Position },
     symbol: struct { position: utils.Position, symbol: []const u8 },
     optional: struct { position: utils.Position, inner: *const Type },
@@ -394,5 +400,12 @@ pub const Type = union(enum) {
     array: Array,
     error_union: ErrorUnion,
     function: Function,
+    generic: Generic,
     variadic: struct { position: utils.Position },
+
+    pub inline fn getPosition(self: Type) utils.Position {
+        return switch (self) {
+            inline else => |some| some.position,
+        };
+    }
 };
