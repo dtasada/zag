@@ -280,7 +280,6 @@ pub const Statement = union(enum) {
         const Member = struct {
             name: []const u8,
             type: Type,
-            default_value: ?ast.Expression = null,
         };
         pos: utils.Position,
         is_pub: bool,

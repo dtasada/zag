@@ -803,6 +803,8 @@ pub fn registerSymbol(
         constant: struct { type: Type, value: Value },
     },
 ) !void {
+    std.debug.print("registering symbol: '{s}'\n", .{name});
+    try @import("pretty").print(self.alloc, symbol_or_type, .{});
     var last = &self.scopes.items[self.scopes.items.len - 1];
     try last.put(name, switch (symbol_or_type) {
         .symbol => |symbol| .{

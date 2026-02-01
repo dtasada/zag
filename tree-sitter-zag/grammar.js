@@ -148,10 +148,6 @@ export default grammar({
       commaSep1(field("name", $.ident)),
       ":",
       field("type", $.type),
-      optional(seq(
-        "=",
-        field("default_value", $.expression),
-      )),
     ),
 
     enum_declaration: $ => seq(

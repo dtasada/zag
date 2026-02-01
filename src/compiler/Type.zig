@@ -286,10 +286,8 @@ pub const Type = union(enum) {
         var args: std.ArrayList(Value) = try .initCapacity(compiler.alloc, arguments.items.len);
         defer args.deinit(compiler.alloc);
 
-        for (arguments.items) |arg| {
-            const val = try compiler.solveComptimeExpression(arg);
-            args.appendAssumeCapacity(val);
-        }
+        for (arguments.items) |arg|
+            args.appendAssumeCapacity(try compiler.solveComptimeExpression(arg));
 
         // Check generic params
         const params = switch (base_type) {
@@ -746,24 +744,15 @@ pub const Type = union(enum) {
             else => {},
         }
 
-        try compiler.registerSymbol(type_decl.name, .{
-            .type = switch (T) {
-                .@"struct" => .{ .@"struct" = compound_type },
-                .@"union" => .{ .@"union" = compound_type },
-                .@"enum" => .{ .@"enum" = compound_type },
-            },
-        });
+        try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
 
         try compiler.pushScope();
         defer compiler.popScope();
 
         switch (T) {
-            .@"struct", .@"union" => {
-                if (type_decl.generic_types) |generic_types| {
-                    for (generic_types.items) |g| {
-                        try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } });
-                    }
-                }
+            .@"struct", .@"union" => if (type_decl.generic_types) |generic_types| {
+                for (generic_types.items) |g|
+                    try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } });
             },
             else => {},
         }
@@ -778,13 +767,11 @@ pub const Type = union(enum) {
             );
 
             try compound_type.members.put(member.name, switch (T) {
-                // TODO: default values
                 .@"struct" => try fromAstPtr(compiler, member.type),
                 .@"union" => if (member.type) |t| try fromAstPtr(compiler, t) else &.void,
-                .@"enum" => if (member.value) |value| b: {
-                    enum_last_value = (try compiler.solveComptimeExpression(value)).u64;
-                    break :b enum_last_value;
-                } else b: {
+                .@"enum" => if (member.value) |value|
+                    (try compiler.solveComptimeExpression(value)).u64
+                else b: {
                     const val = enum_last_value;
                     enum_last_value += 1;
                     break :b val;

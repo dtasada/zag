@@ -148,13 +148,13 @@ pub fn compoundTypeDeclaration(
                         .@"enum" => null,
                     };
 
-                const default_value: ?ast.Expression =
+                const value: ?ast.Expression =
                     switch (T) {
-                        .@"struct", .@"enum" => if (self.currentTokenKind() == .@"=") blk: {
+                        .@"enum" => if (self.currentTokenKind() == .@"=") blk: {
                             _ = self.advance();
                             break :blk try expressions.parse(self, .default);
                         } else null,
-                        .@"union" => null,
+                        else => null,
                     };
 
                 for (member_names.items) |name| {
@@ -162,11 +162,10 @@ pub fn compoundTypeDeclaration(
                         .@"struct" => compound.members.append(self.alloc, .{
                             .name = name,
                             .type = member_type orelse unreachable,
-                            .default_value = default_value,
                         }),
                         .@"enum" => compound.members.append(self.alloc, .{
                             .name = name,
-                            .value = default_value,
+                            .value = value,
                         }),
                         .@"union" => compound.members.append(self.alloc, .{
                             .name = name,
