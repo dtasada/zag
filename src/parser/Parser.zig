@@ -1,5 +1,4 @@
 const std = @import("std");
-const pretty = @import("pretty");
 const utils = @import("utils");
 pub const ast = @import("ast.zig");
 
@@ -345,11 +344,12 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
     if (self.currentTokenKind() == closing_token) {
         _ = self.advance();
     } else while (true) {
-        const bp: BindingPower = if (is_generic) .relational else .default;
+        const bp: BindingPower = if (is_generic) .primary else .default;
         try args.append(self.alloc, try expressions.parse(self, bp));
 
         self.expectSilent(self.currentToken(), .@",") catch {
-            try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
+            const consumed = self.advance();
+            try self.expect(consumed, closing_token, environment, @tagName(closing_token));
             break;
         };
 

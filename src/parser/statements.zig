@@ -1,5 +1,4 @@
 const std = @import("std");
-const pretty = @import("pretty");
 const utils = @import("utils");
 const ast = @import("ast.zig");
 const expressions = @import("expressions.zig");

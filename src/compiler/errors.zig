@@ -104,6 +104,8 @@ pub fn missingArguments(
 }
 
 pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
+
     return utils.printErr(
         error.UnknownSymbol,
         "comperr: Unknown symbol '{s}' at {f}.\n",

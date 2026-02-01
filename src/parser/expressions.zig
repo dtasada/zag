@@ -1,5 +1,4 @@
 const std = @import("std");
-const pretty = @import("pretty");
 const utils = @import("utils");
 const ast = @import("ast.zig");
 const statements = @import("statements.zig");
@@ -231,11 +230,12 @@ fn isGenericLookahead(self: *Self) bool {
 }
 
 pub fn generic(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+    const args = try self.parseGenericArguments();
     return .{
         .generic = .{
             .pos = lhs.getPosition(),
             .lhs = lhs,
-            .arguments = try self.parseGenericArguments(),
+            .arguments = args,
         },
     };
 }

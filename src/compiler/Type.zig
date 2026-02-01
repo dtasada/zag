@@ -283,8 +283,7 @@ pub const Type = union(enum) {
         arguments: ast.ArgumentList,
         pos: utils.Position,
     ) CompilerError!Self {
-        var args: std.ArrayList(Value) = .empty;
-        try args.ensureTotalCapacity(compiler.alloc, arguments.items.len);
+        var args: std.ArrayList(Value) = try .initCapacity(compiler.alloc, arguments.items.len);
         defer args.deinit(compiler.alloc);
 
         for (arguments.items) |arg| {
@@ -305,14 +304,12 @@ pub const Type = union(enum) {
             ),
         };
 
-        if (params.items.len != args.items.len) {
-            return utils.printErr(
-                error.GenericArgumentCountMismatch,
-                "comperr: Expected {} generic arguments, got {} ({f})\n",
-                .{ params.items.len, args.items.len, pos },
-                .red,
-            );
-        }
+        if (params.items.len != args.items.len) return utils.printErr(
+            error.GenericArgumentCountMismatch,
+            "comperr: Expected {} generic arguments, got {} ({f})\n",
+            .{ params.items.len, args.items.len, pos },
+            .red,
+        );
 
         // Mangle name
         const base_name = switch (base_type) {
@@ -328,7 +325,10 @@ pub const Type = union(enum) {
         var all_match = true;
         for (params.items, 0..) |p, i| {
             const arg = args.items[i];
-            if (arg != .type or arg.type != .generic_param or !std.mem.eql(u8, arg.type.generic_param, p.name)) {
+            if (arg != .type or
+                arg.type != .generic_param or
+                !std.mem.eql(u8, arg.type.generic_param, p.name))
+            {
                 all_match = false;
                 break;
             }
@@ -337,7 +337,8 @@ pub const Type = union(enum) {
 
         var mangled_name: std.ArrayList(u8) = .empty;
         defer mangled_name.deinit(compiler.alloc);
-        try mangled_name.writer(compiler.alloc).print("{s}", .{base_name});
+
+        _ = try mangled_name.writer(compiler.alloc).write(base_name);
 
         for (args.items) |arg|
             try mangled_name.writer(compiler.alloc).print("_{}", .{arg.hash()});

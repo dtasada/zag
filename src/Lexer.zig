@@ -323,74 +323,67 @@ fn parseBinaryOperator(self: *Self, alloc: std.mem.Allocator) !void {
         else => unreachable,
     };
 
-    _ = self.advance();
-    const double_token: Token =
-        if (self.pos < self.input.len) switch (self.currentChar()) {
-            '=' => blk: {
-                _ = self.advance();
-                break :blk switch (first_token) {
-                    .@"=" => .@"==",
-                    .@"!" => .@"!=",
-                    .@">" => .@">=",
-                    .@"<" => .@"<=",
-                    .@"+" => .@"+=",
-                    .@"-" => .@"-=",
-                    .@"*" => .@"*=",
-                    .@"/" => .@"/=",
-                    .@"%" => .@"%=",
-                    .@"&" => .@"&=",
-                    .@"|" => .@"|=",
-                    .@"^" => .@"^=",
-                    else => unreachable,
-                };
-            },
-            '>' => blk: {
-                _ = self.advance();
-                break :blk switch (first_token) {
-                    .@">" => .@">>",
-                    .@"-" => .@"->",
-                    else => first_token,
-                };
-            },
-            '<' => blk: {
-                _ = self.advance();
-                break :blk switch (first_token) {
-                    .@"<" => .@"<<",
-                    else => first_token,
-                };
-            },
-            '.' => blk: {
-                _ = self.advance();
-                break :blk switch (first_token) {
-                    .@"." => .@"..",
-                    else => first_token,
-                };
-            },
-            else => first_token,
-        } else first_token;
+    _ = self.advance(); // advance past first token
 
-    const triple_token: Token =
+    const double_token: ?Token =
         if (self.pos < self.input.len) switch (self.currentChar()) {
-            '=' => blk: {
-                _ = self.advance();
-                break :blk switch (double_token) {
-                    .@">>" => .@">>=",
-                    .@"<<" => .@"<<=",
-                    .@".." => .@"..=",
-                    else => double_token,
-                };
+            '=' => switch (first_token) {
+                .@"=" => .@"==",
+                .@"!" => .@"!=",
+                .@">" => .@">=",
+                .@"<" => .@"<=",
+                .@"+" => .@"+=",
+                .@"-" => .@"-=",
+                .@"*" => .@"*=",
+                .@"/" => .@"/=",
+                .@"%" => .@"%=",
+                .@"&" => .@"&=",
+                .@"|" => .@"|=",
+                .@"^" => .@"^=",
+                else => null,
             },
-            '.' => blk: {
-                _ = self.advance();
-                break :blk switch (double_token) {
-                    .@".." => .@"...",
-                    else => double_token,
-                };
+            '>' => switch (first_token) {
+                .@">" => .@">>",
+                .@"-" => .@"->",
+                else => null,
             },
-            else => double_token,
-        } else double_token;
+            '<' => switch (first_token) {
+                .@"<" => .@"<<",
+                else => null,
+            },
+            '.' => switch (first_token) {
+                .@"." => .@"..",
+                else => null,
+            },
+            else => null,
+        } else null;
 
-    try self.appendToken(alloc, triple_token);
+    if (double_token) |_| {
+        _ = self.advance();
+    } else {
+        try self.appendToken(alloc, first_token);
+        return;
+    }
+
+    const triple_token: ?Token =
+        if (self.pos < self.input.len) switch (self.currentChar()) {
+            '=' => switch (double_token.?) {
+                .@">>" => .@">>=",
+                .@"<<" => .@"<<=",
+                .@".." => .@"..=",
+                else => null,
+            },
+            '.' => switch (double_token.?) {
+                .@".." => .@"...",
+                else => null,
+            },
+            else => null,
+        } else null;
+
+    if (triple_token) |tt| {
+        _ = self.advance();
+        try self.appendToken(alloc, tt);
+    } else try self.appendToken(alloc, double_token.?);
 }
 
 /// Appends token and then advances one character. Used for readability

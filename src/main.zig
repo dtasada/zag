@@ -1,6 +1,5 @@
 const std = @import("std");
 const cli = @import("cli");
-const pretty = @import("pretty");
 const builtin = @import("builtin");
 
 const utils = @import("utils");
