@@ -1,4 +1,4 @@
-import lib;
+import std;
 
 // Test generic parameter in signature
 fn identity<T>(val: T) T {
@@ -7,20 +7,14 @@ fn identity<T>(val: T) T {
 
 fn main() i32 {
     let x = identity<i32>(42);
-    lib.printf("identity: %d\n", x);
+    std.printf("identity: %d\n", x);
 
     let y = identity<f32>(42);
-    lib.printf("identity: %f\n", y);
+    std.printf("identity: %f\n", y);
     
-    let ms = lib.alloc<i32>();
-    let b = Box<i32> { content: 123 };
+    let ms = std.alloc<i32>();
+    let b = std.Box<i32> { content: 123 };
     b.print();
-}
 
-struct Box<T> {
-    content: T,
-
-    fn print(self: Box<T>) void {
-        lib.printf("box: %d\n", self.content);
-    }
+    let gs = std.Box<i32> {a: 2};
 }

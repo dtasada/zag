@@ -30,3 +30,7 @@ pub fn do_something() void {
     let b = 7;
     printf("hello there! %d\n", a + b);
 }
+
+struct Box<T> {
+    content: T,
+}

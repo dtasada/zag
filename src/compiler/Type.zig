@@ -687,8 +687,6 @@ pub const Type = union(enum) {
                             .name = g.name,
                             .type = if (g.type == .inferred) .type else try .fromAst(compiler, g.type),
                         });
-                        // Register generic param in scope as a placeholder
-                        try compiler.registerSymbol(g.name, .{ .type = .generic_param });
                     }
                 }
             },
@@ -705,6 +703,17 @@ pub const Type = union(enum) {
 
         try compiler.pushScope();
         defer compiler.popScope();
+
+        switch (T) {
+            .@"struct", .@"union" => {
+                if (type_decl.generic_types) |generic_types| {
+                    for (generic_types.items) |g| {
+                        try compiler.registerSymbol(g.name, .{ .type = .generic_param });
+                    }
+                }
+            },
+            else => {},
+        }
 
         var enum_last_value: usize = 0;
         for (type_decl.members.items) |member| {

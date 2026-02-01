@@ -399,24 +399,20 @@ pub fn analyze(self: *Self) CompilerError!void {
                 var t = try Type.fromAst(self, func.getType());
                 t.function.definition = func;
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
-                if (func.is_pub) {
-                    try self.exported_symbols.put(func.name, .{
-                        .name = func.name,
-                        .is_pub = true,
-                        .type = t,
-                    });
-                }
+                if (func.is_pub) try self.exported_symbols.put(func.name, .{
+                    .name = func.name,
+                    .is_pub = func.is_pub,
+                    .type = t,
+                });
             },
             .binding_function_declaration => |*func| {
                 const t = try Type.fromAst(self, func.getType());
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
-                if (func.is_pub) {
-                    try self.exported_symbols.put(func.name, .{
-                        .name = func.name,
-                        .is_pub = true,
-                        .type = t,
-                    });
-                }
+                if (func.is_pub) try self.exported_symbols.put(func.name, .{
+                    .name = func.name,
+                    .is_pub = func.is_pub,
+                    .type = t,
+                });
             },
             .variable_definition => |*var_def| {
                 // for variables, we need to infer type if possible or take declared type
@@ -433,113 +429,33 @@ pub fn analyze(self: *Self) CompilerError!void {
                     },
                 });
 
-                if (var_def.is_pub) {
-                    try self.exported_symbols.put(var_def.variable_name, .{
-                        .name = var_def.variable_name,
-                        .is_pub = true,
-                        .type = final_type,
-                    });
-                }
+                if (var_def.is_pub) try self.exported_symbols.put(var_def.variable_name, .{
+                    .name = var_def.variable_name,
+                    .is_pub = var_def.is_pub,
+                    .type = final_type,
+                });
             },
-            inline .struct_declaration, .union_declaration, .enum_declaration => |struct_decl| {
-                var compound_type: switch (@TypeOf(struct_decl)) {
-                    ast.Statement.StructDeclaration => Type.Struct,
-                    ast.Statement.UnionDeclaration => Type.Union,
-                    ast.Statement.EnumDeclaration => Type.Enum,
+            inline .struct_declaration, .union_declaration, .enum_declaration => |*struct_decl| {
+                const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (@TypeOf(struct_decl.*)) {
+                    ast.Statement.StructDeclaration => .@"struct",
+                    ast.Statement.UnionDeclaration => .@"union",
+                    ast.Statement.EnumDeclaration => .@"enum",
                     else => unreachable,
-                } = try .init(self.alloc, struct_decl.name, null);
+                }, struct_decl);
 
-                // Populate generics
-                switch (@TypeOf(struct_decl)) {
-                    ast.Statement.StructDeclaration, ast.Statement.UnionDeclaration => {
-                        if (struct_decl.generic_types) |generic_types| {
-                            for (generic_types.items) |g| {
-                                try compound_type.generic_params.append(self.alloc, .{
-                                    .name = g.name,
-                                    .type = if (g.type == .inferred) .type else try .fromAst(self, g.type),
-                                });
-                            }
-                        }
-                    },
-                    else => {},
-                }
-
-                const symbol_type = @unionInit(Type, switch (@TypeOf(struct_decl)) {
+                const symbol_type = @unionInit(Type, switch (@TypeOf(struct_decl.*)) {
                     ast.Statement.StructDeclaration => "struct",
                     ast.Statement.UnionDeclaration => "union",
                     ast.Statement.EnumDeclaration => "enum",
                     else => unreachable,
                 }, compound_type);
 
-                try self.registerSymbol(struct_decl.name, .{ .type = symbol_type });
-
-                // Populate members
-                switch (@TypeOf(struct_decl)) {
-                    ast.Statement.StructDeclaration => for (struct_decl.members.items) |member| {
-                        try compound_type.members.put(member.name, try .fromAstPtr(self, member.type));
-                    },
-                    ast.Statement.UnionDeclaration => for (struct_decl.members.items) |member| {
-                        try compound_type.members.put(member.name, b: {
-                            const member_type = try self.alloc.create(Type);
-                            member_type.* = if (member.type) |t| try .fromAst(self, t) else .void;
-                            break :b member_type;
-                        });
-                    },
-                    ast.Statement.EnumDeclaration => {
-                        var enum_last_value: usize = 0;
-                        for (struct_decl.members.items) |member| {
-                            try compound_type.members.put(member.name, if (member.value) |value| b: {
-                                enum_last_value = (try self.solveComptimeExpression(value)).u64;
-                                break :b enum_last_value;
-                            } else b: {
-                                const val = enum_last_value + 1;
-                                enum_last_value += 1;
-                                break :b val;
-                            });
-                        }
-                    },
-                    else => unreachable,
-                }
-
-                // Populate methods
-                for (struct_decl.methods.items) |method| {
-                    var params: std.ArrayList(Type.Function.Param) = try .initCapacity(
-                        self.alloc,
-                        method.parameters.items.len,
-                    );
-                    for (method.parameters.items) |p|
-                        params.appendAssumeCapacity(.{
-                            .name = p.name,
-                            .type = try .fromAst(self, p.type),
-                        });
-
-                    var generic_params: std.ArrayList(Type.Function.Param) = .empty;
-                    for (method.generic_parameters.items) |p|
-                        generic_params.appendAssumeCapacity(.{
-                            .name = p.name,
-                            .type = if (p.type == .inferred) .type else try .fromAst(self, p.type),
-                        });
-
-                    const return_type: *Type = try .fromAstPtr(self, method.return_type);
-                    try compound_type.methods.put(method.name, .{
-                        .name = method.name,
-                        .inner_name = try std.fmt.allocPrint(self.alloc, "__zag_{s}_{s}", .{
-                            struct_decl.name,
-                            method.name,
-                        }),
-                        .generic_params = generic_params,
-                        .params = params,
-                        .return_type = return_type,
-                    });
-                }
-
-                if (struct_decl.is_pub) {
-                    try self.exported_symbols.put(struct_decl.name, .{
-                        .name = struct_decl.name,
-                        .is_pub = true,
-                        .type = symbol_type,
-                    });
-                }
+                // Exported symbols logic
+                if (struct_decl.is_pub) try self.exported_symbols.put(struct_decl.name, .{
+                    .name = struct_decl.name,
+                    .is_pub = struct_decl.is_pub,
+                    .type = symbol_type,
+                });
             },
             else => {},
         }
@@ -808,71 +724,71 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
 }
 
 fn solveGenerics(self: *Self) !void {
-    var i: usize = 0;
-    while (i < self.pending_instantiations.items.len) : (i += 1) {
-        const instantiation = self.pending_instantiations.items[i];
-
+    for (self.pending_instantiations.items) |instantiation| {
         try self.pushScope();
         defer self.popScope();
 
         if (instantiation.module) |mod| {
             var it = mod.symbols.iterator();
             var last = &self.scopes.items[self.scopes.items.len - 1];
-            while (it.next()) |entry| {
-                try last.put(entry.key_ptr.*, .{ .symbol = .{ .type = entry.value_ptr.type, .inner_name = entry.value_ptr.name, .is_mut = false } });
-            }
+            while (it.next()) |entry|
+                try last.put(entry.key_ptr.*, .{ .symbol = .{
+                    .type = entry.value_ptr.type,
+                    .inner_name = entry.value_ptr.name,
+                    .is_mut = false,
+                } });
         }
 
         switch (instantiation.t) {
-            .@"struct" => |s| {
-                if (s.generic_types) |params| {
+            inline .@"struct", .@"union" => |s, tag| {
+                if (s.generic_types) |params|
                     for (params.items, 0..) |param, j| {
                         const val = instantiation.args[j];
                         switch (val) {
                             .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
-                            else => try self.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                            else => try self.registerSymbol(param.name, .{ .constant = .{
+                                .type = val.getType(),
+                                .value = val,
+                            } }),
                         }
-                    }
-                }
+                    };
 
-                var s_copy = s;
-                s_copy.name = instantiation.inner_name;
-                s_copy.generic_types = null; // Treat as concrete
-                s_copy.is_pub = true;
-
-                try statements.compile(self, &.{ .struct_declaration = s_copy });
-            },
-            .@"union" => |u| {
-                if (u.generic_types) |params| {
-                    for (params.items, 0..) |param, j| {
-                        const val = instantiation.args[j];
-                        switch (val) {
-                            .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
-                            else => try self.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
-                        }
-                    }
-                }
-                var u_copy = u;
-                u_copy.name = instantiation.inner_name;
-                u_copy.generic_types = null;
-                u_copy.is_pub = true;
-
-                try statements.compile(self, &.{ .union_declaration = u_copy });
+                try statements.compile(self, &@unionInit(
+                    ast.Statement,
+                    @tagName(tag) ++ "_declaration",
+                    .{
+                        .name = instantiation.inner_name,
+                        .generic_types = null,
+                        .is_pub = true,
+                        .pos = s.pos,
+                        .members = s.members,
+                        .methods = s.methods,
+                    },
+                ));
             },
             .function => |f| {
                 for (f.generic_parameters.items, 0..) |param, j| {
                     const val = instantiation.args[j];
                     switch (val) {
                         .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
-                        else => try self.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                        else => try self.registerSymbol(param.name, .{ .constant = .{
+                            .type = val.getType(),
+                            .value = val,
+                        } }),
                     }
                 }
-                var f_copy = f;
-                f_copy.name = instantiation.inner_name;
-                f_copy.generic_parameters = .empty;
-                f_copy.is_pub = true;
 
-                try statements.compile(self, &.{ .function_definition = f_copy });
+                try statements.compile(self, &.{
+                    .function_definition = .{
+                        .name = instantiation.inner_name,
+                        .generic_parameters = .empty,
+                        .is_pub = true,
+                        .pos = f.pos,
+                        .parameters = f.parameters,
+                        .return_type = f.return_type,
+                        .body = f.body,
+                    },
+                });
             },
         }
     }
