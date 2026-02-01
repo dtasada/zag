@@ -11,14 +11,9 @@ pub fn transpile(
     file_path: []const u8,
     registry: *std.StringHashMap(*Compiler.Module),
 ) !void {
-    // use ArenaAllocator to avoid too many `.deinit()` methods.
-    var arena_back: std.heap.ArenaAllocator = .init(alloc);
-    const arena = arena_back.allocator();
-    defer arena_back.deinit();
+    const ast = try Compiler.getAST(alloc, file_path);
 
-    const ast = try Compiler.getAST(arena, file_path);
-
-    var compiler = Compiler.init(arena, ast.root, file_path, registry, .emit) catch |err|
+    var compiler = Compiler.init(alloc, ast.root, file_path, registry, .emit) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",
@@ -62,8 +57,13 @@ fn transpileModule(
 pub fn build() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-    var registry = std.StringHashMap(*Compiler.Module).init(alloc);
-    try transpileModule(alloc, "src", &registry);
+
+    var arena_back: std.heap.ArenaAllocator = .init(alloc);
+    defer arena_back.deinit();
+    const arena = arena_back.allocator();
+
+    var registry = std.StringHashMap(*Compiler.Module).init(arena);
+    try transpileModule(arena, "src", &registry);
 }
 
 /// Compiles C code into machine code.

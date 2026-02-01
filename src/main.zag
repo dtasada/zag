@@ -14,8 +14,4 @@ fn main() i32 {
     c.printf("identity: %f\n", y);
     
     let ms = std.alloc<i32>();
-    let b = std.Box<i32> { content: 123 };
-    b.print();
-
-    let gs = std.Box<i32> {a: 2};
 }

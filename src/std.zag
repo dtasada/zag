@@ -4,43 +4,43 @@ pub fn alloc<T>() &void {
     return c.malloc(sizeof(T));
 }
 
-// pub fn realloc<T>(ptr: &mut T, new_size: usize) &mut T {
-//     return c.realloc(ptr, new_size * sizeof(T));
-// }
+pub fn realloc<T>(ptr: &mut T, new_size: usize) &mut T {
+    return c.realloc(ptr, new_size * sizeof(T));
+}
 
 pub fn free<T>(ptr: &T) void {
     c.free(ptr);
 }
 
-// pub fn alloc_slice<T>(N: usize) &void {
-//     return c.malloc(sizeof(T) * N);
-// }
+pub fn alloc_slice<T>(N: usize) &void {
+    return c.malloc(sizeof(T) * N);
+}
 
-// pub struct ArrayList<T> {
-//     items: &mut T,
-//     capacity: usize,
-//     len: usize,
-// 
-//     pub fn init() ArrayList<T>{ 
-//         return ArrayList<T> {
-//             items: alloc_slice<T>(16),
-//             capacity: 16,
-//             len: 0,
-//         };
-//     }
-// 
-//     pub fn deinit(self: ArrayList<T>) void {
-//         free(self.items);
-//         self.capacity = 0;
-//         self.len = 0;
-//     }
-// 
-//     pub fn append(self: ArrayList<T>, item: T) void {
-//         if (self.len == self.capacity) {
-//             self.capacity = if (self.capacity > 0) self.capacity * 2 else 16;
-//             self.items = realloc<T>(self.items, self.capacity);
-//         }
-//         self.items[self.len] = item;
-//         self.len += 1;
-//     }
-// }
+pub struct ArrayList<T> {
+    items: &mut T,
+    capacity: usize,
+    len: usize,
+
+    pub fn init() ArrayList<T>{ 
+        return ArrayList<T> {
+            items: alloc_slice<T>(16),
+            capacity: 16,
+            len: 0,
+        };
+    }
+
+    pub fn deinit(self: ArrayList<T>) void {
+        free(self.items);
+        self.capacity = 0;
+        self.len = 0;
+    }
+
+    pub fn append(self: ArrayList<T>, item: T) void {
+        if (self.len == self.capacity) {
+            self.capacity = if (self.capacity > 0) self.capacity * 2 else 16;
+            self.items = realloc<T>(self.items, self.capacity);
+        }
+        self.items[self.len] = item;
+        self.len += 1;
+    }
+}

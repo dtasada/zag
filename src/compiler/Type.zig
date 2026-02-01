@@ -476,7 +476,7 @@ pub const Type = union(enum) {
             .binary => |binary| {
                 const lhs: Type = try .infer(compiler, binary.lhs.*);
                 const rhs: Type = try .infer(compiler, binary.rhs.*);
-                if (!lhs.eql(rhs)) return utils.printErr(
+                if (!lhs.convertsTo(rhs)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression: {f} {s} {f} ({f})\n",
                     .{ lhs, @tagName(binary.op), rhs, binary.lhs.getPosition() },
@@ -520,10 +520,10 @@ pub const Type = union(enum) {
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
                 const expected: Type = try .infer(compiler, @"if".body.*);
                 const received: Type = try .infer(compiler, @"else".*);
-                if (!expected.eql(received)) return utils.printErr(
+                if (!expected.convertsTo(received)) return utils.printErr(
                     error.TypeMismatch,
-                    "comperr: Type mismatch in if expression at {f}: {f} and {f} are not compatible",
-                    .{ @"if".pos, expected, received },
+                    "comperr: Type mismatch in if expression: {f} and {f} are not compatible ({f}).\n",
+                    .{ expected, received, @"if".pos },
                     .red,
                 );
 
@@ -538,7 +538,7 @@ pub const Type = union(enum) {
                 .array => |array| array.inner.*,
                 else => |other| utils.printErr(
                     error.IllegalExpression,
-                    "comperr: Illegal index expression on '{f}' at {f}.",
+                    "comperr: Illegal index expression on '{f}' ({f}).\n",
                     .{ other, index.lhs.getPosition() },
                     .red,
                 ),
