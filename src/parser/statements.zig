@@ -183,6 +183,7 @@ pub fn compoundTypeDeclaration(
                 self.alloc,
                 (try functionDefinition(self)).function_definition,
             ),
+            .@"pub" => _ = self.advance(),
 
             else => unreachable,
         }

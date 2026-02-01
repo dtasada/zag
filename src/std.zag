@@ -4,40 +4,43 @@ pub fn alloc<T>() &void {
     return c.malloc(sizeof(T));
 }
 
+// pub fn realloc<T>(ptr: &mut T, new_size: usize) &mut T {
+//     return c.realloc(ptr, new_size * sizeof(T));
+// }
+
 pub fn free<T>(ptr: &T) void {
     c.free(ptr);
 }
 
-pub struct Vector2 {
-    x: i32,
-    y: i32,
+// pub fn alloc_slice<T>(N: usize) &void {
+//     return c.malloc(sizeof(T) * N);
+// }
 
-    fn add(lhs: Vector2, rhs: Vector2) Vector2 {
-        return Vector2 {
-            x: lhs.x + rhs.x,
-            y: lhs.y + rhs.y,
-        };
-    }
-
-    fn init(x: i32, y: i32) Vector2 {
-        return Vector2 { x: x, y: y };
-    }
-}
-
-pub enum MyEnum {
-    a, b, c
-}
-
-pub fn do_something() void {
-    let a = 6;
-    let b = 7;
-    c.printf("hello there! %d\n", a + b);
-}
-
-pub struct Box<T> {
-    content: T,
-
-    fn print(self: Box<T>) void {
-        c.printf("box: %d\n", self.content);
-    }
-}
+// pub struct ArrayList<T> {
+//     items: &mut T,
+//     capacity: usize,
+//     len: usize,
+// 
+//     pub fn init() ArrayList<T>{ 
+//         return ArrayList<T> {
+//             items: alloc_slice<T>(16),
+//             capacity: 16,
+//             len: 0,
+//         };
+//     }
+// 
+//     pub fn deinit(self: ArrayList<T>) void {
+//         free(self.items);
+//         self.capacity = 0;
+//         self.len = 0;
+//     }
+// 
+//     pub fn append(self: ArrayList<T>, item: T) void {
+//         if (self.len == self.capacity) {
+//             self.capacity = if (self.capacity > 0) self.capacity * 2 else 16;
+//             self.items = realloc<T>(self.items, self.capacity);
+//         }
+//         self.items[self.len] = item;
+//         self.len += 1;
+//     }
+// }

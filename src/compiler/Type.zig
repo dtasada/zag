@@ -29,6 +29,11 @@ pub const Type = union(enum) {
         module: ?*Module = null,
     };
 
+    pub const GenericInstantiation = struct {
+        base_name: []const u8,
+        args: []const Value,
+    };
+
     fn CompoundType(T: enum { @"struct", @"enum", @"union" }) type {
         return struct {
             pub const MemberType = switch (T) {
@@ -58,10 +63,7 @@ pub const Type = union(enum) {
             tag_type: ?*const Type, // only for unions and enums
             definition: ?*const Definition,
             module: ?*Module = null,
-            generic_instantiation: ?struct {
-                base_name: []const u8,
-                args: []const Value,
-            } = null,
+            generic_instantiation: ?GenericInstantiation = null,
 
             /// get member or method. returns `null` if no member or method is found with `name`.
             pub fn getProperty(self: *const CompoundType(T), name: []const u8) ?union(enum) {

@@ -1,4 +1,5 @@
 pub bind fn printf(fmt: &c_char, args...) c_int;
 pub bind fn malloc(size: usize) &mut void;
 pub bind fn free(ptr: &mut void) void;
+pub bind fn realloc(ptr: &mut void, len: usize) void;
 
