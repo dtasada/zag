@@ -1,7 +1,7 @@
 import c;
 
-pub fn alloc<T>() &mut T {
-    return c.malloc(sizeof(T));
+pub fn alloc<T>() &mut void {
+    return c.malloc(sizeof<T>());
 }
 
 pub fn realloc<T>(ptr: &mut T, new_size: usize) &mut T {

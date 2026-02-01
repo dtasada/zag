@@ -22,8 +22,8 @@ pub const Type = union(enum) {
         };
 
         name: []const u8,
-        params: std.ArrayListUnmanaged(Param),
-        generic_params: std.ArrayListUnmanaged(Param),
+        params: std.ArrayList(Param),
+        generic_params: std.ArrayList(Param),
         return_type: *const Self,
         definition: ?*const ast.Statement.FunctionDefinition = null,
         module: ?*Module = null,
@@ -50,8 +50,8 @@ pub const Type = union(enum) {
             const Method = struct {
                 name: []const u8,
                 inner_name: []const u8,
-                params: std.ArrayListUnmanaged(Function.Param),
-                generic_params: std.ArrayListUnmanaged(Function.Param),
+                params: std.ArrayList(Function.Param),
+                generic_params: std.ArrayList(Function.Param),
                 return_type: *const Self,
                 definition: ?*const ast.Statement.FunctionDefinition = null,
             };
@@ -59,7 +59,7 @@ pub const Type = union(enum) {
             name: []const u8,
             members: *std.StringArrayHashMap(MemberType),
             methods: *std.StringArrayHashMap(Method),
-            generic_params: std.ArrayListUnmanaged(Function.Param),
+            generic_params: std.ArrayList(Function.Param),
             tag_type: ?*const Type, // only for unions and enums
             definition: ?*const Definition,
             module: ?*Module = null,
@@ -217,7 +217,7 @@ pub const Type = union(enum) {
                     try compiler.pushScope();
                     defer compiler.popScope();
 
-                    var generic_params: std.ArrayListUnmanaged(Function.Param) = .empty;
+                    var generic_params: std.ArrayList(Function.Param) = .empty;
                     try generic_params.ensureTotalCapacity(compiler.alloc, function.generic_parameters.items.len);
                     for (function.generic_parameters.items) |p| {
                         generic_params.appendAssumeCapacity(.{
@@ -227,7 +227,7 @@ pub const Type = union(enum) {
                         try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } });
                     }
 
-                    var params: std.ArrayListUnmanaged(Function.Param) = .empty;
+                    var params: std.ArrayList(Function.Param) = .empty;
                     try params.ensureTotalCapacity(compiler.alloc, function.parameters.items.len);
                     for (function.parameters.items) |p|
                         params.appendAssumeCapacity(.{
@@ -304,7 +304,7 @@ pub const Type = union(enum) {
         arguments: ast.ArgumentList,
         pos: utils.Position,
     ) CompilerError!Self {
-        var args: std.ArrayListUnmanaged(Value) = .empty;
+        var args: std.ArrayList(Value) = .empty;
         try args.ensureTotalCapacity(compiler.alloc, arguments.items.len);
         defer args.deinit(compiler.alloc);
 
@@ -343,7 +343,7 @@ pub const Type = union(enum) {
             else => unreachable,
         };
 
-        var mangled_name: std.ArrayListUnmanaged(u8) = .empty;
+        var mangled_name: std.ArrayList(u8) = .empty;
         defer mangled_name.deinit(compiler.alloc);
         try mangled_name.writer(compiler.alloc).print("{s}", .{base_name});
 
@@ -435,14 +435,12 @@ pub const Type = union(enum) {
             });
 
             return new_type;
-        } else {
-            return utils.printErr(
-                error.GenericInstantiationFailed,
-                "comperr: Cannot instantiate {f} (missing definition or unsupported) ({f})\n",
-                .{ base_type, pos },
-                .red,
-            );
-        }
+        } else return utils.printErr(
+            error.GenericInstantiationFailed,
+            "comperr: Cannot instantiate {f} (missing definition or unsupported) ({f})\n",
+            .{ base_type, pos },
+            .red,
+        );
     }
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
@@ -750,7 +748,7 @@ pub const Type = union(enum) {
         }
 
         for (type_decl.methods.items, 0..) |method, i| {
-            var params: std.ArrayListUnmanaged(Function.Param) = .empty;
+            var params: std.ArrayList(Function.Param) = .empty;
             try params.ensureTotalCapacity(compiler.alloc, method.parameters.items.len);
 
             for (method.parameters.items) |p|
@@ -759,7 +757,7 @@ pub const Type = union(enum) {
                     .type = try .fromAst(compiler, p.type),
                 });
 
-            var generic_params: std.ArrayListUnmanaged(Function.Param) = .empty;
+            var generic_params: std.ArrayList(Function.Param) = .empty;
             try generic_params.ensureTotalCapacity(compiler.alloc, method.generic_parameters.items.len);
             for (method.generic_parameters.items) |p|
                 generic_params.appendAssumeCapacity(.{
