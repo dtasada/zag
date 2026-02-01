@@ -579,6 +579,15 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 }
 
 fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.Call) !void {
+    if (function.generic_instantiation) |inst| {
+        if (std.mem.eql(u8, inst.base_name, "sizeof")) {
+            try self.write("sizeof(");
+            try self.compileType(inst.args[0].type, .{});
+            try self.write(")");
+            return;
+        }
+    }
+
     const expected_args = function.params.items.len;
     const received_args = call_expr.args.items.len;
 

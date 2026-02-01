@@ -68,11 +68,13 @@ const GenericInstantiation = struct {
     inner_name: []const u8,
     args: []const Value,
     module: ?*Module,
-    t: union(enum) {
+    t: GenericInstantiation.Type,
+
+    pub const Type = union(enum) {
         @"struct": ast.Statement.StructDeclaration,
         @"union": ast.Statement.UnionDeclaration,
         function: ast.Statement.FunctionDefinition,
-    },
+    };
 };
 
 /// Maps a symbol name to the symbol's type and inner name.

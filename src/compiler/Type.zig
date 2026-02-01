@@ -23,10 +23,11 @@ pub const Type = union(enum) {
 
         name: []const u8,
         params: std.ArrayList(Param),
-        generic_params: std.ArrayList(Param),
+        generic_params: std.ArrayList(Function.Param),
         return_type: *const Self,
         definition: ?*const ast.Statement.FunctionDefinition = null,
         module: ?*Module = null,
+        generic_instantiation: ?GenericInstantiation = null,
     };
 
     pub const GenericInstantiation = struct {
@@ -359,11 +360,16 @@ pub const Type = union(enum) {
         } else |_| {}
 
         // Instantiate
-        const DefUnion = union(enum) { s: *const ast.Statement.StructDeclaration, u: *const ast.Statement.UnionDeclaration, f: *const ast.Statement.FunctionDefinition };
+        const DefUnion = union(enum) {
+            @"struct": *const ast.Statement.StructDeclaration,
+            @"union": *const ast.Statement.UnionDeclaration,
+            function: *const ast.Statement.FunctionDefinition,
+        };
         const definition_wrapper: ?DefUnion = switch (base_type) {
-            .@"struct" => |s| if (s.definition) |d| DefUnion{ .s = d } else null,
-            .@"union" => |u| if (u.definition) |d| DefUnion{ .u = d } else null,
-            .function => |f| if (f.definition) |d| DefUnion{ .f = d } else null,
+            inline .@"struct", .@"union", .function => |s, t| if (s.definition) |d|
+                @unionInit(DefUnion, @tagName(t), d)
+            else
+                null,
             else => null,
         };
 
@@ -386,7 +392,7 @@ pub const Type = union(enum) {
             }
 
             const new_type: Type = switch (def_wrap) {
-                .s => |d| blk: {
+                .@"struct" => |d| blk: {
                     var copy = d.*;
                     copy.name = name;
                     copy.generic_types = null;
@@ -397,7 +403,7 @@ pub const Type = union(enum) {
                     };
                     break :blk .{ .@"struct" = t };
                 },
-                .u => |d| blk: {
+                .@"union" => |d| blk: {
                     var copy = d.*;
                     copy.name = name;
                     copy.generic_types = null;
@@ -408,11 +414,16 @@ pub const Type = union(enum) {
                     };
                     break :blk .{ .@"union" = t };
                 },
-                .f => |d| blk: {
+                .function => |d| blk: {
                     var copy = d.*;
                     copy.name = name;
                     copy.generic_parameters = .empty;
-                    break :blk try fromAst(compiler, copy.getType());
+                    var t = try fromAst(compiler, copy.getType());
+                    t.function.generic_instantiation = .{
+                        .base_name = base_name,
+                        .args = try compiler.alloc.dupe(Value, args.items),
+                    };
+                    break :blk t;
                 },
             };
 
@@ -428,11 +439,26 @@ pub const Type = union(enum) {
                 .args = try args.toOwnedSlice(compiler.alloc),
                 .module = module,
                 .t = switch (def_wrap) {
-                    .s => |d| .{ .@"struct" = d.* },
-                    .u => |d| .{ .@"union" = d.* },
-                    .f => |d| .{ .function = d.* },
+                    .@"struct" => |d| .{ .@"struct" = d.* },
+                    .@"union" => |d| .{ .@"union" = d.* },
+                    .function => |d| .{ .function = d.* },
                 },
             });
+
+            return new_type;
+        } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "sizeof")) {
+            var new_f = base_type.function;
+            new_f.name = name;
+            new_f.generic_params = .empty;
+            new_f.generic_instantiation = .{
+                .base_name = base_name,
+                .args = try compiler.alloc.dupe(Value, args.items),
+            };
+            const new_type: Type = .{ .function = new_f };
+
+            // Register globally
+            var global_scope = &compiler.scopes.items[0];
+            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
 
             return new_type;
         } else return utils.printErr(
