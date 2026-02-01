@@ -38,38 +38,10 @@ pub const CONTENT =
     \\        } payload;                                                   \
     \\    } union_name;
     \\
-    \\#define __ZAG_ARRAYLIST_DEF(name, T) \
-    \\    typedef struct {                 \
-    \\        T    *items;                 \
-    \\        usize capacity;              \
-    \\        usize len;                   \
+    \\#define __ZAG_SLICE_TYPE(name, T) \
+    \\    typedef struct {              \
+    \\        T    *ptr;                \
+    \\        usize len;                \
     \\    } name;
-    \\
-    \\#define __ZAG_ARRAYLIST_IMPL(name, T)                                  \
-    \\    name name##_create(void) {                                         \
-    \\        return (name){                                                 \
-    \\            .items    = malloc(sizeof(T) * 16),                        \
-    \\            .capacity = 16,                                            \
-    \\            .len      = 0,                                             \
-    \\        };                                                             \
-    \\    }                                                                  \
-    \\                                                                       \
-    \\    void name##_destroy(name *self) {                                  \
-    \\        free(self->items);                                             \
-    \\        self->items    = NULL;                                         \
-    \\        self->capacity = 0;                                            \
-    \\        self->len      = 0;                                            \
-    \\    }                                                                  \
-    \\                                                                       \
-    \\    void name##_append(name *self, T item) {                           \
-    \\        if (self->len == self->capacity) {                             \
-    \\            usize new_cap = self->capacity ? self->capacity * 2 : 16;  \
-    \\            void *ptr     = realloc(self->items, new_cap * sizeof(T)); \
-    \\            if (!ptr) abort();                                         \
-    \\            self->items    = ptr;                                      \
-    \\            self->capacity = new_cap;                                  \
-    \\        }                                                              \
-    \\        self->items[self->len++] = item;                               \
-    \\    }
     \\
 ;

@@ -364,6 +364,8 @@ pub const Type = union(enum) {
         is_mut: bool,
     };
 
+    const Slice = Reference;
+
     const Array = struct {
         position: utils.Position,
         inner: *const Type,
@@ -395,7 +397,7 @@ pub const Type = union(enum) {
     inferred: struct { position: utils.Position },
     symbol: struct { position: utils.Position, symbol: []const u8 },
     optional: struct { position: utils.Position, inner: *const Type },
-    slice: struct { position: utils.Position, inner: *const Type },
+    slice: Slice,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,

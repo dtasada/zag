@@ -111,3 +111,12 @@ pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError
         .red,
     );
 }
+
+pub fn illegalMemberExpression(lhs: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Member expression on '{f}' is illegal ({f})\n",
+        .{ lhs, pos },
+        .red,
+    );
+}

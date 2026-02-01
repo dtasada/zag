@@ -136,6 +136,8 @@ pub const Type = union(enum) {
         is_mut: bool,
     };
 
+    pub const Slice = Reference;
+
     pub const Array = struct {
         inner: *const Self,
         /// if size is `null` type is an arraylist, else it's an array.
@@ -175,13 +177,13 @@ pub const Type = union(enum) {
 
     @"typeof(null)",
     @"typeof(undefined)",
-    generic_param,
+    generic_param: []const u8,
 
     @"struct": Struct,
     @"enum": Enum,
     @"union": Union,
     optional: *const Self,
-    slice: *const Self,
+    slice: Slice,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
@@ -222,7 +224,7 @@ pub const Type = union(enum) {
                             .name = p.name,
                             .type = if (p.type == .inferred) .type else try .fromAst(compiler, p.type),
                         });
-                        try compiler.registerSymbol(p.name, .{ .type = .generic_param });
+                        try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } });
                     }
 
                     var params: std.ArrayListUnmanaged(Function.Param) = .empty;
@@ -248,7 +250,7 @@ pub const Type = union(enum) {
                     .size = (try compiler.solveComptimeExpression(array.size.*)).u64,
                 },
             },
-            .slice => |slice| .{ .slice = try .fromAstPtr(compiler, slice.inner.*) },
+            .slice => |slice| .{ .slice = .{ .is_mut = slice.is_mut, .inner = try .fromAstPtr(compiler, slice.inner.*) } },
             .optional => |optional| .{ .optional = try .fromAstPtr(compiler, optional.inner.*) },
             .error_union => |error_union| .{
                 .error_union = b: {
@@ -536,6 +538,7 @@ pub const Type = union(enum) {
             ),
             .index => |index| switch (try Type.infer(compiler, index.lhs.*)) {
                 .array => |array| array.inner.*,
+                .slice => |slice| slice.inner.*,
                 else => |other| utils.printErr(
                     error.IllegalExpression,
                     "comperr: Illegal index expression on '{f}' ({f}).\n",
@@ -576,21 +579,11 @@ pub const Type = union(enum) {
         return switch (call.callee.*) {
             .member => |m| switch (try inferMemberExpression(compiler, m)) {
                 .function => |function| function.return_type.*,
-                else => |other| utils.printErr(
-                    error.IllegalExpression,
-                    "comperr: Member expression on '{f}' is illegal ({f})\n",
-                    .{ other, call.pos },
-                    .red,
-                ),
+                else => |other| errors.illegalMemberExpression(other, call.pos),
             },
             else => switch (callee_type) {
                 .function => |function| function.return_type.*,
-                else => |t| utils.printErr(
-                    error.IllegalExpression,
-                    "comperr: Member expression on '{f}' is illegal ({f})\n",
-                    .{ t, call.pos },
-                    .red,
-                ),
+                else => |t| errors.illegalMemberExpression(t, call.pos),
             },
         };
     }
@@ -725,7 +718,7 @@ pub const Type = union(enum) {
             .@"struct", .@"union" => {
                 if (type_decl.generic_types) |generic_types| {
                     for (generic_types.items) |g| {
-                        try compiler.registerSymbol(g.name, .{ .type = .generic_param });
+                        try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } });
                     }
                 }
             },
@@ -876,12 +869,18 @@ pub const Type = union(enum) {
                 .{ @"enum".name, member.member_name, member.pos },
                 .red,
             ),
-            else => |other| return utils.printErr(
-                error.IllegalExpression,
-                "comperr: Member expression on '{f}' is illegal ({f})\n",
-                .{ other, member.pos },
-                .red,
-            ),
+            .slice => |slice| return if (std.mem.eql(u8, member.member_name, "len"))
+                .usize
+            else if (std.mem.eql(u8, member.member_name, "ptr"))
+                .{ .reference = .{ .is_mut = slice.is_mut, .inner = slice.inner } }
+            else
+                utils.printErr(
+                    error.UndeclaredProperty,
+                    "comperr: Slice type only has members `ptr` and `len`, attempted to use member '{s}' ({f}).\n",
+                    .{ member.member_name, member.pos },
+                    .red,
+                ),
+            else => |other| return errors.illegalMemberExpression(other, member.pos),
         }
     }
 
@@ -959,10 +958,11 @@ pub const Type = union(enum) {
                 _ = try writer.write("]");
                 try writer.print("{f}", .{array.inner});
             },
-            .slice => |array| {
+            .slice => |slice| {
                 _ = try writer.write("[");
                 _ = try writer.write("]");
-                try writer.print("{f}", .{array.*});
+                if (slice.is_mut) _ = try writer.write("mut ");
+                try writer.print("{f}", .{slice.inner.*});
             },
             .error_union => |error_union| {
                 try writer.print("{f}", .{error_union.failure});
@@ -978,7 +978,7 @@ pub const Type = union(enum) {
             },
             .module => |module| try writer.print("module {s}", .{module.name}),
             .variadic => _ = try writer.write("..."),
-            .generic_param => _ = try writer.write("generic_param"),
+            .generic_param => |name| _ = try writer.write(name),
             else => _ = try writer.write(@tagName(self.*)),
         }
     }
@@ -997,7 +997,7 @@ pub const Type = union(enum) {
             switch (t) {
                 .optional => |inner| h.update(std.mem.asBytes(&ctx.hash(inner.*))),
 
-                .reference => |r| {
+                .reference, .slice => |r| {
                     h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
                     h.update(std.mem.asBytes(&r.is_mut));
                 },
@@ -1006,8 +1006,6 @@ pub const Type = union(enum) {
                     h.update(std.mem.asBytes(&ctx.hash(a.inner.*)));
                     h.update(std.mem.asBytes(&a.size));
                 },
-
-                .slice => |s| h.update(std.mem.asBytes(&ctx.hash(s.*))),
 
                 .error_union => |e| {
                     h.update(std.mem.asBytes(&ctx.hash(e.success.*)));

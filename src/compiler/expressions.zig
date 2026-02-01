@@ -302,12 +302,18 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
             .method => |method| try self.write(method.inner_name),
         } else return errors.undeclaredProperty(parent_type, expr.member_name, expr.pos),
 
-        else => return utils.printErr(
-            error.IllegalExpression,
-            "comperr: Member expression on '{f}' is illegal ({f}).\n",
-            .{ parent_type, expr.pos },
+        .slice => if (std.mem.eql(u8, expr.member_name, "len") or std.mem.eql(u8, expr.member_name, "ptr")) {
+            try self.write("(");
+            try compile(self, expr.parent, .{});
+            try self.print(").{s}", .{expr.member_name});
+        } else return utils.printErr(
+            error.UndeclaredProperty,
+            "comperr: Slice type only has members `ptr` and `len`, attempted to use member '{s}' ({f}).\n",
+            .{ expr.member_name, expr.pos },
             .red,
         ),
+
+        else => return errors.illegalMemberExpression(parent_type, expr.pos),
     }
 }
 
@@ -401,7 +407,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
             const parent = try Type.infer(self, m.parent.*);
             const method_func = switch (parent) {
                 .@"struct" => |s| if (s.getProperty(m.member_name)) |prop| switch (prop) {
-                    .method => |method| Type.Function {
+                    .method => |method| Type.Function{
                         .name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
@@ -412,7 +418,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
                 } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
                 .@"union" => |u| if (u.getProperty(m.member_name)) |prop| switch (prop) {
-                    .method => |method| Type.Function {
+                    .method => |method| Type.Function{
                         .name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
@@ -431,12 +437,12 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                 const func_type = try Type.infer(self, call_expr.callee.*);
                 switch (func_type) {
                     .function => |f| {
-                         if (try tryResolveStaticType(self, m.parent.*)) |_| {
-                             try functionCall(self, f, call_expr);
-                         } else {
-                             try methodCall(self, call_expr, m, f);
-                         }
-                         return;
+                        if (try tryResolveStaticType(self, m.parent.*)) |_| {
+                            try functionCall(self, f, call_expr);
+                        } else {
+                            try methodCall(self, call_expr, m, f);
+                        }
+                        return;
                     },
                     else => {},
                 }
@@ -493,74 +499,74 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     const parent: Type = try .infer(self, m.parent.*);
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| {
-                if (!parent.convertsTo(method.params.items[0].type))
-                    return utils.printErr(
-                        error.IllegalExpression,
-                        "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
-                        .{ @"struct".name, m.member_name, m.pos },
-                        .red,
-                    );
-
-                const expected_type = method.params.items[0].type;
-                switch (expected_type) {
-                    .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
-                        error.BadMutability,
-                        "comperr: '{s}.{s}' method requires &mut {s}, but &{s} was passed ({f}).\n",
-                        .{ @"struct".name, m.member_name, @"struct".name, @"struct".name, m.pos },
-                        .red,
-                    ),
-                    .@"struct" => if (!expected_type.eql(parent)) unreachable,
-                    else => {},
-                }
-
-                const expected_args = method.params.items.len - 1;
-                const received_args = call_expr.args.items.len;
-                if (expected_args < received_args) return errors.tooManyArguments(
-                    expected_args,
-                    received_args,
-                    call_expr.pos,
-                ) else if (expected_args > received_args) return errors.missingArguments(
-                    expected_args,
-                    received_args,
-                    call_expr.pos,
+            if (!parent.convertsTo(method.params.items[0].type))
+                return utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
+                    .{ @"struct".name, m.member_name, m.pos },
+                    .red,
                 );
 
-                for (method.params.items[1..], 0..) |expected_param_type, i| {
-                    const received_expr = call_expr.args.items[i];
-                    const received_type: Type = try .infer(self, received_expr);
-                    if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
-                        expected_param_type.type,
-                        received_type,
-                        received_expr.getPosition(),
-                    );
-                }
+            const expected_type = method.params.items[0].type;
+            switch (expected_type) {
+                .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
+                    error.BadMutability,
+                    "comperr: '{s}.{s}' method requires &mut {s}, but &{s} was passed ({f}).\n",
+                    .{ @"struct".name, m.member_name, @"struct".name, @"struct".name, m.pos },
+                    .red,
+                ),
+                .@"struct" => if (!expected_type.eql(parent)) unreachable,
+                else => {},
+            }
 
-                const ref_level_diff = parent_reference_level - b2: {
-                    var self_method_reference_level: i32 = 0;
-                    count_ref_level: switch (method.params.items[0].type) {
-                        .reference => |reference| {
-                            self_method_reference_level += 1;
-                            continue :count_ref_level reference.inner.*;
-                        },
-                        else => break :count_ref_level,
-                    }
-                    break :b2 self_method_reference_level;
-                };
-                try self.print("{s}(", .{method.name});
-                for (0..@abs(ref_level_diff)) |_|
-                    try self.write(
-                        if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
-                            "&"
-                        else
-                            unreachable,
-                    );
-                try compile(self, m.parent, .{});
-                if (method.params.items.len > 1) try self.write(", ");
-                for (call_expr.args.items, 1..) |*arg, i| {
-                    try compile(self, arg, .{});
-                    if (i < call_expr.args.items.len) try self.write(", ");
+            const expected_args = method.params.items.len - 1;
+            const received_args = call_expr.args.items.len;
+            if (expected_args < received_args) return errors.tooManyArguments(
+                expected_args,
+                received_args,
+                call_expr.pos,
+            ) else if (expected_args > received_args) return errors.missingArguments(
+                expected_args,
+                received_args,
+                call_expr.pos,
+            );
+
+            for (method.params.items[1..], 0..) |expected_param_type, i| {
+                const received_expr = call_expr.args.items[i];
+                const received_type: Type = try .infer(self, received_expr);
+                if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
+                    expected_param_type.type,
+                    received_type,
+                    received_expr.getPosition(),
+                );
+            }
+
+            const ref_level_diff = parent_reference_level - b2: {
+                var self_method_reference_level: i32 = 0;
+                count_ref_level: switch (method.params.items[0].type) {
+                    .reference => |reference| {
+                        self_method_reference_level += 1;
+                        continue :count_ref_level reference.inner.*;
+                    },
+                    else => break :count_ref_level,
                 }
-                try self.write(")");
+                break :b2 self_method_reference_level;
+            };
+            try self.print("{s}(", .{method.name});
+            for (0..@abs(ref_level_diff)) |_|
+                try self.write(
+                    if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
+                        "&"
+                    else
+                        unreachable,
+                );
+            try compile(self, m.parent, .{});
+            if (method.params.items.len > 1) try self.write(", ");
+            for (call_expr.args.items, 1..) |*arg, i| {
+                try compile(self, arg, .{});
+                if (i < call_expr.args.items.len) try self.write(", ");
+            }
+            try self.write(")");
         },
         .reference => |reference| {
             if (reference.is_mut) reference_is_mut = true;
@@ -568,12 +574,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
             parent_reference_level += 1;
             continue :b reference.inner.*;
         },
-        else => |other| return utils.printErr(
-            error.IllegalExpression,
-            "comperr: Member expression on '{s}' is illegal ({f}).\n",
-            .{ @tagName(other), m.pos },
-            .red,
-        ),
+        else => |other| return errors.illegalMemberExpression(other, m.pos),
     }
 }
 

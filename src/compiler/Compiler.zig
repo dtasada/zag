@@ -613,36 +613,26 @@ pub fn compileType(
             try self.write(type_name);
         },
 
+        .slice => |slice| {
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                self.writer = &self.zag_header.?;
+                defer self.writer = &self.output.?;
+
+                try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
+                try self.compileType(slice.inner.*, new_opts); // TODO: check if slice mutability is being emitted correctly
+                try self.write(")\n");
+                try self.flush();
+
+                try self.zag_header_contents.put(t, type_name);
+            }
+
+            try self.write(type_name);
+        },
         .array => |array| {
             try self.compileType(array.inner.*, new_opts);
             try self.print("[{}]", .{array.size});
         },
-        // .arraylist => |arraylist| {
-        //     const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ArrayList_{}", .{t.hash()});
-        //     if (self.zag_header_contents.get(t) == null) {
-        //         self.writer = &self.zag_header.?;
-        //
-        //         // write type definition to zag.h
-        //         try self.print("__ZAG_ARRAYLIST_DEF({s}, ", .{type_name});
-        //         try self.compileType(arraylist.*, new_opts);
-        //         try self.write(")\n");
-        //
-        //         self.writer = &self.zag_source.?;
-        //
-        //         // write type implementation to zag.c
-        //         try self.print("__ZAG_ARRAYLIST_IMPL({s}, ", .{type_name});
-        //         try self.compileType(arraylist.*, new_opts);
-        //         try self.write(")\n");
-        //         try self.flush();
-        //
-        //         self.writer = &self.output.?;
-        //
-        //         try self.zag_header_contents.put(t, type_name);
-        //     }
-        //
-        //     try self.write(type_name);
-        // },
-
         // should be unreachable, array and function types are handled in `compileVariableSignature`
         .function, .variadic => unreachable,
         else => |primitive| try self.write(@tagName(primitive)),

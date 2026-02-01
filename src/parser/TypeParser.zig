@@ -58,60 +58,60 @@ fn getBindingPower(self: *Self, token: Lexer.TokenKind) BindingPower {
     return self.bp_lookup.get(token) orelse .default;
 }
 
-    pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower) ParserError!ast.Type {
-        var token = self.parent_parser.currentToken();
-        var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
-            try nud_handler(self, alloc)
-        else {
-            const pos = self.parent_parser.currentPosition();
-            _ = self.parent_parser.advance();
-            return utils.printErr(
-                error.UnexpectedToken,
-                "Unexpected token '{s}' in type at {f}\n",
-                .{ @tagName(std.meta.activeTag(token)), pos },
-                .red,
-            );
-        };
+pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower) ParserError!ast.Type {
+    var token = self.parent_parser.currentToken();
+    var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
+        try nud_handler(self, alloc)
+    else {
+        const pos = self.parent_parser.currentPosition();
+        _ = self.parent_parser.advance();
+        return utils.printErr(
+            error.UnexpectedToken,
+            "Unexpected token '{s}' in type at {f}\n",
+            .{ @tagName(std.meta.activeTag(token)), pos },
+            .red,
+        );
+    };
 
-        while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentTokenKind()))) {
-            token = self.parent_parser.advance(); // consume operator
-            if (self.led_lookup.get(std.meta.activeTag(token))) |led_handler| {
-                left = try led_handler(self, alloc, left, self.getBindingPower(std.meta.activeTag(token)));
-            } else {
-                return left;
-            }
+    while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentTokenKind()))) {
+        token = self.parent_parser.advance(); // consume operator
+        if (self.led_lookup.get(std.meta.activeTag(token))) |led_handler| {
+            left = try led_handler(self, alloc, left, self.getBindingPower(std.meta.activeTag(token)));
+        } else {
+            return left;
         }
-
-        return left;
     }
 
-    pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
-        // < is already consumed by parseType loop
-        var args = try std.ArrayList(ast.Expression).initCapacity(alloc, 0);
-        
-        if (self.parent_parser.currentTokenKind() != .@">") {
-            while (true) {
-                const arg = try expression.parse(self.parent_parser, .relational);
-                try args.append(alloc, arg);
-                
-                if (self.parent_parser.currentTokenKind() == .@">") break;
-                try self.parent_parser.expect(self.parent_parser.advance(), .@",", "generic arguments", ",");
-                if (self.parent_parser.currentTokenKind() == .@">") break;
-            }
+    return left;
+}
+
+pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+    // < is already consumed by parseType loop
+    var args = try std.ArrayList(ast.Expression).initCapacity(alloc, 0);
+
+    if (self.parent_parser.currentTokenKind() != .@">") {
+        while (true) {
+            const arg = try expression.parse(self.parent_parser, .relational);
+            try args.append(alloc, arg);
+
+            if (self.parent_parser.currentTokenKind() == .@">") break;
+            try self.parent_parser.expect(self.parent_parser.advance(), .@",", "generic arguments", ",");
+            if (self.parent_parser.currentTokenKind() == .@">") break;
         }
-        _ = self.parent_parser.advance(); // consume >
-
-        const ptr = try alloc.create(ast.Type);
-        ptr.* = lhs;
-
-        return .{
-            .generic = .{
-                .position = lhs.getPosition(), // Simplification: use start pos
-                .lhs = ptr,
-                .arguments = args,
-            },
-        };
     }
+    _ = self.parent_parser.advance(); // consume >
+
+    const ptr = try alloc.create(ast.Type);
+    ptr.* = lhs;
+
+    return .{
+        .generic = .{
+            .position = lhs.getPosition(), // Simplification: use start pos
+            .lhs = ptr,
+            .arguments = args,
+        },
+    };
+}
 
 // ... existing handlers ...
 
@@ -196,12 +196,15 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
         size.?.* = try expression.parse(self.parent_parser, .default);
     }
 
-    try self.parent_parser.expect(
-        self.parent_parser.advance(),
-        .@"]",
-        "array type descriptor",
-        "]",
-    );
+    try self.parent_parser.expect(self.parent_parser.advance(), .@"]", "array type descriptor", "]");
+
+    const is_mut: ?bool = if (size == null)
+        if (self.parent_parser.currentToken() == .mut) b: {
+            _ = self.parent_parser.advance();
+            break :b true;
+        } else false
+    else
+        null;
 
     const inner = try alloc.create(ast.Type);
     inner.* = try self.parseType(alloc, .default);
@@ -216,6 +219,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
         .slice = .{
             .position = position,
             .inner = inner,
+            .is_mut = is_mut.?,
         },
     };
 }
