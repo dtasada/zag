@@ -263,6 +263,7 @@ export default grammar({
       $.optional_type,
       $.reference_type,
       $.array_type,
+      $.slice_type,
       $.error_union,
       $.function_type
     ),
@@ -307,8 +308,15 @@ export default grammar({
 
     array_type: $ => seq(
       "[",
-      optional(field("size", $.expression)),
+      field("size", $.expression),
       "]",
+      field("inner", $.type),
+    ),
+
+    slice_type: $ => seq(
+      "[",
+      "]",
+      optional("mut"),
       field("inner", $.type),
     ),
 

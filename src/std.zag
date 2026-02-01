@@ -1,54 +1,48 @@
 import c;
 
-pub fn alloc<T>() &mut void {
+pub fn alloc<T>() &void {
     return c.malloc(sizeof<T>());
-}
-
-pub fn realloc<T>(ptr: &mut T, new_size: usize) &mut T {
-    return c.realloc(ptr, new_size * sizeof(T));
 }
 
 pub fn free<T>(ptr: &T) void {
     c.free(ptr);
 }
 
-pub fn free_slice<T>(slice: []T) void {
+pub fn free_slice<T>(slice: []mut T) void {
     c.free(slice.ptr);
 }
 
-pub fn alloc_slice<T>(N: usize) []T {
-    return c.malloc(sizeof(T) * N);
+pub fn alloc_slice<T>(N: usize) []mut T {
+    return c.malloc(sizeof<T>() * N);
 }
 
 pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
-    return c.realloc(slice.ptr, new_size * sizeof(T));
+    return c.realloc(slice.ptr, new_size * sizeof<T>());
 }
 
 
 pub struct ArrayList<T> {
-    items: []T,
-    capacity: usize,
+    items: []mut T,
+    len: usize,
 
-    pub fn init() ArrayList<T>{ 
+    pub fn init() ArrayList<T> { 
         return ArrayList<T> {
             items: alloc_slice<T>(16),
-            capacity: 16,
             len: 0,
         };
     }
 
     pub fn deinit(self: ArrayList<T>) void {
         free_slice(self.items);
-        self.capacity = 0;
-        self.items.len = 0;
+        self.len = 0;
     }
 
     pub fn append(self: ArrayList<T>, item: T) void {
-        if (self.items.len == self.capacity) {
-            self.capacity = if (self.capacity > 0) self.capacity * 2 else 16;
-            self.items = realloc_slice<T>(self.items, self.capacity);
+        if (self.len == self.items.len) {
+            let new_cap = if (self.items.len > 0) self.items.len * 2 else 16;
+            self.items = realloc_slice<T>(self.items, new_cap);
         }
-        self.items[self.items.len] = item;
-        self.items.len += 1;
+        self.items[self.len] = item;
+        self.len += 1;
     }
 }

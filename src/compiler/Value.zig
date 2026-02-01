@@ -153,4 +153,28 @@ pub const Value = union(enum) {
             else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),
         };
     }
+
+    pub fn hash(self: Value) u64 {
+        var h = std.hash.Wyhash.init(0);
+        const tag = std.meta.activeTag(self);
+        h.update(std.mem.asBytes(&tag));
+        switch (self) {
+            inline .i8,
+            .u8,
+            .bool,
+            .i16,
+            .u16,
+            .i32,
+            .u32,
+            .f32,
+            .i64,
+            .u64,
+            .f64,
+            => |v| h.update(std.mem.asBytes(&v)),
+            .type => |t| h.update(std.mem.asBytes(&t.hash())),
+            .void => {},
+            else => @panic("TODO: hash for complex values"),
+        }
+        return h.final();
+    }
 };

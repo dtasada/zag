@@ -582,8 +582,9 @@ pub fn compileType(
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
+                const previous_writer = self.writer;
                 self.writer = &self.zag_header.?;
-                defer self.writer = &self.output.?;
+                defer self.writer = previous_writer;
 
                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
                 try self.compileType(optional.*, new_opts);
@@ -599,8 +600,9 @@ pub fn compileType(
         .error_union => |error_union| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
+                const previous_writer = self.writer;
                 self.writer = &self.zag_header.?;
-                defer self.writer = &self.output.?;
+                defer self.writer = previous_writer;
 
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
                 try self.compileType(error_union.failure.*, new_opts);
@@ -618,8 +620,9 @@ pub fn compileType(
         .slice => |slice| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
+                const previous_writer = self.writer;
                 self.writer = &self.zag_header.?;
-                defer self.writer = &self.output.?;
+                defer self.writer = previous_writer;
 
                 try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
                 try self.compileType(slice.inner.*, new_opts); // TODO: check if slice mutability is being emitted correctly
@@ -637,6 +640,7 @@ pub fn compileType(
         },
         // should be unreachable, array and function types are handled in `compileVariableSignature`
         .function, .variadic => unreachable,
+        .any => try self.write("void*"),
         else => |primitive| try self.write(@tagName(primitive)),
     };
 }
@@ -698,6 +702,16 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
 
 fn solveGenerics(self: *Self) !void {
     for (self.pending_instantiations.items) |instantiation| {
+        // Skip template emission
+        var is_template = false;
+        for (instantiation.args) |arg| {
+            if (arg == .type and arg.type == .generic_param) {
+                is_template = true;
+                break;
+            }
+        }
+        if (is_template) continue;
+
         try self.pushScope();
         defer self.popScope();
 
@@ -836,6 +850,7 @@ fn registerConstants(self: *Self) !void {
 
     try self.registerSymbol("void", .{ .type = .void });
     try self.registerSymbol("bool", .{ .type = .bool });
+    try self.registerSymbol("any", .{ .type = .any });
 
     try self.registerSymbol("type", .{ .type = .type });
 
@@ -882,6 +897,33 @@ fn registerConstants(self: *Self) !void {
                         break :b t;
                     },
                     .params = .empty,
+                    .module = null,
+                },
+            },
+        },
+    });
+
+    try self.registerSymbol("cast", .{
+        .symbol = .{
+            .is_mut = false,
+            .type = .{
+                .function = .{
+                    .name = "cast",
+                    .generic_params = b: {
+                        var params: std.ArrayList(Type.Function.Param) = .empty;
+                        try params.append(self.alloc, .{ .name = "T", .type = .type });
+                        break :b params;
+                    },
+                    .return_type = b: {
+                        const t = try self.alloc.create(Type);
+                        t.* = .usize; // Default, will be overridden
+                        break :b t;
+                    },
+                    .params = b: {
+                        var params: std.ArrayList(Type.Function.Param) = .empty;
+                        try params.append(self.alloc, .{ .name = "val", .type = .any });
+                        break :b params;
+                    },
                     .module = null,
                 },
             },

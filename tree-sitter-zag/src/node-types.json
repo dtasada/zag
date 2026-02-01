@@ -71,7 +71,7 @@
       },
       "size": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "expression",
@@ -1367,6 +1367,22 @@
     }
   },
   {
+    "type": "slice_type",
+    "named": true,
+    "fields": {
+      "inner": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -1635,6 +1651,10 @@
         },
         {
           "type": "reference_type",
+          "named": true
+        },
+        {
+          "type": "slice_type",
           "named": true
         }
       ]

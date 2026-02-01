@@ -182,8 +182,13 @@ pub fn deinit(self: *Self) void {
 
 /// Returns the line and column in the source file corresponding to what is being parsed.
 pub inline fn currentPosition(self: *const Self) utils.Position {
-    const pos = std.math.clamp(self.pos, 0, self.lexer.source_map.items.len - 1);
-    return self.lexer.source_map.items[pos];
+    return self.lexer.source_map.items[
+        std.math.clamp(
+            self.pos,
+            0,
+            self.lexer.source_map.items.len - 1,
+        )
+    ];
 }
 
 /// Consumes current token and then increases position.
@@ -288,6 +293,7 @@ pub inline fn getHandler(
     self: *const Self,
     comptime handler_type: enum { statement, nud, led, bp },
     token: Lexer.TokenKind,
+    position: utils.Position, // purely for error reports
 ) ParserError!switch (handler_type) {
     .statement => StatementHandler,
     .nud => NudHandler,
@@ -303,8 +309,8 @@ pub inline fn getHandler(
         return handler;
     } else return utils.printErr(
         error.HandlerDoesNotExist,
-        "Parser: {s} handler for '{}' does not exist.\n",
-        .{ @tagName(handler_type), token },
+        "Parser error: Syntax error at {f}.\n",
+        .{position},
         .red,
     );
 }

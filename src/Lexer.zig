@@ -21,8 +21,8 @@ pos: usize = 0,
 current_line_len: usize,
 
 /// tracks line and column number. used to report lexer errors.
-line_col: utils.Position = .{ .line = 1, .col = 1 },
-start_line_col: utils.Position = .{ .line = 1, .col = 1 },
+line_col: utils.Position,
+start_line_col: utils.Position,
 
 pub const LexerError = error{
     BadNumber,
@@ -143,8 +143,8 @@ pub fn init(input: []const u8, alloc: std.mem.Allocator, file_path: []const u8) 
         .file_path = file_path,
         .current_line_len = std.mem.indexOfScalar(u8, self.input, '\n') orelse
             self.input.len,
-        .line_col = .{ .line = 1, .col = 1, .file_path = file_path },
-        .start_line_col = .{ .line = 1, .col = 1, .file_path = file_path },
+        .line_col = .{ .line = 1, .col = 1, .path = file_path },
+        .start_line_col = .{ .line = 1, .col = 1, .path = file_path },
     };
 
     try self.tokenize(alloc);

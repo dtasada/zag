@@ -175,6 +175,7 @@ pub const Type = union(enum) {
     void,
 
     type,
+    any,
 
     @"typeof(null)",
     @"typeof(undefined)",
@@ -276,29 +277,6 @@ pub const Type = union(enum) {
         return ptr;
     }
 
-    fn hashValue(val: Value) u64 {
-        var h = std.hash.Wyhash.init(0);
-        const tag = std.meta.activeTag(val);
-        h.update(std.mem.asBytes(&tag));
-        switch (val) {
-            .type => |t| h.update(std.mem.asBytes(&t.hash())),
-            .i8 => |v| h.update(std.mem.asBytes(&v)),
-            .u8 => |v| h.update(std.mem.asBytes(&v)),
-            .bool => |v| h.update(std.mem.asBytes(&v)),
-            .i16 => |v| h.update(std.mem.asBytes(&v)),
-            .u16 => |v| h.update(std.mem.asBytes(&v)),
-            .i32 => |v| h.update(std.mem.asBytes(&v)),
-            .u32 => |v| h.update(std.mem.asBytes(&v)),
-            .f32 => |v| h.update(std.mem.asBytes(&v)),
-            .i64 => |v| h.update(std.mem.asBytes(&v)),
-            .u64 => |v| h.update(std.mem.asBytes(&v)),
-            .f64 => |v| h.update(std.mem.asBytes(&v)),
-            .void => {},
-            else => @panic("TODO: hash for complex values"),
-        }
-        return h.final();
-    }
-
     fn instantiateGeneric(
         compiler: *Compiler,
         base_type: Type,
@@ -344,13 +322,25 @@ pub const Type = union(enum) {
             else => unreachable,
         };
 
+        // If the arguments are identical to the base type's own generic parameters,
+        // this is a self-reference to the generic template (e.g. ArrayList<T> inside ArrayList<T>).
+        // In this case, just return the base type.
+        var all_match = true;
+        for (params.items, 0..) |p, i| {
+            const arg = args.items[i];
+            if (arg != .type or arg.type != .generic_param or !std.mem.eql(u8, arg.type.generic_param, p.name)) {
+                all_match = false;
+                break;
+            }
+        }
+        if (all_match) return base_type;
+
         var mangled_name: std.ArrayList(u8) = .empty;
         defer mangled_name.deinit(compiler.alloc);
         try mangled_name.writer(compiler.alloc).print("{s}", .{base_name});
 
-        for (args.items) |arg| {
-            try mangled_name.writer(compiler.alloc).print("_{}", .{hashValue(arg)});
-        }
+        for (args.items) |arg|
+            try mangled_name.writer(compiler.alloc).print("_{}", .{arg.hash()});
 
         const name = try compiler.alloc.dupe(u8, mangled_name.items);
 
@@ -455,6 +445,34 @@ pub const Type = union(enum) {
                 .args = try compiler.alloc.dupe(Value, args.items),
             };
             const new_type: Type = .{ .function = new_f };
+
+            // Register globally
+            var global_scope = &compiler.scopes.items[0];
+            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
+
+            return new_type;
+        } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "cast")) {
+            var new_f = base_type.function;
+            new_f.name = name;
+            new_f.generic_params = .empty;
+            new_f.generic_instantiation = .{
+                .base_name = base_name,
+                .args = try compiler.alloc.dupe(Value, args.items),
+            };
+
+            // Set the return type to T (args[0])
+            if (args.items.len > 0) {
+                switch (args.items[0]) {
+                    .type => |t| {
+                        const ret_ptr = try compiler.alloc.create(Type);
+                        ret_ptr.* = t;
+                        new_f.return_type = ret_ptr;
+                    },
+                    else => {},
+                }
+            }
+
+            const new_type = Type{ .function = new_f };
 
             // Register globally
             var global_scope = &compiler.scopes.items[0];
@@ -603,11 +621,11 @@ pub const Type = union(enum) {
         return switch (call.callee.*) {
             .member => |m| switch (try inferMemberExpression(compiler, m)) {
                 .function => |function| function.return_type.*,
-                else => |other| errors.illegalMemberExpression(other, call.pos),
+                else => |other| return errors.illegalCallExpression(other, call.pos),
             },
             else => switch (callee_type) {
                 .function => |function| function.return_type.*,
-                else => |t| errors.illegalMemberExpression(t, call.pos),
+                else => |t| errors.illegalCallExpression(t, call.pos),
             },
         };
     }
@@ -926,6 +944,7 @@ pub const Type = union(enum) {
     /// That means that a type can automatically be cast to another.
     /// Examples are `i64` -> `i32` or `usize` -> `?usize`
     pub fn convertsTo(src: Type, dst: Type) bool {
+        if (dst == .any) return true;
         return switch (src) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => dst == .optional,

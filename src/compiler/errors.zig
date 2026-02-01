@@ -120,3 +120,12 @@ pub fn illegalMemberExpression(lhs: Type, pos: utils.Position) CompilerError {
         .red,
     );
 }
+
+pub fn illegalCallExpression(lhs: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Call expression on '{f}' is illegal ({f})\n",
+        .{ lhs, pos },
+        .red,
+    );
+}

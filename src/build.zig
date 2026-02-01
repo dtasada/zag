@@ -1,8 +1,6 @@
 const std = @import("std");
 
 const utils = @import("utils");
-const Lexer = @import("Lexer");
-const Parser = @import("Parser");
 const Compiler = @import("Compiler");
 
 /// Takes zag code and lexes, parses and compiles it to C code.

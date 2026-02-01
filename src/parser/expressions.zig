@@ -69,7 +69,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
 
 pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
     // first parse the NUD
-    const nud_fn = try self.getHandler(.nud, self.currentTokenKind());
+    const nud_fn = try self.getHandler(.nud, self.currentTokenKind(), self.currentPosition());
     var lhs = try nud_fn(self);
 
     // while we have a led and (current bp < bp of current token)
@@ -78,12 +78,16 @@ pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
         if (@intFromEnum(current_bp) <= @intFromEnum(bp)) break;
 
         // This should be an assertion, since we found a bp
-        const led_fn = try self.getHandler(.led, self.currentTokenKind());
+        const led_fn = try self.getHandler(.led, self.currentTokenKind(), self.currentPosition());
 
         const old_lhs = try self.alloc.create(ast.Expression);
         old_lhs.* = lhs;
 
-        lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentTokenKind()));
+        lhs = try led_fn(self, old_lhs, try self.getHandler(
+            .bp,
+            self.currentTokenKind(),
+            self.currentPosition(),
+        ));
     }
 
     return lhs;
@@ -207,31 +211,22 @@ pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErro
 }
 
 pub fn ambiguousLessThan(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
-    if (isGenericLookahead(self)) {
-        return generic(self, lhs, bp);
-    } else {
-        return binary(self, lhs, bp);
-    }
+    return if (isGenericLookahead(self)) generic(self, lhs, bp) else binary(self, lhs, bp);
 }
 
 fn isGenericLookahead(self: *Self) bool {
     var depth: usize = 0;
-    var i = self.pos;
-    const tokens = self.lexer.tokens.items;
 
-    while (i < tokens.len) {
-        const token = tokens[i];
-        switch (token) {
-            .@"<" => depth += 1,
-            .@">" => {
-                depth -= 1;
-                if (depth == 0) return true;
-            },
-            .@"(", .@")", .@"{", .@"}", .@";" => return false,
-            else => {},
-        }
-        i += 1;
-    }
+    for (self.lexer.tokens.items[self.pos..]) |token| switch (token) {
+        .@"<" => depth += 1,
+        .@">" => {
+            depth -= 1;
+            if (depth == 0) return true;
+        },
+        .@"(", .@")", .@"{", .@"}", .@";" => return false,
+        else => {},
+    };
+
     return false;
 }
 

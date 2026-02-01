@@ -4,3 +4,4 @@ zig-out/
 *.out
 *.o
 .DS_Store
+.gemini/

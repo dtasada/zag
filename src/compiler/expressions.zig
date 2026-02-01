@@ -76,12 +76,7 @@ pub fn compile(
         .ident => |ident| if (self.getSymbolType(ident.ident) catch null) |_|
             try self.write(ident.ident)
         else
-            return utils.printErr(
-                error.UnknownSymbol,
-                "comperr: Unknown symbol '{s}' at {f}.\n",
-                .{ ident.ident, expression.getPosition() },
-                .red,
-            ),
+            return errors.unknownSymbol(ident.ident, expression.getPosition()),
         .struct_instantiation => |struct_inst| switch ((try self.solveComptimeExpression(struct_inst.type_expr.*)).type) {
             .@"struct" => |s| try structInstantiation(self, struct_inst, s),
             .@"union" => |u| try unionInstantiation(self, struct_inst, u),
@@ -584,6 +579,12 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
             try self.write("sizeof(");
             try self.compileType(inst.args[0].type, .{});
             try self.write(")");
+            return;
+        } else if (std.mem.eql(u8, inst.base_name, "cast")) {
+            try self.write("(");
+            try self.compileType(inst.args[0].type, .{});
+            try self.write(")");
+            try compile(self, &call_expr.args.items[0], .{});
             return;
         }
     }
