@@ -287,6 +287,17 @@ pub const Statement = union(enum) {
         generic_types: ?ParameterList = null,
         members: std.ArrayList(Member) = .empty,
         methods: std.ArrayList(FunctionDefinition) = .empty,
+
+        pub fn clone(self: *const StructDeclaration, alloc: std.mem.Allocator) !StructDeclaration {
+            return .{
+                .pos = self.pos,
+                .is_pub = self.is_pub,
+                .name = self.name, // notice: doesn't clone the name.
+                .generic_types = if (self.generic_types) |gt| try gt.clone(alloc) else null,
+                .members = try self.members.clone(alloc),
+                .methods = try self.methods.clone(alloc),
+            };
+        }
     };
 
     pub const UnionDeclaration = struct {

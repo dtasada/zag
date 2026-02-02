@@ -372,6 +372,8 @@ pub const Type = union(enum) {
         if (definition_wrapper) |def_wrap| {
             try compiler.pushScope();
 
+            try compiler.registerSymbol(base_name, .{ .type = base_type });
+
             for (params.items, 0..) |param, i| {
                 const val = args.items[i];
                 switch (val) {
@@ -381,14 +383,15 @@ pub const Type = union(enum) {
             }
 
             const new_type: Type = switch (def_wrap) {
-                .@"struct" => |d| blk: {
-                    var copy = d.*;
-                    copy.name = name;
-                    copy.generic_types = null;
-                    var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy);
+                .@"struct" => |s| blk: {
+                    var copy_decl = try s.clone(compiler.alloc);
+                    copy_decl.name = name;
+                    copy_decl.generic_types = null;
+
+                    var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy_decl);
                     t.generic_instantiation = .{
                         .base_name = base_name,
-                        .args = try compiler.alloc.dupe(Value, args.items),
+                        .args = args.items,
                     };
                     break :blk .{ .@"struct" = t };
                 },
@@ -650,9 +653,9 @@ pub const Type = union(enum) {
             .@"enum" => Type.Enum,
         } = if (compiler.getSymbolType(type_decl.name)) |existing| b: {
             switch (T) {
-                .@"struct" => if (existing == .@"struct") break :b existing.@"struct",
-                .@"union" => if (existing == .@"union") break :b existing.@"union",
-                .@"enum" => if (existing == .@"enum") break :b existing.@"enum",
+                .@"struct" => if (existing == .@"struct" and existing.@"struct".definition != null) break :b existing.@"struct",
+                .@"union" => if (existing == .@"union" and existing.@"union".definition != null) break :b existing.@"union",
+                .@"enum" => if (existing == .@"enum" and existing.@"enum".definition != null) break :b existing.@"enum",
             }
             // If type mismatch or not found (logic error in scan?), create new.
             // But strict forward decl implies we should find it.
@@ -704,6 +707,8 @@ pub const Type = union(enum) {
             },
         });
 
+        std.debug.print("[ENTRY] Processing struct {s} at address {*}, members count: {}\n", .{ type_decl.name, &compound_type, compound_type.members.count() });
+
         // If definition is set, it means we already populated this type.
         if (compound_type.definition != null) return compound_type;
 
@@ -728,8 +733,6 @@ pub const Type = union(enum) {
             compound_type.tag_type = tag_t;
         }
 
-        compound_type.definition = type_decl;
-
         switch (T) {
             .@"struct", .@"union" => {
                 if (type_decl.generic_types) |generic_types| {
@@ -744,21 +747,33 @@ pub const Type = union(enum) {
             else => {},
         }
 
+        compound_type.definition = type_decl;
+
         try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
+        std.debug.print("[REGISTERED IN OUTER SCOPE] {s} with {} generic params\n", .{ type_decl.name, compound_type.generic_params.items.len });
 
         try compiler.pushScope();
         defer compiler.popScope();
 
         switch (T) {
-            .@"struct", .@"union" => if (type_decl.generic_types) |generic_types| {
-                for (generic_types.items) |g|
-                    try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } });
+            .@"struct", .@"union" => {
+                if (type_decl.generic_types) |generic_types| {
+                    for (generic_types.items) |g| {
+                        try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } });
+                    }
+                }
+
+                try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
+                std.debug.print("[REGISTERED IN INNER SCOPE] {s} with {} generic params\n", .{ type_decl.name, compound_type.generic_params.items.len });
             },
             else => {},
         }
 
+        std.debug.print("[BEFORE MEMBERS] Processing struct {s}, members count: {}\n", .{ type_decl.name, compound_type.members.count() });
+
         var enum_last_value: usize = 0;
         for (type_decl.members.items) |member| {
+            std.debug.print("  Adding member {s}\n", .{member.name});
             if (compound_type.getProperty(member.name)) |_| return utils.printErr(
                 error.DuplicateMember,
                 "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",

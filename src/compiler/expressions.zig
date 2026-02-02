@@ -492,9 +492,10 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     };
 
     const parent: Type = try .infer(self, m.parent.*);
+    std.debug.print("parent type: {f}\n", .{parent});
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| {
-            if (!parent.convertsTo(method.params.items[0].type))
+            if (method.params.items.len == 0 or !parent.convertsTo(method.params.items[0].type))
                 return utils.printErr(
                     error.IllegalExpression,
                     "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
