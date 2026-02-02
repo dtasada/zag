@@ -491,17 +491,12 @@ pub const Type = union(enum) {
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
-            .ident => |ident| b: {
-                const item = compiler.getScopeItem(ident.ident) catch return errors.unknownSymbol(
-                    ident.ident,
-                    expr.getPosition(),
-                );
-                break :b switch (item) {
-                    .symbol => |s| s.type,
-                    .type => .type,
-                    .module => |m| .{ .module = m },
-                    .constant => |c| c.type,
-                };
+            .ident => |ident| switch (compiler.getScopeItem(ident.ident) catch
+                return errors.unknownSymbol(ident.ident, expr.getPosition())) {
+                .symbol => |s| s.type,
+                .type => .type,
+                .module => |m| .{ .module = m },
+                .constant => |c| c.type,
             },
             .string => .{ .reference = .{ .inner = &.c_char, .is_mut = false } },
             .char => .u8,
@@ -605,12 +600,15 @@ pub const Type = union(enum) {
                 if (base_type == .type) {
                     base_type = (try compiler.solveComptimeExpression(generic.lhs.*)).type;
                 }
-                break :b try instantiateGeneric(
+                // instantiateGeneric returns the concrete type
+                _ = try instantiateGeneric(
                     compiler,
                     base_type,
                     generic.arguments,
                     generic.pos,
                 );
+                // But the expression itself is still a type reference
+                break :b .type;
             },
             .match => |_| @panic("unimplemented"),
             .bad_node => unreachable,

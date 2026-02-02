@@ -491,6 +491,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
         else => false,
     };
 
+    try @import("pretty").print(self.alloc, m.parent.*, .{});
     const parent: Type = try .infer(self, m.parent.*);
     std.debug.print("parent type: {f}\n", .{parent});
     b: switch (parent) {
