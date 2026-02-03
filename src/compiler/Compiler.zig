@@ -624,7 +624,10 @@ pub fn compileType(
                 defer self.writer = previous_writer;
 
                 try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
-                try self.compileType(slice.inner.*, new_opts); // TODO: check if slice mutability is being emitted correctly
+                try self.compileType(slice.inner.*, .{
+                    .binding_mut = slice.is_mut,
+                    .is_top_level = new_opts.is_top_level,
+                }); // TODO: check if slice mutability is being emitted correctly
                 try self.write(")\n");
                 try self.flush();
 

@@ -371,15 +371,25 @@ pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
     const i = try self.alloc.create(ast.Expression);
     i.* = try parse(self, .default);
 
-    try self.expect(self.advance(), .@"]", "index expression", "]");
-
-    return .{
+    const expr: ast.Expression = if (i.* == .range) .{
+        .slice = .{
+            .pos = lhs.getPosition(),
+            .lhs = lhs,
+            .start = i.range.start,
+            .end = i.range.end,
+            .inclusive = i.range.inclusive,
+        },
+    } else .{
         .index = .{
             .pos = lhs.getPosition(),
             .lhs = lhs,
             .index = i,
         },
     };
+
+    try self.expect(self.advance(), .@"]", "index expression", "]");
+
+    return expr;
 }
 
 pub fn reference(self: *Self) ParserError!ast.Expression {

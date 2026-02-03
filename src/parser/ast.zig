@@ -90,6 +90,7 @@ pub const Expression = union(enum) {
     comparison: Comparison,
     generic: Generic,
     index: Index,
+    slice: Slice,
     match: Match,
     member: Member,
     prefix: Prefix,
@@ -203,6 +204,14 @@ pub const Expression = union(enum) {
         pos: utils.Position,
         lhs: *const Expression,
         index: *const Expression,
+    };
+
+    const Slice = struct {
+        pos: utils.Position,
+        lhs: *const Expression,
+        start: *const Expression,
+        end: *const Expression,
+        inclusive: bool,
     };
 
     pub inline fn getPosition(self: *const Expression) utils.Position {

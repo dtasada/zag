@@ -166,6 +166,30 @@ pub fn compile(
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
         .type => |t| try self.compileType(try .fromAst(self, t), .{}),
+        .slice => |slice| {
+            var t = try Type.infer(self, slice.lhs.*);
+            if (t != .slice and t != .array)
+                return errors.illegalSliceExpression(t, slice.pos);
+
+            if (t == .array)
+                t = .{ .slice = .{ .inner = t.array.inner, .is_mut = true } }; // TODO: slice mutability
+
+            try self.write("(");
+            try self.compileType(t, .{ .binding_mut = opts.binding_mut });
+            try self.write("){ .ptr = &((");
+            try compile(self, slice.lhs, .{});
+            try self.write(")");
+            if (t == .slice) try self.write(".ptr");
+            try self.write("[");
+            try compile(self, slice.start, .{});
+            try self.write("]), .len = ");
+            if (slice.inclusive) try self.write("1 + ");
+            try self.write("(");
+            try compile(self, slice.end, .{});
+            try self.write(") - (");
+            try compile(self, slice.start, .{});
+            try self.write(") }");
+        },
         .bad_node => unreachable,
     }
 }
@@ -424,11 +448,18 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     else => {},
                 }
             }
+
+            var parent_reference_level: i32 = 0;
+            var reference_is_mut = switch (m.parent.*) {
+                .ident => |ident| try self.getSymbolMutability(ident.ident),
+                else => false, // TODO: symbol mutability is wrong
+            };
+
             // Need to resolve method to Type.Function for methodCall
             const parent = try Type.infer(self, m.parent.*);
-            const method_func = b: switch (parent) {
+            const method_func: Type.Function = b: switch (parent) {
                 .@"struct" => |s| if (s.getProperty(m.member_name)) |prop| switch (prop) {
-                    .method => |method| Type.Function{
+                    .method => |method| .{
                         .name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
@@ -439,7 +470,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
                 } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
                 .@"union" => |u| if (u.getProperty(m.member_name)) |prop| switch (prop) {
-                    .method => |method| Type.Function{
+                    .method => |method| .{
                         .name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
@@ -449,6 +480,12 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     },
                     else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
                 } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+                .reference => |reference| {
+                    if (reference.is_mut) reference_is_mut = true;
+
+                    parent_reference_level += 1;
+                    continue :b reference.inner.*;
+                },
                 .type => |t| if (t) |inner|
                     continue :b inner.*
                 else
@@ -518,7 +555,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     var parent_reference_level: i32 = 0;
     var reference_is_mut = switch (m.parent.*) {
         .ident => |ident| try self.getSymbolMutability(ident.ident),
-        else => false,
+        else => false, // TODO: symbol mutability is wrong
     };
 
     var is_instance_method = false;
@@ -599,13 +636,9 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     break :b2 self_method_reference_level;
                 };
 
-                for (0..@abs(ref_level_diff)) |_|
-                    try self.write(
-                        if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
-                            "&"
-                        else
-                            unreachable,
-                    );
+                for (0..@abs(ref_level_diff)) |_| try self.write(
+                    if (ref_level_diff > 0) "*" else if (ref_level_diff < 0) "&" else unreachable,
+                );
                 try compile(self, m.parent, .{});
                 if (method.params.items.len > 1) try self.write(", ");
                 for (call_expr.args.items, 1..) |*arg, i| {

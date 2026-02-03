@@ -546,10 +546,10 @@ pub const Type = union(enum) {
                 var current_type = try Type.infer(compiler, comp.left.*);
                 for (comp.comparisons.items) |cmp| {
                     const next_type = try Type.infer(compiler, cmp.right.*);
-                    if (!current_type.eql(next_type)) return utils.printErr(
+                    if (!current_type.convertsTo(next_type)) return utils.printErr(
                         error.TypeMismatch,
-                        "comperr: Mismatched types in comparison: {f} {s} {f}\n",
-                        .{ current_type, @tagName(cmp.op), next_type },
+                        "comperr: Mismatched types in comparison: '{f}' {s} '{f}' ({f}).\n",
+                        .{ current_type, @tagName(cmp.op), next_type, comp.pos },
                         .red,
                     );
                     current_type = next_type;
@@ -626,6 +626,11 @@ pub const Type = union(enum) {
             },
             .match => |_| @panic("unimplemented"),
             .type => |t| try fromAst(compiler, t),
+            .slice => |slice| switch (try infer(compiler, slice.lhs.*)) {
+                // TODO: change slice mutability to equal binding mutability of reference
+                inline .slice, .array => |t| .{ .slice = .{ .inner = t.inner, .is_mut = false } },
+                else => |other| errors.illegalSliceExpression(other, slice.pos),
+            },
             .bad_node => unreachable,
         };
     }

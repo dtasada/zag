@@ -303,7 +303,12 @@ pub inline fn getHandler(
         .nud => self.nud_lookup,
         .led => self.led_lookup,
         .bp => self.bp_lookup,
-    }.get(token)) |handler| handler else error.HandlerDoesNotExist;
+    }.get(token)) |handler| handler else return utils.printErr(
+        error.HandlerDoesNotExist,
+        "Parser error: Syntax error at {f}.\n",
+        .{self.currentPosition()},
+        .red,
+    );
 }
 
 /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
@@ -333,20 +338,18 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
-    if (self.currentTokenKind() != closing_token) {
-        while (true) {
-            try args.append(self.alloc, if (is_generic) b: {
-                const backup_pos = self.pos;
-                if (self.type_parser.parseType(self.alloc, .primary)) |t|
-                    break :b .{ .type = t }
-                else |_| {
-                    self.pos = backup_pos;
-                    break :b try expressions.parse(self, .default);
-                }
-            } else try expressions.parse(self, .default));
+    while (self.currentTokenKind() != closing_token) {
+        try args.append(self.alloc, if (is_generic) b: {
+            const backup_pos = self.pos;
+            if (self.type_parser.parseType(self.alloc, .primary)) |t|
+                break :b .{ .type = t }
+            else |_| {
+                self.pos = backup_pos;
+                break :b try expressions.parse(self, .default);
+            }
+        } else try expressions.parse(self, .default));
 
-            if (self.currentTokenKind() == .@",") _ = self.advance() else break;
-        }
+        if (self.currentTokenKind() == .@",") _ = self.advance() else break;
     }
 
     try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));

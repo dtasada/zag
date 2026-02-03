@@ -69,6 +69,7 @@ pub fn undeclaredProperty(
     member_name: []const u8,
     position: utils.Position,
 ) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UndeclaredProperty,
         "comperr: '{f}' has no member '{s}' ({f}).\n",
@@ -125,6 +126,15 @@ pub fn illegalCallExpression(lhs: Type, pos: utils.Position) CompilerError {
     return utils.printErr(
         error.IllegalExpression,
         "comperr: Call expression on '{f}' is illegal ({f})\n",
+        .{ lhs, pos },
+        .red,
+    );
+}
+
+pub fn illegalSliceExpression(lhs: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Slice expression on '{f}' is illegal ({f})\n",
         .{ lhs, pos },
         .red,
     );
