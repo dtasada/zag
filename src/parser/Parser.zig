@@ -192,7 +192,7 @@ pub inline fn currentPosition(self: *const Self) utils.Position {
 
 /// Consumes current token and then increases position.
 pub inline fn advance(self: *Self) Lexer.Token {
-    const current_token = self.lexer.tokens.items[self.pos];
+    const current_token = self.currentToken();
     self.pos += 1;
     return current_token;
 }
@@ -336,22 +336,24 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
     if (self.currentTokenKind() == closing_token) {
         _ = self.advance();
     } else while (true) {
-        const bp: BindingPower = if (is_generic) .primary else .default;
+        std.debug.print("before: '{f}'\n", .{self.currentToken()});
         try args.append(self.alloc, if (is_generic) b: {
             const backup_pos = self.pos;
-            if (expressions.parse(self, bp)) |expr| break :b expr else |_| {
+            if (self.type_parser.parseType(self.alloc, .primary)) |t|
+                break :b .{ .type = t }
+            else |_| {
                 self.pos = backup_pos;
-                break :b .{ .type = try self.type_parser.parseType(self.alloc, bp) };
+                break :b try expressions.parse(self, .default);
             }
-        } else try expressions.parse(self, bp));
+        } else try expressions.parse(self, .default));
 
-        self.expectSilent(self.currentToken(), .@",") catch {
-            try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
-            break;
-        };
-
-        _ = self.advance();
+        std.debug.print("mid: '{f}'\n", .{self.currentToken()});
+        if (self.currentTokenKind() == .@",") _ = self.advance() else break;
+        std.debug.print("after: '{f}'\n", .{self.currentToken()});
     }
+
+    std.debug.print("tail: '{f}'\n", .{self.currentToken()});
+    try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
 
     return args;
 }
