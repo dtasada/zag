@@ -1,7 +1,9 @@
 import c;
 
-pub fn alloc<T>() &mut T {
-    return c.malloc(sizeof<T>());
+pub fn alloc<T>() !&mut T {
+    let ptr = c.malloc(sizeof<T>());
+    if (ptr == c_null) c.printf("error allocating"); //
+    return ptr;
 }
 
 pub fn free<T>(ptr: &T) void {
@@ -13,11 +15,18 @@ pub fn free_slice<T>(slice: []mut T) void {
 }
 
 pub fn alloc_slice<T>(N: usize) []mut T {
-    return cast<[]mut T>(c.malloc(sizeof<T>() * N));
+    let mut slice: []mut T = undefined;
+    slice.ptr = cast<&mut T>(c.malloc(sizeof<T>() * N));
+    slice.len = N;
+    return slice;
 }
 
+// Invalidates old `slice`
 pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
-    return cast<[]mut T>(c.realloc(cast<&mut void>(slice.ptr), new_size * sizeof<T>()));
+    let mut new_slice: []mut T = undefined;
+    new_slice.ptr = cast<&mut T>(c.realloc(cast<&mut void>(slice.ptr), new_size * sizeof<T>()));
+    new_slice.len = new_size;
+    return new_slice;
 }
 
 

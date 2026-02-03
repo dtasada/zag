@@ -4,8 +4,8 @@ import c;
 fn main() i32 {
     let mut ar = std.ArrayList<i32>.init();
     ar.append(42);
-    c.printf("item 0: %d", ar.items[0]);
+    c.printf("item 0: %d\n", ar.items[0]);
     ar.append(69);
-    c.printf("item 1: %d", ar.items[1]);
+    c.printf("item 1: %d\n", ar.items[1]);
     ar.deinit();
 }

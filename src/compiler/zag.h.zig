@@ -23,6 +23,8 @@ pub const CONTENT =
     \\typedef float  f32;
     \\typedef double f64;
     \\
+    \\#define c_null ((void*)0)
+    \\
     \\#define __ZAG_OPTIONAL_TYPE(union_name, T) \
     \\    typedef struct {                       \
     \\        bool is_some;                      \

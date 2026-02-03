@@ -523,7 +523,7 @@ pub const Type = union(enum) {
                 const rhs: Type = try .infer(compiler, binary.rhs.*);
                 if (!lhs.convertsTo(rhs)) return utils.printErr(
                     error.TypeMismatch,
-                    "comperr: Mismatched types in binary expression: {f} {s} {f} ({f})\n",
+                    "comperr: Mismatched types in binary expression: {f} {s} {f} ({f}).\n",
                     .{ lhs, @tagName(binary.op), rhs, binary.lhs.getPosition() },
                     .red,
                 );
@@ -633,15 +633,9 @@ pub const Type = union(enum) {
     fn inferCallExpression(compiler: *Compiler, call: ast.Expression.Call) !Self {
         const callee_type: Type = try infer(compiler, call.callee.*);
 
-        return switch (call.callee.*) {
-            .member => |m| switch (try inferMemberExpression(compiler, m)) {
-                .function => |function| function.return_type.*,
-                else => |other| return errors.illegalCallExpression(other, call.pos),
-            },
-            else => switch (callee_type) {
-                .function => |function| function.return_type.*,
-                else => |t| errors.illegalCallExpression(t, call.pos),
-            },
+        return switch (callee_type) {
+            .function => |function| function.return_type.*,
+            else => |t| errors.illegalCallExpression(t, call.pos),
         };
     }
 

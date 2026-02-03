@@ -861,29 +861,7 @@ fn registerConstants(self: *Self) !void {
 
     try self.registerSymbol("c_int", .{ .type = .c_int });
     try self.registerSymbol("c_char", .{ .type = .c_char });
-
-    // try self.registerSymbol("sizeof", .{
-    //     .symbol = .{
-    //         .is_mut = false,
-    //         .type = .{
-    //             .function = .{
-    //                 .name = "sizeof",
-    //                 .params = b: {
-    //                     var params: std.ArrayList(Type.Function.Param) = .empty;
-    //                     try params.append(self.alloc, .{ .name = "T", .type = .type });
-    //                     break :b params;
-    //                 },
-    //                 .return_type = b: {
-    //                     const t = try self.alloc.create(Type);
-    //                     t.* = .usize;
-    //                     break :b t;
-    //                 },
-    //                 .generic_params = .empty,
-    //                 .module = null,
-    //             },
-    //         },
-    //     },
-    // });
+    try self.registerSymbol("c_null", .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } });
 
     try self.registerSymbol("sizeof", .{
         .symbol = .{

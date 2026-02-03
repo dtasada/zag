@@ -106,7 +106,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"or", .logical, expressions.binary);
 
     // relational
-    try self.led(.@"<", .relational, expressions.ambiguousLessThan);
+    try self.led(.@"<", .call, expressions.ambiguousLessThan);
     try self.led(.@"<=", .relational, expressions.binary);
     try self.led(.@">", .relational, expressions.binary);
     try self.led(.@">=", .relational, expressions.binary);
@@ -335,7 +335,6 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     if (self.currentTokenKind() != closing_token) {
         while (true) {
-            std.debug.print("before: '{f}'\n", .{self.currentToken()});
             try args.append(self.alloc, if (is_generic) b: {
                 const backup_pos = self.pos;
                 if (self.type_parser.parseType(self.alloc, .primary)) |t|
@@ -346,13 +345,10 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
                 }
             } else try expressions.parse(self, .default));
 
-            std.debug.print("mid: '{f}'\n", .{self.currentToken()});
             if (self.currentTokenKind() == .@",") _ = self.advance() else break;
-            std.debug.print("after: '{f}'\n", .{self.currentToken()});
         }
     }
 
-    std.debug.print("tail: '{f}'\n", .{self.currentToken()});
     try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
 
     return args;
