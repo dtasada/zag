@@ -964,6 +964,7 @@ pub const Type = union(enum) {
     /// Examples are `i64` -> `i32` or `usize` -> `?usize`
     pub fn convertsTo(src: Type, dst: Type) bool {
         if (dst == .any) return true;
+
         return src.eql(dst) or switch (src) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => dst == .optional,

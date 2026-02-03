@@ -17,7 +17,7 @@ pub fn alloc_slice<T>(N: usize) []mut T {
 }
 
 pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
-    return cast<[]mut T>(c.realloc(slice.ptr, new_size * sizeof<T>()));
+    return cast<[]mut T>(c.realloc(cast<&mut void>(slice.ptr), new_size * sizeof<T>()));
 }
 
 

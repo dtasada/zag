@@ -333,23 +333,23 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
-    if (self.currentTokenKind() == closing_token) {
-        _ = self.advance();
-    } else while (true) {
-        std.debug.print("before: '{f}'\n", .{self.currentToken()});
-        try args.append(self.alloc, if (is_generic) b: {
-            const backup_pos = self.pos;
-            if (self.type_parser.parseType(self.alloc, .primary)) |t|
-                break :b .{ .type = t }
-            else |_| {
-                self.pos = backup_pos;
-                break :b try expressions.parse(self, .default);
-            }
-        } else try expressions.parse(self, .default));
+    if (self.currentTokenKind() != closing_token) {
+        while (true) {
+            std.debug.print("before: '{f}'\n", .{self.currentToken()});
+            try args.append(self.alloc, if (is_generic) b: {
+                const backup_pos = self.pos;
+                if (self.type_parser.parseType(self.alloc, .primary)) |t|
+                    break :b .{ .type = t }
+                else |_| {
+                    self.pos = backup_pos;
+                    break :b try expressions.parse(self, .default);
+                }
+            } else try expressions.parse(self, .default));
 
-        std.debug.print("mid: '{f}'\n", .{self.currentToken()});
-        if (self.currentTokenKind() == .@",") _ = self.advance() else break;
-        std.debug.print("after: '{f}'\n", .{self.currentToken()});
+            std.debug.print("mid: '{f}'\n", .{self.currentToken()});
+            if (self.currentTokenKind() == .@",") _ = self.advance() else break;
+            std.debug.print("after: '{f}'\n", .{self.currentToken()});
+        }
     }
 
     std.debug.print("tail: '{f}'\n", .{self.currentToken()});
