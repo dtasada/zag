@@ -47,6 +47,8 @@ pub fn typeMismatch(
     received_type: Type,
     position: utils.Position,
 ) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
+
     return utils.printErr(
         error.TypeMismatch,
         "comperr: Expected '{f}', received '{f}' ({f}).\n",
@@ -69,6 +71,7 @@ pub fn undeclaredProperty(
     member_name: []const u8,
     position: utils.Position,
 ) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UndeclaredProperty,
         "comperr: '{f}' has no member '{s}' ({f}).\n",
@@ -104,8 +107,6 @@ pub fn missingArguments(
 }
 
 pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
-
     return utils.printErr(
         error.UnknownSymbol,
         "comperr: Unknown symbol '{s}' at {f}.\n",

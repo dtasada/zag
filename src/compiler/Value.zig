@@ -48,8 +48,8 @@ pub const Value = union(enum) {
         };
     }
 
-    pub fn getType(self: Value) Type {
-        return switch (self) {
+    pub fn getType(self: *const Value) Type {
+        return switch (self.*) {
             .i8 => .i8,
             .i16 => .i16,
             .i32 => .i32,
@@ -61,7 +61,7 @@ pub const Value = union(enum) {
             .f32 => .f32,
             .f64 => .f64,
             .bool => .bool,
-            .type => .type,
+            .type => |*t| .{ .type = t },
             .void => .void,
             .@"struct" => |s| .{ .@"struct" = s.type },
             .@"union" => |u| .{ .@"union" = u.type },

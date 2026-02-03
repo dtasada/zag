@@ -174,7 +174,7 @@ pub const Type = union(enum) {
 
     void,
 
-    type,
+    type: ?*const Type,
     any,
 
     @"typeof(null)",
@@ -224,7 +224,10 @@ pub const Type = union(enum) {
                     for (function.generic_parameters.items) |p| {
                         generic_params.appendAssumeCapacity(.{
                             .name = p.name,
-                            .type = if (p.type == .inferred) .type else try .fromAst(compiler, p.type),
+                            .type = if (p.type == .inferred)
+                                .{ .type = null }
+                            else
+                                try .fromAst(compiler, p.type),
                         });
                         try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } });
                     }
@@ -494,7 +497,7 @@ pub const Type = union(enum) {
             .ident => |ident| switch (compiler.getScopeItem(ident.ident) catch
                 return errors.unknownSymbol(ident.ident, expr.getPosition())) {
                 .symbol => |s| s.type,
-                .type => .type,
+                .type => |*t| .{ .type = &t.type },
                 .module => |m| .{ .module = m },
                 .constant => |c| c.type,
             },
@@ -600,15 +603,16 @@ pub const Type = union(enum) {
                 if (base_type == .type) {
                     base_type = (try compiler.solveComptimeExpression(generic.lhs.*)).type;
                 }
-                // instantiateGeneric returns the concrete type
-                _ = try instantiateGeneric(
+
+                const t = try compiler.alloc.create(Self);
+                t.* = try instantiateGeneric(
                     compiler,
                     base_type,
                     generic.arguments,
                     generic.pos,
                 );
-                // But the expression itself is still a type reference
-                break :b .type;
+
+                break :b .{ .type = t };
             },
             .match => |_| @panic("unimplemented"),
             .bad_node => unreachable,
@@ -705,8 +709,6 @@ pub const Type = union(enum) {
             },
         });
 
-        std.debug.print("[ENTRY] Processing struct {s} at address {*}, members count: {}\n", .{ type_decl.name, &compound_type, compound_type.members.count() });
-
         // If definition is set, it means we already populated this type.
         if (compound_type.definition != null) return compound_type;
 
@@ -737,7 +739,10 @@ pub const Type = union(enum) {
                     for (generic_types.items) |g| {
                         try compound_type.generic_params.append(compiler.alloc, .{
                             .name = g.name,
-                            .type = if (g.type == .inferred) .type else try .fromAst(compiler, g.type),
+                            .type = if (g.type == .inferred)
+                                .{ .type = null }
+                            else
+                                try .fromAst(compiler, g.type),
                         });
                     }
                 }
@@ -748,7 +753,6 @@ pub const Type = union(enum) {
         compound_type.definition = type_decl;
 
         try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
-        std.debug.print("[REGISTERED IN OUTER SCOPE] {s} with {} generic params\n", .{ type_decl.name, compound_type.generic_params.items.len });
 
         try compiler.pushScope();
         defer compiler.popScope();
@@ -762,16 +766,12 @@ pub const Type = union(enum) {
                 }
 
                 try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
-                std.debug.print("[REGISTERED IN INNER SCOPE] {s} with {} generic params\n", .{ type_decl.name, compound_type.generic_params.items.len });
             },
             else => {},
         }
 
-        std.debug.print("[BEFORE MEMBERS] Processing struct {s}, members count: {}\n", .{ type_decl.name, compound_type.members.count() });
-
         var enum_last_value: usize = 0;
         for (type_decl.members.items) |member| {
-            std.debug.print("  Adding member {s}\n", .{member.name});
             if (compound_type.getProperty(member.name)) |_| return utils.printErr(
                 error.DuplicateMember,
                 "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",
@@ -807,7 +807,10 @@ pub const Type = union(enum) {
             for (method.generic_parameters.items) |p|
                 generic_params.appendAssumeCapacity(.{
                     .name = p.name,
-                    .type = if (p.type == .inferred) .type else try .fromAst(compiler, p.type),
+                    .type = if (p.type == .inferred)
+                        .{ .type = null }
+                    else
+                        try .fromAst(compiler, p.type),
                 });
 
             const return_type = try fromAstPtr(compiler, method.return_type);
@@ -923,6 +926,10 @@ pub const Type = union(enum) {
                     .{ member.member_name, member.pos },
                     .red,
                 ),
+            .type => |t| if (t) |inner|
+                continue :b inner.*
+            else
+                return errors.illegalMemberExpression(.{ .type = null }, member.pos),
             else => |other| return errors.illegalMemberExpression(other, member.pos),
         }
     }
@@ -946,7 +953,7 @@ pub const Type = union(enum) {
     /// Examples are `i64` -> `i32` or `usize` -> `?usize`
     pub fn convertsTo(src: Type, dst: Type) bool {
         if (dst == .any) return true;
-        return switch (src) {
+        return src.eql(dst) or switch (src) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => dst == .optional,
             .reference => |src_ref| switch (dst) {

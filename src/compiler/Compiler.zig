@@ -852,7 +852,7 @@ fn registerConstants(self: *Self) !void {
     try self.registerSymbol("bool", .{ .type = .bool });
     try self.registerSymbol("any", .{ .type = .any });
 
-    try self.registerSymbol("type", .{ .type = .type });
+    try self.registerSymbol("type", .{ .type = .{ .type = null } });
 
     try self.registerSymbol("c_int", .{ .type = .c_int });
     try self.registerSymbol("c_char", .{ .type = .c_char });
@@ -888,7 +888,7 @@ fn registerConstants(self: *Self) !void {
                     .name = "sizeof",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .type });
+                        try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
                         break :b params;
                     },
                     .return_type = b: {
@@ -911,7 +911,7 @@ fn registerConstants(self: *Self) !void {
                     .name = "cast",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .type });
+                        try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
                         break :b params;
                     },
                     .return_type = b: {

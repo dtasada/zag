@@ -400,7 +400,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
             }
             // Need to resolve method to Type.Function for methodCall
             const parent = try Type.infer(self, m.parent.*);
-            const method_func = switch (parent) {
+            const method_func = b: switch (parent) {
                 .@"struct" => |s| if (s.getProperty(m.member_name)) |prop| switch (prop) {
                     .method => |method| Type.Function{
                         .name = method.inner_name,
@@ -423,6 +423,10 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     },
                     else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
                 } else return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
+                .type => |t| if (t) |inner|
+                    continue :b inner.*
+                else
+                    return errors.illegalMemberExpression(.{ .type = null }, m.pos),
                 else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
             };
             try methodCall(self, call_expr, m, method_func);
@@ -491,12 +495,11 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
         else => false,
     };
 
-    try @import("pretty").print(self.alloc, m.parent.*, .{});
+    var is_instance_method = false;
     const parent: Type = try .infer(self, m.parent.*);
-    std.debug.print("parent type: {f}\n", .{parent});
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| {
-            if (method.params.items.len == 0 or !parent.convertsTo(method.params.items[0].type))
+            if (!is_instance_method and (method.params.items.len == 0 or !parent.convertsTo(method.params.items[0].type)))
                 return utils.printErr(
                     error.IllegalExpression,
                     "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
@@ -504,19 +507,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     .red,
                 );
 
-            const expected_type = method.params.items[0].type;
-            switch (expected_type) {
-                .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
-                    error.BadMutability,
-                    "comperr: '{s}.{s}' method requires &mut {s}, but &{s} was passed ({f}).\n",
-                    .{ @"struct".name, m.member_name, @"struct".name, @"struct".name, m.pos },
-                    .red,
-                ),
-                .@"struct" => if (!expected_type.eql(parent)) unreachable,
-                else => {},
-            }
-
-            const expected_args = method.params.items.len - 1;
+            const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
             const received_args = call_expr.args.items.len;
             if (expected_args < received_args) return errors.tooManyArguments(
                 expected_args,
@@ -528,41 +519,57 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 call_expr.pos,
             );
 
-            for (method.params.items[1..], 0..) |expected_param_type, i| {
-                const received_expr = call_expr.args.items[i];
-                const received_type: Type = try .infer(self, received_expr);
-                if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
-                    expected_param_type.type,
-                    received_type,
-                    received_expr.getPosition(),
-                );
+            try self.print("{s}(", .{method.name});
+            if (method.params.items.len > 0) {
+                const expected_type = method.params.items[0].type;
+                switch (expected_type) {
+                    .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
+                        error.BadMutability,
+                        "comperr: '{s}.{s}' method requires &mut {s}, but &{s} was passed ({f}).\n",
+                        .{ @"struct".name, m.member_name, @"struct".name, @"struct".name, m.pos },
+                        .red,
+                    ),
+                    .@"struct" => if (!expected_type.eql(parent)) unreachable,
+                    else => {},
+                }
+
+                for (method.params.items[1..], 0..) |expected_param_type, i| {
+                    const received_expr = call_expr.args.items[i];
+                    const received_type: Type = try .infer(self, received_expr);
+                    if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
+                        expected_param_type.type,
+                        received_type,
+                        received_expr.getPosition(),
+                    );
+                }
+
+                const ref_level_diff = parent_reference_level - b2: {
+                    var self_method_reference_level: i32 = 0;
+                    count_ref_level: switch (method.params.items[0].type) {
+                        .reference => |reference| {
+                            self_method_reference_level += 1;
+                            continue :count_ref_level reference.inner.*;
+                        },
+                        else => break :count_ref_level,
+                    }
+                    break :b2 self_method_reference_level;
+                };
+
+                for (0..@abs(ref_level_diff)) |_|
+                    try self.write(
+                        if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
+                            "&"
+                        else
+                            unreachable,
+                    );
+                try compile(self, m.parent, .{});
+                if (method.params.items.len > 1) try self.write(", ");
+                for (call_expr.args.items, 1..) |*arg, i| {
+                    try compile(self, arg, .{});
+                    if (i < call_expr.args.items.len) try self.write(", ");
+                }
             }
 
-            const ref_level_diff = parent_reference_level - b2: {
-                var self_method_reference_level: i32 = 0;
-                count_ref_level: switch (method.params.items[0].type) {
-                    .reference => |reference| {
-                        self_method_reference_level += 1;
-                        continue :count_ref_level reference.inner.*;
-                    },
-                    else => break :count_ref_level,
-                }
-                break :b2 self_method_reference_level;
-            };
-            try self.print("{s}(", .{method.name});
-            for (0..@abs(ref_level_diff)) |_|
-                try self.write(
-                    if (ref_level_diff > 0) "*" else if (ref_level_diff < 0)
-                        "&"
-                    else
-                        unreachable,
-                );
-            try compile(self, m.parent, .{});
-            if (method.params.items.len > 1) try self.write(", ");
-            for (call_expr.args.items, 1..) |*arg, i| {
-                try compile(self, arg, .{});
-                if (i < call_expr.args.items.len) try self.write(", ");
-            }
             try self.write(")");
         },
         .reference => |reference| {
@@ -571,6 +578,10 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
             parent_reference_level += 1;
             continue :b reference.inner.*;
         },
+        .type => |t| if (t) |inner| {
+            is_instance_method = true;
+            continue :b inner.*;
+        } else return errors.illegalMemberExpression(.{ .type = null }, m.pos),
         else => |other| return errors.illegalMemberExpression(other, m.pos),
     }
 }
