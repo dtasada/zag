@@ -1,33 +1,11 @@
 import std;
 import c;
 
-pub struct ArrayList<T> {
-    items: []mut T,
-    len: usize,
-
-    pub fn init() ArrayList<T> { 
-        return ArrayList<T> {
-            items: alloc_slice<T>(16),
-            len: 0,
-        };
-    }
-
-    pub fn deinit(self: ArrayList<T>) void {
-        free_slice(self.items);
-        self.len = 0;
-    }
-
-    pub fn append(self: ArrayList<T>, item: T) void {
-        if (self.len == self.items.len) {
-            let new_cap = if (self.items.len > 0) self.items.len * 2 else 16;
-            self.items = realloc_slice<T>(self.items, new_cap);
-        }
-        self.items[self.len] = item;
-        self.len += 1;
-    }
-}
-
 fn main() i32 {
-    let ar = ArrayList<i32>.init();
-    // ar.deinit();
+    let mut ar = std.ArrayList<i32>.init();
+    ar.append(42);
+    c.printf("item 0: %d", ar.items[0]);
+    ar.append(69);
+    c.printf("item 1: %d", ar.items[1]);
+    ar.deinit();
 }

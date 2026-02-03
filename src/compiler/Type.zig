@@ -558,7 +558,13 @@ pub const Type = union(enum) {
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .range => @panic("invalid"),
             .assignment => .void,
-            .struct_instantiation => |struct_inst| (try compiler.solveComptimeExpression(struct_inst.type_expr.*)).type,
+            .struct_instantiation => |struct_inst| {
+                const val = try compiler.solveComptimeExpression(struct_inst.type_expr.*);
+                return switch (val.type) {
+                    .type => |inner_ptr| if (inner_ptr) |ptr| ptr.* else .{ .type = null },
+                    else => val.type,
+                };
+            },
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => .void,
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
@@ -612,7 +618,10 @@ pub const Type = union(enum) {
                     generic.pos,
                 );
 
-                break :b .{ .type = t };
+                break :b switch (t.*) {
+                    .function => t.*,
+                    else => .{ .type = t },
+                };
             },
             .match => |_| @panic("unimplemented"),
             .bad_node => unreachable,

@@ -62,6 +62,8 @@ pub fn build() !void {
 
     var registry = std.StringHashMap(*Compiler.Module).init(arena);
     try transpileModule(arena, "src", &registry);
+
+    try compile(alloc);
 }
 
 /// Compiles C code into machine code.
@@ -115,7 +117,10 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const stderr = cc.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
     defer alloc.free(stderr);
 
-    const result = cc.wait() catch return;
+    const result = cc.wait() catch |err| {
+        utils.print("Build failed: {}\n", .{err}, .red);
+        return err;
+    };
 
     if (stdout.len != 0) utils.print("C compiler output:\n{s}\n", .{stdout}, .white);
     if (stderr.len != 0) utils.print("C compiler error output:\n{s}\n", .{stderr}, .red);
@@ -124,7 +129,10 @@ pub fn compile(alloc: std.mem.Allocator) !void {
 }
 
 pub fn run() anyerror!void {
-    build() catch return;
+    build() catch |err| {
+        utils.print("Build failed: {}\n", .{err}, .red);
+        return err;
+    };
 
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer _ = gpa.deinit();
@@ -150,7 +158,10 @@ pub fn run() anyerror!void {
     const stderr = main.stderr.?.readToEndAlloc(alloc, 1 << 20) catch return;
     defer alloc.free(stderr);
 
-    const result = main.wait() catch return;
+    const result = main.wait() catch |err| {
+        utils.print("Running failed: {}\n", .{err}, .red);
+        return err;
+    };
 
     if (stdout.len != 0) utils.print("{s}\n", .{stdout}, .white);
     if (stderr.len != 0) utils.print("{s}\n", .{stderr}, .red);

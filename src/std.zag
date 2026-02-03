@@ -32,12 +32,12 @@ pub struct ArrayList<T> {
         };
     }
 
-    pub fn deinit(self: ArrayList<T>) void {
-        free_slice(self.items);
+    pub fn deinit(self: &mut ArrayList<T>) void {
+        free_slice<T>(self.items);
         self.len = 0;
     }
 
-    pub fn append(self: ArrayList<T>, item: T) void {
+    pub fn append(self: &mut ArrayList<T>, item: T) void {
         if (self.len == self.items.len) {
             let new_cap = if (self.items.len > 0) self.items.len * 2 else 16;
             self.items = realloc_slice<T>(self.items, new_cap);

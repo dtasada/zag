@@ -118,6 +118,26 @@ fn compoundTypeDeclaration(
         try self.pushScope();
         defer self.popScope();
 
+        // Register struct's generic parameters if this is an instantiation
+        // Check if we have generic params in outer scope
+        const outer_scope_idx = self.scopes.items.len - 2; // -1 is current, -2 is outer
+        if (outer_scope_idx >= 0) {
+            var outer_scope = &self.scopes.items[outer_scope_idx];
+            switch (T) {
+                .@"struct", .@"union" => {
+                    if (type_decl.generic_types) |generic_types| {
+                        for (generic_types.items) |g| {
+                            // Copy from outer scope if it exists there
+                            if (outer_scope.get(g.name)) |outer_item| {
+                                try self.scopes.items[self.scopes.items.len - 1].put(g.name, outer_item);
+                            }
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+
         const previous_return_type = self.current_return_type;
         defer self.current_return_type = previous_return_type;
         self.current_return_type = try Type.fromAst(self, method.return_type);
@@ -243,48 +263,35 @@ fn conditional(
                 .red,
             ),
         },
-        .@"for" => {
-            switch (statement.iterator) {
-                .range => |range| {
-                    capture_ident = statement.capture orelse
-                        try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+        .@"for" => switch (statement.iterator) {
+            .range => |range| {
+                capture_ident = statement.capture orelse
+                    try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
-                    try self.compileType(try .infer(self, range.start.*), .{});
-                    try self.print(" {s} = ", .{capture_ident});
-                    try expressions.compile(self, range.start, .{});
-                    try self.print("; {s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
-                    try expressions.compile(self, range.end, .{});
+                try self.compileType(try .infer(self, range.start.*), .{});
+                try self.print(" {s} = ", .{capture_ident});
+                try expressions.compile(self, range.start, .{});
+                try self.print("; {s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
+                try expressions.compile(self, range.end, .{});
+                try self.print("; {s}++", .{capture_ident});
+            },
+            else => |other| switch (try Type.infer(self, other)) {
+                .array => |array| {
+                    capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+
+                    try self.compileType(.usize, .{});
+                    try self.print(" {s} = 0", .{capture_ident});
+                    try self.print("; {s} < ", .{capture_ident});
+                    try self.print("{}", .{array.size});
                     try self.print("; {s}++", .{capture_ident});
                 },
-                else => |other| switch (try Type.infer(self, other)) {
-                    .array => |array| {
-                        capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
-
-                        try self.compileType(.usize, .{});
-                        try self.print(" {s} = 0", .{capture_ident});
-                        try self.print("; {s} < ", .{capture_ident});
-                        try self.print("{}", .{array.size});
-                        try self.print("; {s}++", .{capture_ident});
-                    },
-                    // .arraylist => {
-                    //     capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
-                    //
-                    //     try self.compileType(.usize, .{});
-                    //     try self.print(" {s} = 0", .{capture_ident});
-                    //     try self.print("; {s} < ", .{capture_ident});
-                    //     try self.write("(");
-                    //     try expressions.compile(self, &statement.iterator, .{});
-                    //     try self.write(").len");
-                    //     try self.print("; {s}++", .{capture_ident});
-                    // },
-                    else => |t| return utils.printErr(
-                        error.IllegalExpression,
-                        "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
-                        .{ t, statement.iterator.getPosition() },
-                        .red,
-                    ),
-                },
-            }
+                else => |t| return utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
+                    .{ t, statement.iterator.getPosition() },
+                    .red,
+                ),
+            },
         },
     }
     try self.write(") ");
@@ -334,7 +341,7 @@ fn functionDefinition(
     } else |_| {
         type_obj = try Type.fromAst(self, function_def.getType());
         type_obj.function.definition = function_def;
-        
+
         try self.registerSymbol(function_def.name, .{ .symbol = .{
             .type = type_obj,
         } });

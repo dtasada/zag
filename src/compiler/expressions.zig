@@ -77,10 +77,23 @@ pub fn compile(
             try self.write(ident.ident)
         else
             return errors.unknownSymbol(ident.ident, expression.getPosition()),
-        .struct_instantiation => |struct_inst| switch ((try self.solveComptimeExpression(struct_inst.type_expr.*)).type) {
-            .@"struct" => |s| try structInstantiation(self, struct_inst, s),
-            .@"union" => |u| try unionInstantiation(self, struct_inst, u),
-            else => unreachable,
+        .struct_instantiation => |struct_inst| {
+            const val = try self.solveComptimeExpression(struct_inst.type_expr.*);
+            const struct_type = switch (val.type) {
+                .type => |inner_ptr| if (inner_ptr) |ptr| ptr.* else return utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Cannot instantiate type 'type' ({f})\n",
+                    .{expression.getPosition()},
+                    .red,
+                ),
+                else => val.type,
+            };
+
+            switch (struct_type) {
+                .@"struct" => |s| try structInstantiation(self, struct_inst, s),
+                .@"union" => |u| try unionInstantiation(self, struct_inst, u),
+                else => unreachable,
+            }
         },
         .reference => |reference| {
             switch (reference.inner.*) {
@@ -108,11 +121,26 @@ pub fn compile(
             }
             try self.write("}");
         },
-        .index => |index| {
-            try compile(self, index.lhs, .{});
-            try self.write("[");
-            try compile(self, index.index, .{});
-            try self.write("]");
+        .index => |index| switch (try Type.infer(self, index.lhs.*)) {
+            .array => |array| {
+                _ = array; // TODO: compile time checks for array indexes with constexpr indexes.
+                try compile(self, index.lhs, .{});
+                try self.write("[");
+                try compile(self, index.index, .{});
+                try self.write("]");
+            },
+            .slice => {
+                try compile(self, index.lhs, .{});
+                try self.write(".ptr[");
+                try compile(self, index.index, .{});
+                try self.write("]");
+            },
+            else => |other| return utils.printErr(
+                error.IllegalExpression,
+                "comperr: Illegal index expression on '{f}' ({f}).\n",
+                .{ other, index.lhs.getPosition() },
+                .red,
+            ),
         },
         .@"if" => |@"if"| {
             try self.write("((");
@@ -499,13 +527,31 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     const parent: Type = try .infer(self, m.parent.*);
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| {
-            if (!is_instance_method and (method.params.items.len == 0 or !parent.convertsTo(method.params.items[0].type)))
-                return utils.printErr(
+            if (!is_instance_method) {
+                if (method.params.items.len == 0) return utils.printErr(
                     error.IllegalExpression,
                     "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
                     .{ @"struct".name, m.member_name, m.pos },
                     .red,
                 );
+
+                if (!parent.convertsTo(method.params.items[0].type)) {
+                    switch (method.params.items[0].type) {
+                        .reference => |ref| if (!parent.convertsTo(ref.inner.*)) return utils.printErr(
+                            error.IllegalExpression,
+                            "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
+                            .{ @"struct".name, m.member_name, m.pos },
+                            .red,
+                        ),
+                        else => return utils.printErr(
+                            error.IllegalExpression,
+                            "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
+                            .{ @"struct".name, m.member_name, m.pos },
+                            .red,
+                        ),
+                    }
+                }
+            }
 
             const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
             const received_args = call_expr.args.items.len;

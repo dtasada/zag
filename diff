@@ -1,0 +1,141 @@
+diff --git a/src/compiler/Type.zig b/src/compiler/Type.zig
+index 2ceccad..9a55e74 100644
+--- a/src/compiler/Type.zig
++++ b/src/compiler/Type.zig
+@@ -558,7 +558,13 @@ pub const Type = union(enum) {
+             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
+             .range => @panic("invalid"),
+             .assignment => .void,
+-            .struct_instantiation => |struct_inst| (try compiler.solveComptimeExpression(struct_inst.type_expr.*)).type,
++            .struct_instantiation => |struct_inst| {
++                const val = try compiler.solveComptimeExpression(struct_inst.type_expr.*);
++                return switch (val.type) {
++                    .type => |inner_ptr| if (inner_ptr) |ptr| ptr.* else .{ .type = null },
++                    else => val.type,
++                };
++            },
+             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
+             .block => .void,
+             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
+diff --git a/src/compiler/errors.zig b/src/compiler/errors.zig
+index c3f688f..db651b9 100644
+--- a/src/compiler/errors.zig
++++ b/src/compiler/errors.zig
+@@ -47,8 +47,6 @@ pub fn typeMismatch(
+     received_type: Type,
+     position: utils.Position,
+ ) CompilerError {
+-    std.debug.dumpCurrentStackTrace(null);
+-
+     return utils.printErr(
+         error.TypeMismatch,
+         "comperr: Expected '{f}', received '{f}' ({f}).\n",
+@@ -125,6 +123,8 @@ pub fn illegalMemberExpression(lhs: Type, pos: utils.Position) CompilerError {
+ }
+ 
+ pub fn illegalCallExpression(lhs: Type, pos: utils.Position) CompilerError {
++    std.debug.dumpCurrentStackTrace(null);
++
+     return utils.printErr(
+         error.IllegalExpression,
+         "comperr: Call expression on '{f}' is illegal ({f})\n",
+diff --git a/src/compiler/expressions.zig b/src/compiler/expressions.zig
+index 353cb25..6d1ee5a 100644
+--- a/src/compiler/expressions.zig
++++ b/src/compiler/expressions.zig
+@@ -77,10 +77,23 @@ pub fn compile(
+             try self.write(ident.ident)
+         else
+             return errors.unknownSymbol(ident.ident, expression.getPosition()),
+-        .struct_instantiation => |struct_inst| switch ((try self.solveComptimeExpression(struct_inst.type_expr.*)).type) {
+-            .@"struct" => |s| try structInstantiation(self, struct_inst, s),
+-            .@"union" => |u| try unionInstantiation(self, struct_inst, u),
+-            else => unreachable,
++        .struct_instantiation => |struct_inst| {
++            const val = try self.solveComptimeExpression(struct_inst.type_expr.*);
++            const struct_type = switch (val.type) {
++                .type => |inner_ptr| if (inner_ptr) |ptr| ptr.* else return utils.printErr(
++                    error.IllegalExpression,
++                    "comperr: Cannot instantiate type 'type' ({f})\n",
++                    .{expression.getPosition()},
++                    .red,
++                ),
++                else => val.type,
++            };
++
++            switch (struct_type) {
++                .@"struct" => |s| try structInstantiation(self, struct_inst, s),
++                .@"union" => |u| try unionInstantiation(self, struct_inst, u),
++                else => unreachable,
++            }
+         },
+         .reference => |reference| {
+             switch (reference.inner.*) {
+diff --git a/src/compiler/statements.zig b/src/compiler/statements.zig
+index 831c11c..81351f4 100644
+--- a/src/compiler/statements.zig
++++ b/src/compiler/statements.zig
+@@ -118,6 +118,26 @@ fn compoundTypeDeclaration(
+         try self.pushScope();
+         defer self.popScope();
+ 
++        // Register struct's generic parameters if this is an instantiation
++        // Check if we have generic params in outer scope
++        const outer_scope_idx = self.scopes.items.len - 2; // -1 is current, -2 is outer
++        if (outer_scope_idx >= 0) {
++            var outer_scope = &self.scopes.items[outer_scope_idx];
++            switch (T) {
++                .@"struct", .@"union" => {
++                    if (type_decl.generic_types) |generic_types| {
++                        for (generic_types.items) |g| {
++                            // Copy from outer scope if it exists there
++                            if (outer_scope.get(g.name)) |outer_item| {
++                                try self.scopes.items[self.scopes.items.len - 1].put(g.name, outer_item);
++                            }
++                        }
++                    }
++                },
++                else => {},
++            }
++        }
++
+         const previous_return_type = self.current_return_type;
+         defer self.current_return_type = previous_return_type;
+         self.current_return_type = try Type.fromAst(self, method.return_type);
+@@ -334,7 +354,7 @@ fn functionDefinition(
+     } else |_| {
+         type_obj = try Type.fromAst(self, function_def.getType());
+         type_obj.function.definition = function_def;
+-        
++
+         try self.registerSymbol(function_def.name, .{ .symbol = .{
+             .type = type_obj,
+         } });
+diff --git a/src/main.zag b/src/main.zag
+index 6a82c5a..7176fbb 100644
+--- a/src/main.zag
++++ b/src/main.zag
+@@ -7,20 +7,20 @@ pub struct ArrayList<T> {
+ 
+     pub fn init() ArrayList<T> { 
+         return ArrayList<T> {
+-            items: alloc_slice<T>(16),
++            items: std.alloc_slice<T>(16),
+             len: 0,
+         };
+     }
+ 
+     pub fn deinit(self: ArrayList<T>) void {
+-        free_slice(self.items);
++        std.free_slice(self.items);
+         self.len = 0;
+     }
+ 
+     pub fn append(self: ArrayList<T>, item: T) void {
+         if (self.len == self.items.len) {
+             let new_cap = if (self.items.len > 0) self.items.len * 2 else 16;
+-            self.items = realloc_slice<T>(self.items, new_cap);
++            self.items = std.realloc_slice<T>(self.items, new_cap);
+         }
+         self.items[self.len] = item;
+         self.len += 1;
