@@ -106,7 +106,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
 
     return .{
         .generic = .{
-            .position = lhs.getPosition(), // Simplification: use start pos
+            .pos = lhs.getPosition(), // Simplification: use start pos
             .lhs = ptr,
             .arguments = args,
         },
@@ -124,7 +124,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
         "type name",
     );
 
-    return .{ .symbol = .{ .symbol = ident, .position = position } };
+    return .{ .symbol = .{ .symbol = ident, .pos = position } };
 }
 
 pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
@@ -139,7 +139,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
 
     return .{
         .reference = .{
-            .position = position,
+            .pos = position,
             .inner = inner,
             .is_mut = is_mut,
         },
@@ -153,7 +153,7 @@ pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
     const inner = try alloc.create(ast.Type);
     inner.* = try parseType(self, alloc, .default);
 
-    return .{ .optional = .{ .position = position, .inner = inner } };
+    return .{ .optional = .{ .pos = position, .inner = inner } };
 }
 
 pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
@@ -163,7 +163,7 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError
     const success = try alloc.create(ast.Type);
     success.* = try parseType(self, alloc, .default);
 
-    return .{ .error_union = .{ .position = position, .success = success } };
+    return .{ .error_union = .{ .pos = position, .success = success } };
 }
 
 pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
@@ -178,7 +178,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
 
     return .{
         .error_union = .{
-            .position = position,
+            .pos = position,
             .success = success,
             .failure = failure,
         },
@@ -211,13 +211,13 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     return if (size) |s| .{
         .array = .{
-            .position = position,
+            .pos = position,
             .inner = inner,
             .size = s,
         },
     } else .{
         .slice = .{
-            .position = position,
+            .pos = position,
             .inner = inner,
             .is_mut = is_mut.?,
         },

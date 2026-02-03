@@ -165,6 +165,7 @@ pub fn compile(
         },
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
+        .type => |t| try self.compileType(try .fromAst(self, t), .{}),
         .bad_node => unreachable,
     }
 }

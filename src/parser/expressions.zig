@@ -68,7 +68,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
 
 pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
     // first parse the NUD
-    const nud_fn = try self.getHandler(.nud, self.currentTokenKind(), self.currentPosition());
+    const nud_fn = try self.getHandler(.nud, self.currentTokenKind());
     var lhs = try nud_fn(self);
 
     // while we have a led and (current bp < bp of current token)
@@ -77,16 +77,12 @@ pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
         if (@intFromEnum(current_bp) <= @intFromEnum(bp)) break;
 
         // This should be an assertion, since we found a bp
-        const led_fn = try self.getHandler(.led, self.currentTokenKind(), self.currentPosition());
+        const led_fn = try self.getHandler(.led, self.currentTokenKind());
 
         const old_lhs = try self.alloc.create(ast.Expression);
         old_lhs.* = lhs;
 
-        lhs = try led_fn(self, old_lhs, try self.getHandler(
-            .bp,
-            self.currentTokenKind(),
-            self.currentPosition(),
-        ));
+        lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentTokenKind()));
     }
 
     return lhs;

@@ -38,7 +38,7 @@ pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
     );
 
     // optionally parse type
-    var @"type": ast.Type = .{ .inferred = .{ .position = self.currentPosition() } };
+    var @"type": ast.Type = .{ .inferred = .{ .pos = self.currentPosition() } };
     if (self.currentTokenKind() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);

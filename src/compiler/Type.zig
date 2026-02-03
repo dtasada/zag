@@ -199,13 +199,13 @@ pub const Type = union(enum) {
         return switch (t) {
             .symbol => |symbol| compiler.getSymbolType(symbol.symbol) catch return errors.unknownSymbol(
                 symbol.symbol,
-                symbol.position,
+                symbol.pos,
             ),
             .generic => |generic| try instantiateGeneric(
                 compiler,
                 try fromAst(compiler, generic.lhs.*),
                 generic.arguments,
-                generic.position,
+                generic.pos,
             ),
             .variadic => .variadic,
             .reference => |reference| .{
@@ -625,6 +625,7 @@ pub const Type = union(enum) {
                 };
             },
             .match => |_| @panic("unimplemented"),
+            .type => |t| try fromAst(compiler, t),
             .bad_node => unreachable,
         };
     }

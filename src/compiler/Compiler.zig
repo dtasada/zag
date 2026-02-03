@@ -459,7 +459,6 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     defer self.alloc.free(rel_path);
 
     const full_path = try std.fmt.allocPrint(self.alloc, "{s}.zag", .{rel_path});
-    defer self.alloc.free(full_path);
 
     // Check registry
     if (self.module_registry.get(full_path)) |mod| return mod;
@@ -476,7 +475,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     // Create module from exports
     // Allocate on heap to ensure pointer stability
     var mod = try self.alloc.create(Module);
-    mod.* = Module.init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
+    mod.* = Module.init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast(), full_path);
     mod.source_buffer = ast_res.source;
 
     var it = child_compiler.exported_symbols.iterator();
@@ -695,8 +694,9 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 .symbol => return error.ExpressionCannotBeEvaluatedAtCompileTime, // Variable cannot be evaluated at comptime (unless const?)
             };
         },
-        .generic => .{ .type = try Type.infer(self, expression) },
-        else => error.ExpressionCannotBeEvaluatedAtCompileTime,
+        .generic => .{ .type = try .infer(self, expression) },
+        .type => |t| .{ .type = try .fromAst(self, t) },
+        else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
 }
 

@@ -96,6 +96,7 @@ pub const Expression = union(enum) {
     range: Range,
     reference: Reference,
     struct_instantiation: StructInstantiation,
+    type: Type,
 
     pub const Match = struct {
         pub const Case = struct {
@@ -206,6 +207,7 @@ pub const Expression = union(enum) {
 
     pub inline fn getPosition(self: *const Expression) utils.Position {
         return switch (self.*) {
+            .type => |t| t.getPosition(),
             inline else => |some| some.pos,
         };
     }
@@ -248,7 +250,7 @@ pub const Statement = union(enum) {
             return .{
                 .function = .{
                     .name = self.name,
-                    .position = self.pos,
+                    .pos = self.pos,
                     .generic_parameters = self.generic_parameters,
                     .parameters = self.parameters,
                     .return_type = &self.return_type,
@@ -331,7 +333,7 @@ pub const Statement = union(enum) {
             return .{
                 .function = .{
                     .name = self.name,
-                    .position = self.pos,
+                    .pos = self.pos,
                     .parameters = self.parameters,
                     .generic_parameters = self.generic_parameters,
                     .return_type = &self.return_type,
@@ -369,7 +371,7 @@ pub const VariableSignature = struct {
 
 pub const Type = union(enum) {
     const Reference = struct {
-        position: utils.Position,
+        pos: utils.Position,
         inner: *const Type,
         is_mut: bool,
     };
@@ -377,7 +379,7 @@ pub const Type = union(enum) {
     const Slice = Reference;
 
     const Array = struct {
-        position: utils.Position,
+        pos: utils.Position,
         inner: *const Type,
         /// if size is `_`, type is an array of inferred size.
         /// if size is a valid expression, type is an array of specified size.
@@ -385,13 +387,13 @@ pub const Type = union(enum) {
     };
 
     const ErrorUnion = struct {
-        position: utils.Position,
+        pos: utils.Position,
         success: *const Type,
         failure: ?*const Type = null,
     };
 
     const Function = struct {
-        position: utils.Position,
+        pos: utils.Position,
         name: []const u8,
         parameters: ParameterList,
         generic_parameters: ParameterList,
@@ -399,25 +401,25 @@ pub const Type = union(enum) {
     };
 
     const Generic = struct {
-        position: utils.Position,
+        pos: utils.Position,
         lhs: *const Type,
         arguments: ArgumentList,
     };
 
-    inferred: struct { position: utils.Position },
-    symbol: struct { position: utils.Position, symbol: []const u8 },
-    optional: struct { position: utils.Position, inner: *const Type },
+    inferred: struct { pos: utils.Position },
+    symbol: struct { pos: utils.Position, symbol: []const u8 },
+    optional: struct { pos: utils.Position, inner: *const Type },
     slice: Slice,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
     function: Function,
     generic: Generic,
-    variadic: struct { position: utils.Position },
+    variadic: struct { pos: utils.Position },
 
     pub inline fn getPosition(self: Type) utils.Position {
         return switch (self) {
-            inline else => |some| some.position,
+            inline else => |some| some.pos,
         };
     }
 };

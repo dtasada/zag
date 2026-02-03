@@ -292,26 +292,18 @@ pub inline fn getHandler(
     self: *const Self,
     comptime handler_type: enum { statement, nud, led, bp },
     token: Lexer.TokenKind,
-    position: utils.Position, // purely for error reports
 ) ParserError!switch (handler_type) {
     .statement => StatementHandler,
     .nud => NudHandler,
     .led => LedHandler,
     .bp => BindingPower,
 } {
-    if (switch (handler_type) {
+    return if (switch (handler_type) {
         .statement => self.statement_lookup,
         .nud => self.nud_lookup,
         .led => self.led_lookup,
         .bp => self.bp_lookup,
-    }.get(token)) |handler| {
-        return handler;
-    } else return utils.printErr(
-        error.HandlerDoesNotExist,
-        "Parser error: Syntax error at {f}.\n",
-        .{position},
-        .red,
-    );
+    }.get(token)) |handler| handler else error.HandlerDoesNotExist;
 }
 
 /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
@@ -345,11 +337,16 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
         _ = self.advance();
     } else while (true) {
         const bp: BindingPower = if (is_generic) .primary else .default;
-        try args.append(self.alloc, try expressions.parse(self, bp));
+        try args.append(self.alloc, if (is_generic) b: {
+            const backup_pos = self.pos;
+            if (expressions.parse(self, bp)) |expr| break :b expr else |_| {
+                self.pos = backup_pos;
+                break :b .{ .type = try self.type_parser.parseType(self.alloc, bp) };
+            }
+        } else try expressions.parse(self, bp));
 
         self.expectSilent(self.currentToken(), .@",") catch {
-            const consumed = self.advance();
-            try self.expect(consumed, closing_token, environment, @tagName(closing_token));
+            try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
             break;
         };
 
@@ -411,16 +408,16 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 try param_names.append(self.alloc, .{ .name = name, .pos = pos });
             }
 
-            var param_type: ast.Type = .{ .inferred = .{ .position = first_pos } };
+            var param_type: ast.Type = .{ .inferred = .{ .pos = first_pos } };
             if (is_generic) {
                 param_type = if (self.currentTokenKind() == .@":") b: {
                     _ = self.advance();
                     break :b try self.type_parser.parseType(self.alloc, .default);
-                } else .{ .inferred = .{ .position = first_pos } };
+                } else .{ .inferred = .{ .pos = first_pos } };
             } else switch (self.advance()) {
                 .@":" => param_type = try self.type_parser.parseType(self.alloc, .default),
                 .@"..." => {
-                    param_type = .{ .variadic = .{ .position = first_pos } };
+                    param_type = .{ .variadic = .{ .pos = first_pos } };
                     last_arg = true;
                 },
                 else => |actual| return utils.printErr(
