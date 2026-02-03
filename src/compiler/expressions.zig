@@ -285,10 +285,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         .@"struct" => |@"struct"| if (@"struct".getProperty(expr.member_name)) |property| switch (property) {
             .member => {
                 try compile(self, expr.parent, .{});
-                try self.print("{s}{s}", .{
-                    @tagName(delimiter),
-                    expr.member_name,
-                });
+                try self.print("{s}{s}", .{ @tagName(delimiter), expr.member_name });
                 delimiter = .@".";
             },
             .method => |method| try self.write(method.inner_name),
@@ -645,6 +642,27 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
             try self.write(")");
             try compile(self, &call_expr.args.items[0], .{});
             return;
+        }
+
+        // For other generic function instantiations, ensure they're in pending list
+        if (function.definition) |def| {
+            // Check if already pending
+            var already_pending = false;
+            for (self.pending_instantiations.items) |pending| {
+                if (pending.t == .function and std.mem.eql(u8, pending.inner_name, function.name)) {
+                    already_pending = true;
+                    break;
+                }
+            }
+
+            if (!already_pending) {
+                try self.pending_instantiations.append(self.alloc, .{
+                    .inner_name = function.name,
+                    .args = inst.args,
+                    .module = function.module,
+                    .t = .{ .function = def.* },
+                });
+            }
         }
     }
 

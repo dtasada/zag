@@ -701,7 +701,12 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
 }
 
 fn solveGenerics(self: *Self) !void {
-    for (self.pending_instantiations.items) |instantiation| {
+    var processed: usize = 0;
+
+    while (processed < self.pending_instantiations.items.len) {
+        const instantiation = self.pending_instantiations.items[processed];
+        processed += 1;
+
         // Skip template emission
         var is_template = false;
         for (instantiation.args) |arg| {

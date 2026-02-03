@@ -414,6 +414,7 @@ pub const Type = union(enum) {
                     copy.name = name;
                     copy.generic_parameters = .empty;
                     var t = try fromAst(compiler, copy.getType());
+                    t.function.definition = d;
                     t.function.generic_instantiation = .{
                         .base_name = base_name,
                         .args = try compiler.alloc.dupe(Value, args.items),
