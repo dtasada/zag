@@ -305,12 +305,8 @@ pub const Type = union(enum) {
             ),
         };
 
-        if (params.items.len != args.items.len) return utils.printErr(
-            error.GenericArgumentCountMismatch,
-            "comperr: Expected {} generic arguments, got {} ({f})\n",
-            .{ params.items.len, args.items.len, pos },
-            .red,
-        );
+        if (params.items.len != args.items.len)
+            return errors.genericArgumentCountMismatch(params.items.len, args.items.len, pos);
 
         // Mangle name
         const base_name = switch (base_type) {

@@ -167,7 +167,7 @@ const File = struct {
 
     /// writes `bytes` to the file writer
     fn write(self: *File, bytes: []const u8) !void {
-        // try self.flush();
+        try self.flush();
         _ = try self.writer.interface.write(bytes);
     }
 

@@ -369,6 +369,25 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
     if (!self.checkType(expected_type, received_type))
         return errors.typeMismatch(expected_type, received_type, expr.value.getPosition());
 
+    b: switch (expr.assignee.*) {
+        .ident => |ident| if (!try self.getSymbolMutability(ident.ident))
+            return errors.badMutability(expr.pos),
+        .member => |m| {
+            switch (try Type.infer(self, m.parent.*)) {
+                .reference => |ref| if (!ref.is_mut) continue :b m.parent.*,
+                else => continue :b m.parent.*,
+            }
+        },
+        .index => |index| continue :b index.lhs.*,
+        .slice => |slice| continue :b slice.lhs.*,
+        else => |other| return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Illegal assignment expression on {s} ({f}).\n",
+            .{ @tagName(other), expr.pos },
+            .red,
+        ),
+    }
+
     try compile(self, expr.assignee, .{});
     try self.print(" {s} ", .{@tagName(expr.op)});
     try compile(self, expr.value, .{ .expected_type = expected_type });
@@ -514,7 +533,16 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
             },
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
-            .function => |function| try functionCall(self, function, call_expr),
+            .function => |function| {
+                if (function.generic_params.items.len > 0 and call_expr.callee.* != .generic)
+                    return errors.genericArgumentCountMismatch(
+                        function.generic_params.items.len,
+                        0,
+                        call_expr.pos,
+                    );
+
+                try functionCall(self, function, call_expr);
+            },
             else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
         },
     }

@@ -11,10 +11,7 @@ const Module = @import("Module.zig");
 const Self = @import("Compiler.zig");
 const CompilerError = errors.CompilerError;
 
-pub fn compile(
-    self: *Self,
-    statement: *const ast.Statement,
-) CompilerError!void {
+pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void {
     switch (statement.*) {
         .function_definition => |*fn_def| try functionDefinition(self, fn_def),
         .import => |import_statement| try import(self, import_statement),
@@ -387,6 +384,13 @@ fn functionDefinition(
     try self.write(") ");
 
     try self.compileBlock(function_def.body, .{});
+
+    // if (!guarantee_return) return utils.printErr(
+    //     error.MissingReturnStatement,
+    //     "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
+    //     .{ function_def.name, try Type.fromAst(self, function_def.return_type), function_def.pos },
+    //     .red,
+    // );
 }
 
 fn bindingFunctionDeclaration(

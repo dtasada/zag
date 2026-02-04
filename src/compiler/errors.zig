@@ -19,6 +19,7 @@ pub const CompilerError = error{
     MemberIsNotAMethod,
     MissingArguments,
     MissingElseClause,
+    MissingReturnStatement,
     NoSuchMember,
     OutOfMemory,
     SymbolNotVariable,
@@ -136,6 +137,24 @@ pub fn illegalSliceExpression(lhs: Type, pos: utils.Position) CompilerError {
         error.IllegalExpression,
         "comperr: Slice expression on '{f}' is illegal ({f})\n",
         .{ lhs, pos },
+        .red,
+    );
+}
+
+pub fn genericArgumentCountMismatch(expected: usize, received: usize, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.GenericArgumentCountMismatch,
+        "comperr: Expected {} generic arguments, got {} ({f}).\n",
+        .{ expected, received, pos },
+        .red,
+    );
+}
+
+pub fn badMutability(position: utils.Position) CompilerError {
+    return utils.printErr(
+        error.BadMutability,
+        "comperr: Assignment expression on immutable binding ({f}).\n",
+        .{position},
         .red,
     );
 }
