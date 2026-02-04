@@ -196,7 +196,14 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
 
-    if (expected_type != null and !self.checkType(expected_type.?, received_type))
+    if (self.getScopeItem(v.variable_name)) |_| return utils.printErr(
+        error.IllegalStatement,
+        "comperr: Symbol shadowing is not allowed: attempt to redeclare '{s}' ({f}).\n",
+        .{ v.variable_name, v.pos },
+        .red,
+    ) else |_| {}
+
+    if (expected_type) |et| if (!received_type.check(et))
         return errors.typeMismatch(
             expected_type.?,
             received_type,

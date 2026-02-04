@@ -24,7 +24,7 @@ pub fn compile(
     if (opts.expected_type) |expected_type| {
         const received_type: Type = try .infer(self, expression.*);
 
-        if (!self.checkType(expected_type, received_type))
+        if (!received_type.check(expected_type))
             return errors.typeMismatch(expected_type, received_type, expression.getPosition());
 
         if (!expected_type.eql(received_type)) switch (expected_type) {
@@ -33,7 +33,7 @@ pub fn compile(
                     "({s}){{ .is_some = false }}",
                     .{self.zag_header_contents.get(expected_type) orelse unreachable},
                 ),
-                else => if (opt.convertsTo(received_type)) {
+                else => if (opt.check(received_type)) {
                     try self.print(
                         "({s}){{ .is_some = true, .payload = ",
                         .{self.zag_header_contents.get(expected_type) orelse unreachable},
@@ -366,7 +366,7 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
     const expected_type: Type = try .infer(self, expr.assignee.*);
     const received_type: Type = try .infer(self, expr.value.*);
 
-    if (!self.checkType(expected_type, received_type))
+    if (!received_type.check(expected_type))
         return errors.typeMismatch(expected_type, received_type, expr.value.getPosition());
 
     b: switch (expr.assignee.*) {
@@ -597,9 +597,9 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     .red,
                 );
 
-                if (!parent.convertsTo(method.params.items[0].type)) {
+                if (!method.params.items[0].type.check(parent)) {
                     switch (method.params.items[0].type) {
-                        .reference => |ref| if (!parent.convertsTo(ref.inner.*)) return utils.printErr(
+                        .reference => |ref| if (!ref.inner.check(parent)) return utils.printErr(
                             error.IllegalExpression,
                             "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
                             .{ @"struct".name, m.member_name, m.pos },
@@ -758,7 +758,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         const received_expr = call_expr.args.items[i];
         const received_type: Type = try .infer(self, received_expr);
         if (expected_type.type != .variadic and
-            !received_type.convertsTo(expected_type.type))
+            !expected_type.type.check(received_type))
             return errors.typeMismatch(expected_type.type, received_type, received_expr.getPosition());
     }
 

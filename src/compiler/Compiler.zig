@@ -1018,7 +1018,3 @@ fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         .red,
     );
 }
-
-pub fn checkType(_: *const Self, expected_type: Type, received_type: Type) bool {
-    return expected_type.eql(received_type) or received_type.convertsTo(expected_type);
-}

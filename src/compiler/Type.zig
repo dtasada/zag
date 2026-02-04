@@ -517,7 +517,7 @@ pub const Type = union(enum) {
             .binary => |binary| {
                 const lhs: Type = try .infer(compiler, binary.lhs.*);
                 const rhs: Type = try .infer(compiler, binary.rhs.*);
-                if (!lhs.convertsTo(rhs)) return utils.printErr(
+                if (!rhs.check(lhs)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression: {f} {s} {f} ({f}).\n",
                     .{ lhs, @tagName(binary.op), rhs, binary.lhs.getPosition() },
@@ -542,7 +542,7 @@ pub const Type = union(enum) {
                 var current_type = try Type.infer(compiler, comp.left.*);
                 for (comp.comparisons.items) |cmp| {
                     const next_type = try Type.infer(compiler, cmp.right.*);
-                    if (!current_type.convertsTo(next_type)) return utils.printErr(
+                    if (!next_type.check(current_type)) return utils.printErr(
                         error.TypeMismatch,
                         "comperr: Mismatched types in comparison: '{f}' {s} '{f}' ({f}).\n",
                         .{ current_type, @tagName(cmp.op), next_type, comp.pos },
@@ -567,7 +567,7 @@ pub const Type = union(enum) {
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
                 const expected: Type = try .infer(compiler, @"if".body.*);
                 const received: Type = try .infer(compiler, @"else".*);
-                if (!expected.convertsTo(received)) return utils.printErr(
+                if (!received.check(expected)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Type mismatch in if expression: {f} and {f} are not compatible ({f}).\n",
                     .{ expected, received, @"if".pos },
@@ -957,7 +957,7 @@ pub const Type = union(enum) {
     /// Checks if a type is convertible to a destination type.
     /// That means that a type can automatically be cast to another.
     /// Examples are `i64` -> `i32` or `usize` -> `?usize`
-    pub fn convertsTo(src: Type, dst: Type) bool {
+    pub fn check(src: Type, dst: Type) bool {
         if (dst == .any) return true;
 
         return src.eql(dst) or switch (src) {
@@ -977,7 +977,7 @@ pub const Type = union(enum) {
                     .f32, .f64, .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
                     else => false,
                 },
-                .optional => |inner| inner.convertsTo(src),
+                .optional => |inner| inner.check(src),
                 else => src.eql(dst),
             },
         };
