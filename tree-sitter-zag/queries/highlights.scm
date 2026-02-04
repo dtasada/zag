@@ -48,6 +48,7 @@
  (true_literal)
  (false_literal)
  (null_literal)
+ (c_null_literal)
  (undefined_literal)
 ] @constant.builtin
 

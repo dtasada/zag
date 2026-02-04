@@ -31,12 +31,12 @@ pub const CONTENT =
     \\        T    payload;                      \
     \\    } union_name;
     \\
-    \\#define __ZAG_ERROR_UNION_TYPE(union_name, error_type, success_type) \
+    \\#define __ZAG_ERROR_UNION_TYPE(union_name, failure_type, success_type) \
     \\    typedef struct {                                                 \
     \\        bool is_success;                                             \
     \\        union {                                                      \
     \\            success_type success;                                    \
-    \\            error_type   error;                                      \
+    \\            failure_type failure;                                    \
     \\        } payload;                                                   \
     \\    } union_name;
     \\

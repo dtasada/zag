@@ -31,12 +31,12 @@ pub fn compile(
             .optional => |opt| switch (received_type) {
                 .@"typeof(null)" => try self.print(
                     "({s}){{ .is_some = false }}",
-                    .{self.zag_header_contents.get(expected_type) orelse unreachable},
+                    .{self.zag_header_contents.get(expected_type).?},
                 ),
                 else => if (opt.check(received_type)) {
                     try self.print(
                         "({s}){{ .is_some = true, .payload = ",
-                        .{self.zag_header_contents.get(expected_type) orelse unreachable},
+                        .{self.zag_header_contents.get(expected_type).?},
                     );
                     try compile(self, expression, .{ .expected_type = opt.* });
                     try self.write(" }");
@@ -45,6 +45,19 @@ pub fn compile(
                     received_type,
                     expression.getPosition(),
                 ),
+            },
+            .error_union => |error_union| {
+                const error_union_type_name = self.zag_header_contents.get(expected_type).?;
+
+                if (received_type.check(error_union.success.*)) {
+                    try self.print("({s}){{ .is_success = true, .payload = {{ .success = ", .{error_union_type_name});
+                    try compile(self, expression, .{});
+                    try self.write(" } }");
+                } else if (received_type.check(error_union.failure.*)) {
+                    try self.print("({s}){{ .is_success = false, .payload = {{ .failure = ", .{error_union_type_name});
+                    try compile(self, expression, .{});
+                    try self.write(" } }");
+                } else unreachable;
             },
             else => try compile(self, expression, .{ .binding_mut = opts.binding_mut }),
         } else try compile(self, expression, .{ .binding_mut = opts.binding_mut });

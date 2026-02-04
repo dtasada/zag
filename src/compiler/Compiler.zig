@@ -545,27 +545,33 @@ pub fn compileBlock(
     self.indent_level += 1;
 
     if (opts.capture) |capture| {
+        const inner_type = (try Type.infer(self, capture.condition.*)).optional.*;
+
         try self.indent();
-        try self.compileVariableSignature(
-            capture.name,
-            (try Type.infer(self, capture.condition.*)).optional.*,
-            .{},
-        );
+        try self.compileVariableSignature(capture.name, inner_type, .{});
         try self.write(" = (");
         try expressions.compile(self, capture.condition, .{});
         try self.write(").payload;\n");
+
+        try self.registerSymbol(capture.name, .{ .symbol = .{ .type = inner_type } });
     }
 
     if (opts.iterator) |iterator| {
+        const t: Type = try .infer(self, iterator.iter_expr.*);
+        const inner_type = switch (t) {
+            inline .array, .slice => |ti| ti.inner.*,
+            else => unreachable,
+        };
+
         try self.indent();
-        try self.compileVariableSignature(
-            iterator.capture_name,
-            (try Type.infer(self, iterator.iter_expr.*)).array.inner.*,
-            .{},
-        );
+        try self.compileVariableSignature(iterator.capture_name, inner_type, .{});
         try self.write(" = (");
         try expressions.compile(self, iterator.iter_expr, .{});
-        try self.print(").items[{s}];\n", .{iterator.index});
+        try self.write(")");
+        if (t == .slice) try self.write(".ptr");
+        try self.print("[{s}];\n", .{iterator.index});
+
+        try self.registerSymbol(iterator.capture_name, .{ .symbol = .{ .type = inner_type } });
     }
 
     for (block.items) |*statement| {
@@ -883,7 +889,7 @@ fn registerConstants(self: *Self) !void {
 
     try self.registerSymbol("c_int", .{ .type = .c_int });
     try self.registerSymbol("c_char", .{ .type = .c_char });
-    try self.registerSymbol("c_null", .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } });
+    try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } });
 
     try self.registerSymbol("sizeof", .{
         .symbol = .{

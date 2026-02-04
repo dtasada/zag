@@ -7,3 +7,5 @@ pub bind fn free(ptr: &mut void) void;
 pub bind fn realloc(ptr: &mut void, len: usize) &mut void;
 
 pub bind fn pow(a: f64, b: f64) f64;
+
+pub bind fn memcpy(dst: &mut void, src: &void, len: usize) void;

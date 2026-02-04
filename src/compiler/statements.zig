@@ -271,29 +271,56 @@ fn conditional(
                 capture_ident = statement.capture orelse
                     try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
-                try self.compileType(try .infer(self, range.start.*), .{});
-                try self.print(" {s} = ", .{capture_ident});
+                try self.compileVariableSignature(capture_ident, try .infer(self, range.start.*), .{ .binding_mut = true });
+                try self.write(" = ");
                 try expressions.compile(self, range.start, .{});
-                try self.print("; {s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
-                try expressions.compile(self, range.end, .{});
-                try self.print("; {s}++", .{capture_ident});
-            },
-            else => |other| switch (try Type.infer(self, other)) {
-                .array => |array| {
-                    capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+                try self.write(";");
 
-                    try self.compileType(.usize, .{});
-                    try self.print(" {s} = 0", .{capture_ident});
-                    try self.print("; {s} < ", .{capture_ident});
-                    try self.print("{}", .{array.size});
-                    try self.print("; {s}++", .{capture_ident});
-                },
-                else => |t| return utils.printErr(
-                    error.IllegalExpression,
-                    "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
-                    .{ t, statement.iterator.getPosition() },
-                    .red,
-                ),
+                try self.write("(");
+                try expressions.compile(self, range.end, .{});
+                try self.write(">");
+                try expressions.compile(self, range.start, .{});
+                try self.write(") ? ");
+                try self.print("{s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
+                try expressions.compile(self, range.end, .{});
+
+                try self.write(" : ");
+                try self.print("{s} {s} ", .{ capture_ident, if (range.inclusive) ">=" else ">" });
+                try expressions.compile(self, range.end, .{});
+                try self.write("; ");
+
+                try self.write("(");
+                try expressions.compile(self, range.end, .{});
+                try self.write(">");
+                try expressions.compile(self, range.start, .{});
+                try self.write(") ? ");
+                try self.print("{s}++ ", .{capture_ident});
+                try self.write(" : ");
+                try self.print("{s}-- ", .{capture_ident});
+
+                if (statement.capture) |capture|
+                    try self.registerSymbol(capture, .{ .symbol = .{ .type = .usize } });
+            },
+            else => |other| {
+                capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+
+                try self.compileType(.usize, .{ .binding_mut = true });
+                try self.print(" {s} = 0", .{capture_ident});
+                try self.print("; {s} < (", .{capture_ident});
+
+                switch (try Type.infer(self, other)) {
+                    .array => |array| try self.print("{}); {s}++", .{ array.size, capture_ident }),
+                    .slice => {
+                        try expressions.compile(self, &other, .{});
+                        try self.print(").len; {s}++", .{capture_ident});
+                    },
+                    else => |t| return utils.printErr(
+                        error.IllegalExpression,
+                        "comperr: Illegal for loop iterator of type '{f}' at {f}.\n",
+                        .{ t, statement.iterator.getPosition() },
+                        .red,
+                    ),
+                }
             },
         },
     }
@@ -309,9 +336,9 @@ fn conditional(
         },
         switch (T) {
             .@"for" => .{
-                .iterator = if (statement.capture) |c| .{
+                .iterator = if (statement.capture != null and statement.iterator != .range) .{
                     .iter_expr = &statement.iterator,
-                    .capture_name = c,
+                    .capture_name = statement.capture.?,
                     .index = capture_ident,
                 } else null,
             },

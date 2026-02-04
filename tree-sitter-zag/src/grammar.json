@@ -124,6 +124,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "c_null_literal"
+        },
+        {
+          "type": "SYMBOL",
           "name": "undefined_literal"
         },
         {
@@ -3396,6 +3400,10 @@
     "null_literal": {
       "type": "STRING",
       "value": "null"
+    },
+    "c_null_literal": {
+      "type": "STRING",
+      "value": "c_null"
     },
     "undefined_literal": {
       "type": "STRING",

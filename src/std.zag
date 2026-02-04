@@ -29,6 +29,16 @@ pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
     return new_slice;
 }
 
+pub fn memcpy<T>(dst: &mut T, src: &T) void {
+    c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>());
+}
+
+pub fn memcpy_slice<T>(dst: []mut T, src: []T) !void {
+    if (dst.len != src.len) return c_null;
+
+    c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>() * dst.len);
+}
+
 pub fn min<T>(a, b: T) T {
     return if (a > b) b else a;
 }
@@ -84,8 +94,49 @@ pub struct ArrayList<T> {
     }
 
     pub fn deinit(self: &mut ArrayList<T>) void {
-        if (self.capacity != 0) {
+        if (self.capacity != 0)
             free_slice<T>(self.items[0..self.capacity]);
+       
+    }
+
+    pub fn contains(self: &ArrayList<T>, item: T) bool {
+        for (self.items) |i| {
+            if (item == i) return true;
         }
+
+        return false;
+    }
+
+    pub fn eq(self: &ArrayList<T>, rhs: &ArrayList<T>) bool {
+        for (0..self.items.len) |i| {
+            if (self.items[i] != rhs.items[i]) return false;
+        }
+        return true;
+    }
+
+    pub fn index_of(self: &ArrayList<T>, item: T) !usize {
+        for (0..self.items.len) |i| {
+            if (self.items[i] == item) return i;
+        }
+
+        return c_null;
+    }
+
+    pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
+        for (self.items.len-1..=0) |i| {
+            if (self.items[i] == item) return i;
+        }
+
+        return c_null;
+    }
+
+    pub fn remove(self: &mut ArrayList<T>, index: usize) !void {
+        let len = self.items.len;
+        if (index >= len) return c_null;
+
+        if (index + 1 < len) {}
+
+        self.items[index..self.items.len-1] = self.items[index+1..self.items.len];
+        self.items = self.items[0..self.items.len-1];
     }
 }

@@ -596,6 +596,10 @@
           "named": true
         },
         {
+          "type": "c_null_literal",
+          "named": true
+        },
+        {
           "type": "call_expression",
           "named": true
         },
@@ -2177,6 +2181,10 @@
   {
     "type": "c_int",
     "named": false
+  },
+  {
+    "type": "c_null_literal",
+    "named": true
   },
   {
     "type": "comment",

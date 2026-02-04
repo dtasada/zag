@@ -161,7 +161,7 @@ pub fn compoundTypeDeclaration(
                     try switch (T) {
                         .@"struct" => compound.members.append(self.alloc, .{
                             .name = name,
-                            .type = member_type orelse unreachable,
+                            .type = member_type.?,
                         }),
                         .@"enum" => compound.members.append(self.alloc, .{
                             .name = name,

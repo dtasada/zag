@@ -978,29 +978,35 @@ pub const Type = union(enum) {
     /// Checks if a type is convertible to a destination type.
     /// That means that a type can automatically be cast to another.
     /// Examples are `i64` -> `i32` or `usize` -> `?usize`
-    pub fn check(src: Type, dst: Type) bool {
-        if (dst == .any) return true;
+    pub fn check(received: Type, expected: Type) bool {
+        if (expected == .any) return true;
 
-        return src.eql(dst) or switch (src) {
-            .@"typeof(undefined)" => true,
-            .@"typeof(null)" => dst == .optional,
-            .reference => |src_ref| switch (dst) {
-                .reference => |dst_ref| src_ref.inner.eql(dst_ref.inner.*) and
-                    src_ref.is_mut or !dst_ref.is_mut,
+        if (received.eql(expected)) return true;
+
+        const fallback = switch (expected) {
+            .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => switch (received) {
+                .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
                 else => false,
             },
-            else => switch (dst) {
-                .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => switch (src) {
-                    .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
-                    else => false,
-                },
-                .f32, .f64 => switch (src) {
-                    .f32, .f64, .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
-                    else => false,
-                },
-                .optional => |inner| inner.check(src),
-                else => src.eql(dst),
+            .f32, .f64 => switch (received) {
+                .f32, .f64, .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
+                else => false,
             },
+            .optional => |inner| inner.check(received),
+            .error_union => |error_union| received.check(error_union.success.*) or
+                received.check(error_union.failure.*),
+            else => received.eql(expected),
+        };
+
+        return switch (received) {
+            .@"typeof(undefined)" => true,
+            .@"typeof(null)" => expected == .optional,
+            .reference => |received_ref| switch (expected) {
+                .reference => |expected_ref| received_ref.inner.check(expected_ref.inner.*) and
+                    (received_ref.is_mut or !expected_ref.is_mut),
+                else => fallback,
+            },
+            else => fallback,
         };
     }
 
