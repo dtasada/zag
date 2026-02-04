@@ -29,6 +29,10 @@ export default grammar({
     [$.call_expression, $.binary_expression, $.reference_expression],
     [$.call_expression, $.binary_expression, $.prefix_expression],
     [$.call_expression, $.binary_expression],
+    [$.type, $.generic_parameter_list],
+    [$.expression, $.ident_type, $.call_callee],
+    [$.expression, $.call_callee],
+    [$.ident_type, $.call_callee],
   ],
 
   rules: {
@@ -145,7 +149,7 @@ export default grammar({
     ),
 
     struct_member: $ => seq(
-      commaSep1(field("name", $.ident)),
+      commaSep(field("name", $.ident)),
       ":",
       field("type", $.type),
     ),
@@ -336,11 +340,31 @@ export default grammar({
       "}",
     ),
 
-    call_expression: $ => prec(10, seq(
-      field("callee", $.expression),
-      optional($.generic_argument_list),
-      field("arguments", $.argument_list),
+    call_expression: $ => prec(10, choice(
+      seq(
+        field("callee", $.call_callee),
+        field("arguments", $.argument_list),
+      ),
+      seq(
+        field("callee", $.call_callee),
+        field("generic_arguments", $.generic_argument_list),
+        field("arguments", $.argument_list),
+      ),
     )),
+
+    call_callee: $ => choice(
+      $.ident,
+      $.member_expression,
+      $.call_expression,
+      $.prefix_expression,
+      $.reference_expression,
+      $.struct_instantiation_expression,
+      $.array_instantiation_expression,
+      $.if_expression,
+      $.range_expression,
+      $.match_expression,
+      $.block,
+    ),
 
     argument_list: $ => seq(
       "(",
@@ -459,15 +483,15 @@ export default grammar({
 
     generic_parameter_list: $ => seq(
       "<",
-      commaSep1(choice(field("name", $.ident_type), $.variable_signature)),
+      commaSep(choice(field("name", $.ident_type), $.variable_signature)),
       ">",
     ),
 
-    generic_argument_list: $ => seq(
-      "<",
-      commaSep1(field("argument", $.expression)),
-      ">",
-    ),
+    generic_argument_list: $ => prec.dynamic(2, seq(
+      token.immediate("<"),
+      commaSep(field("argument", choice($.type, $.expression))),
+      token.immediate(">"),
+    )),
 
     prefix_operator: $ => choice(
       "-",

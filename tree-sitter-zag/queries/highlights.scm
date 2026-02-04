@@ -52,7 +52,7 @@
 ] @constant.builtin
 
 (member_expression rhs: (ident) @field)
-(call_expression callee: (expression (member_expression rhs: (ident) @function.call)))
+(call_callee (member_expression rhs: (ident) @function.call))
 
 (parameter_list (variable_signature name: (ident) @variable.parameter))
 (parameter_list name: (ident) @variable.parameter)
@@ -62,7 +62,7 @@
 (function_definition name: (ident) @function)
 (binding_function_declaration name: (ident) @function)
 
-(call_expression callee: (expression (ident) @function.call))
+(call_callee (ident) @function.call)
 (argument_list argument: (expression (ident) @variable.parameter))
 (generic_argument_list argument: (expression (ident) @variable.parameter))
 (capture (ident) @variable.parameter)
