@@ -16,7 +16,7 @@ pub fn parse(self: *Self) ParserError!ast.Statement {
 
     const expression = try expressions.parse(self, .default);
 
-    try self.expect(self.advance(), .@";", "statement", ";");
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", "statement", ";");
 
     return .{ .expression = expression };
 }
@@ -261,7 +261,7 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
         ),
         else => return err,
     };
-    try self.expect(self.advance(), .@";", "binding function definition", ";");
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", "binding function definition", ";");
 
     return .{
         .binding_function_declaration = .{
@@ -282,7 +282,7 @@ pub fn @"return"(self: *Self) ParserError!ast.Statement {
     if (self.currentTokenKind() != .@";")
         expression = try expressions.parse(self, .default);
 
-    try self.expect(self.advance(), .@";", "return statement", ";");
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", "return statement", ";");
     return .{ .@"return" = .{ .pos = pos, .@"return" = expression } };
 }
 
@@ -429,7 +429,7 @@ pub fn import(self: *Self) ParserError!ast.Statement {
         else => |other| return self.unexpectedToken("import statement", "as' or ';", other),
     }
 
-    try self.expect(self.advance(), .@";", "import statement", ";");
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", "import statement", ";");
 
     return .{
         .import = .{
@@ -446,13 +446,13 @@ pub fn match(self: *Self) ParserError!ast.Statement {
 
 pub fn @"break"(self: *Self) ParserError!ast.Statement {
     _ = self.advance();
-    try self.expect(self.advance(), .@";", "break statement", ";");
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", "break statement", ";");
     return .@"break";
 }
 
 pub fn @"continue"(self: *Self) ParserError!ast.Statement {
     _ = self.advance();
-    try self.expect(self.advance(), .@";", "break statement", ";");
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", "break statement", ";");
     return .@"continue";
 }
 

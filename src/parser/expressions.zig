@@ -331,8 +331,12 @@ pub fn match(self: *Self) ParserError!ast.Expression {
         try self.expect(self.advance(), .@"->", "match statement case", "->");
 
         const result: ast.Statement = b: {
-            if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn|
+            if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
+                self.expect_semicolon = false;
+                defer self.expect_semicolon = true;
+
                 break :b try statement_fn(self);
+            }
 
             break :b .{ .expression = try parse(self, .default) };
         };

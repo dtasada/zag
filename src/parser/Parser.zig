@@ -73,6 +73,8 @@ led_lookup: std.AutoHashMap(Lexer.TokenKind, LedHandler),
 /// Maps a `Token` to a corresponding statement handler.
 statement_lookup: std.AutoHashMap(Lexer.TokenKind, StatementHandler),
 
+expect_semicolon: bool,
+
 // errors: std.ArrayList(ParserError) = .empty,
 
 /// Initializes and runs parser. Populates `output`.
@@ -87,6 +89,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
         .statement_lookup = .init(alloc),
         .type_parser = try .init(alloc, self),
         .alloc = alloc,
+        .expect_semicolon = true,
     };
 
     try self.led(.@"=", .assignment, expressions.assignment);
