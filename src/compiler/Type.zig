@@ -519,7 +519,7 @@ pub const Type = union(enum) {
                 const rhs: Type = try .infer(compiler, binary.rhs.*);
                 if (!rhs.check(lhs)) return utils.printErr(
                     error.TypeMismatch,
-                    "comperr: Mismatched types in binary expression: {f} {s} {f} ({f}).\n",
+                    "comperr: Mismatched types in binary expression: '{f}' {s} '{f}' ({f}).\n",
                     .{ lhs, @tagName(binary.op), rhs, binary.lhs.getPosition() },
                     .red,
                 );
@@ -992,12 +992,7 @@ pub const Type = union(enum) {
                 if (compound.generic_instantiation) |inst| {
                     try writer.print("{s}<", .{inst.base_name});
                     for (inst.args, 0..) |arg, i| {
-                        switch (arg) {
-                            inline .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .bool => |v| try writer.print("{}", .{v}),
-                            .type => |t| try writer.print("{f}", .{t}),
-                            .void => _ = try writer.write("void"),
-                            else => _ = try writer.write(@tagName(arg)),
-                        }
+                        try writer.print("{f}", .{arg});
                         if (i < inst.args.len - 1) _ = try writer.write(", ");
                     }
                     _ = try writer.write(">");
@@ -1269,5 +1264,15 @@ pub const Type = union(enum) {
 
     pub fn getTagType(enum_length: usize) Type {
         return uintFromBits(@intFromFloat(@ceil(std.math.log2(@as(f32, @floatFromInt(enum_length))))));
+    }
+
+    pub fn isNumeric(self: Type) bool {
+        return switch (self) {
+            .u64, .u32, .u16, .u8 => true,
+            .i64, .i32, .i16, .i8 => true,
+            .f64, .f32 => true,
+            .usize => true,
+            else => false,
+        };
     }
 };

@@ -24,17 +24,14 @@ pub const Value = union(enum) {
 
     void,
 
-    @"struct": CompoundType(.@"struct"),
-    @"enum": CompoundType(.@"enum"),
-    @"union": CompoundType(.@"union"),
-    optional: struct {
-        type: Type,
-        value: *const Value,
-    },
-    reference: struct { value: *const Value, type: Type.Reference },
-    array: struct { value: *const Value, type: Type.Array },
-    error_union: struct { value: *const Value, type: Type.ErrorUnion },
-    function: struct { value: *const Value, type: Type.Function },
+    // @"struct": CompoundType(.@"struct"),
+    // @"enum": CompoundType(.@"enum"),
+    // @"union": CompoundType(.@"union"),
+    // optional: struct { type: Type, value: *const Value },
+    // reference: struct { value: *const Value, type: Type.Reference },
+    // array: struct { value: std.ArrayList(Value), type: Type.Array },
+    // error_union: struct { value: *const Value, type: Type.ErrorUnion },
+    // function: struct { value: *const Value, type: Type.Function },
 
     fn CompoundType(compound_type: enum { @"struct", @"union", @"enum" }) type {
         return struct {
@@ -46,6 +43,17 @@ pub const Value = union(enum) {
             members: std.StringHashMap(*const Value),
             methods: std.StringHashMap(*const Value),
         };
+    }
+
+    pub fn format(self: Value, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        switch (self) {
+            .u64, .u32, .u16, .u8 => |uint| try writer.print("{}", .{uint}),
+            .i64, .i32, .i16, .i8 => |int| try writer.print("{}", .{int}),
+            .f64, .f32 => |float| try writer.print("{}", .{float}),
+            .bool => |b| try writer.print("{}", .{b}),
+            .type => |t| try writer.print("{f}", .{t}),
+            .void => _ = try writer.write("void"),
+        }
     }
 
     pub fn getType(self: *const Value) Type {
@@ -63,14 +71,6 @@ pub const Value = union(enum) {
             .bool => .bool,
             .type => |*t| .{ .type = t },
             .void => .void,
-            .@"struct" => |s| .{ .@"struct" = s.type },
-            .@"union" => |u| .{ .@"union" = u.type },
-            .@"enum" => |e| .{ .@"enum" = e.type },
-            .optional => |opt| opt.type,
-            .reference => |ref| .{ .reference = ref.type },
-            .array => |arr| .{ .array = arr.type },
-            .error_union => |err| .{ .error_union = err.type },
-            .function => |func| .{ .function = func.type },
         };
     }
 
@@ -97,7 +97,7 @@ pub const Value = union(enum) {
 
                         .@"&" => inner_lhs & inner_rhs,
                         .@"|" => inner_lhs | inner_rhs,
-                        .@"^" => inner_lhs ^ inner_rhs,
+                        .@"^" => std.math.pow(@TypeOf(inner_lhs), inner_lhs, inner_rhs),
                         .@">>" => inner_lhs >> @as(u6, @intCast(inner_rhs)),
                         .@"<<" => inner_lhs << @as(u6, @intCast(inner_rhs)),
                         else => unreachable,
@@ -123,7 +123,6 @@ pub const Value = union(enum) {
 
                         .@"&" => inner_lhs & inner_rhs,
                         .@"|" => inner_lhs | inner_rhs,
-                        .@"^" => inner_lhs ^ inner_rhs,
                         .@"and" => inner_lhs and inner_rhs,
                         .@"or" => inner_lhs or inner_rhs,
                         else => unreachable,
@@ -159,21 +158,12 @@ pub const Value = union(enum) {
         const tag = std.meta.activeTag(self);
         h.update(std.mem.asBytes(&tag));
         switch (self) {
-            inline .i8,
-            .u8,
-            .bool,
-            .i16,
-            .u16,
-            .i32,
-            .u32,
-            .f32,
-            .i64,
-            .u64,
-            .f64,
-            => |v| h.update(std.mem.asBytes(&v)),
+            .u64, .u32, .u16, .u8 => |uint| h.update(std.mem.asBytes(&uint)),
+            .i64, .i32, .i16, .i8 => |int| h.update(std.mem.asBytes(&int)),
+            .f64, .f32 => |float| h.update(std.mem.asBytes(&float)),
+            .bool => |b| h.update(std.mem.asBytes(&b)),
             .type => |t| h.update(std.mem.asBytes(&t.hash())),
             .void => {},
-            else => @panic("TODO: hash for complex values"),
         }
         return h.final();
     }

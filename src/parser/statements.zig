@@ -251,11 +251,6 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "bind" keyword
     try self.expect(self.advance(), .@"fn", "binding function declaration", "fn");
     const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
-    const generic_parameters: ast.ParameterList = switch (self.currentToken()) {
-        .@"(" => .empty,
-        .@"<" => try self.parseGenericParameters(),
-        else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
-    };
     const parameters = try self.parseParameters();
     const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist => return utils.printErr(
@@ -273,7 +268,6 @@ pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
             .pos = pos,
             .is_pub = is_pub,
             .name = function_name,
-            .generic_parameters = generic_parameters,
             .parameters = parameters,
             .return_type = return_type,
         },

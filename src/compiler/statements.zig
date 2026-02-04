@@ -338,7 +338,7 @@ fn functionDefinition(
     self: *Self,
     comptime binding_function: bool,
     function_def: *const if (binding_function)
-        ast.Statement.BindingFunctionDefinition
+        ast.Statement.BindingFunctionDeclaration
     else
         ast.Statement.FunctionDefinition,
 ) CompilerError!void {
@@ -353,7 +353,7 @@ fn functionDefinition(
             },
         } });
 
-    if (function_def.generic_parameters.items.len > 0) return;
+    if (!binding_function and function_def.generic_parameters.items.len > 0) return;
 
     try self.pushScope();
     defer self.popScope();

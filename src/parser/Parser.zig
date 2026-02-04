@@ -30,6 +30,7 @@ pub const BindingPower = enum {
     multiplicative,
     unary,
     call,
+    power,
     member,
     primary,
 };
@@ -121,7 +122,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"*", .multiplicative, expressions.binary);
     try self.led(.@"&", .multiplicative, expressions.binary);
     try self.led(.@"|", .additive, expressions.binary);
-    try self.led(.@"^", .additive, expressions.binary);
+    try self.led(.@"^", .power, expressions.binary);
     try self.led(.@"<<", .multiplicative, expressions.binary);
     try self.led(.@">>", .multiplicative, expressions.binary);
 

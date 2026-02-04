@@ -229,7 +229,7 @@ pub const Statement = union(enum) {
     @"if": If,
     @"return": Return,
     @"while": While,
-    binding_function_declaration: BindingFunctionDefinition,
+    binding_function_declaration: BindingFunctionDeclaration,
     block: ast.Expression.Block,
     enum_declaration: EnumDeclaration,
     expression: Expression,
@@ -331,20 +331,20 @@ pub const Statement = union(enum) {
         body: *const Statement,
     };
 
-    pub const BindingFunctionDefinition = struct {
+    pub const BindingFunctionDeclaration = struct {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        generic_parameters: ParameterList,
         parameters: ParameterList,
         return_type: Type,
-        pub fn getType(self: *const BindingFunctionDefinition) Type {
+
+        pub fn getType(self: *const BindingFunctionDeclaration) Type {
             return .{
                 .function = .{
-                    .name = self.name,
                     .pos = self.pos,
+                    .name = self.name,
+                    .generic_parameters = .empty,
                     .parameters = self.parameters,
-                    .generic_parameters = self.generic_parameters,
                     .return_type = &self.return_type,
                 },
             };
