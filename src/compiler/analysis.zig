@@ -18,18 +18,47 @@ pub fn statementReturns(statement: ast.Statement) bool {
     return switch (statement) {
         .@"return" => true,
 
-        .@"if" => |if_stmt| {
-            // An if statement only guarantees a return if it has an else
-            // branch AND both branches are guaranteed to return.
+        .@"if" => |if_stmt| blk: {
             if (if_stmt.@"else") |else_stmt| {
-                return statementReturns(if_stmt.body.*) and statementReturns(else_stmt.*);
+                if (statementReturns(if_stmt.body.*) and statementReturns(else_stmt.*)) {
+                    break :blk true;
+                }
             }
-            return false;
+            break :blk false;
         },
 
-        .block => |block_stmt| return blockReturns(block_stmt.block),
+        .block => |block_stmt| blockReturns(block_stmt.block),
 
-        // For now, assume loops and other statements don't guarantee a return.
+        .expression => |expr| switch (expr) {
+            .match => |match_expr| blk: {
+                var has_else = false;
+                if (match_expr.cases.items.len == 0) {
+                    break :blk false;
+                }
+
+                for (match_expr.cases.items) |case| {
+                    if (case.condition == .@"else") {
+                        has_else = true;
+                    }
+                    if (!statementReturns(case.result)) {
+                        break :blk false;
+                    }
+                }
+                break :blk has_else;
+            },
+            .block => |block_expr| blockReturns(block_expr.block),
+            else => false,
+        },
+
+        .@"while" => |while_stmt| blk: {
+            if (while_stmt.condition == .ident) {
+                if (std.mem.eql(u8, while_stmt.condition.ident.ident, "true")) {
+                    break :blk statementReturns(while_stmt.body.*);
+                }
+            }
+            break :blk false;
+        },
+
         else => false,
     };
 }

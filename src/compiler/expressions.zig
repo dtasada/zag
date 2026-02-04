@@ -268,6 +268,39 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
             try self.indent();
             try self.write("}");
         },
+        .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize, .c_char, .c_int, .bool => {
+            try self.write("switch (");
+            try compile(self, m.condition, .{});
+            try self.write(") {\n");
+            self.indent_level += 1;
+
+            for (m.cases.items) |case| {
+                switch (case.condition) {
+                    .opts => |opts| for (opts.items) |opt| {
+                        try self.indent();
+                        try self.write("case ");
+                        try compile(self, &opt, .{});
+                        try self.write(":\n");
+                    },
+                    .@"else" => {
+                        try self.indent();
+                        try self.write("default:\n");
+                    },
+                }
+                self.indent_level += 1;
+
+                try self.indent();
+                try statements.compile(self, &case.result);
+                try self.indent();
+                try self.write("break;\n");
+
+                self.indent_level -= 1;
+            }
+
+            self.indent_level -= 1;
+            try self.indent();
+            try self.write("}");
+        },
         else => @panic("unimplemented!"),
     }
 }
