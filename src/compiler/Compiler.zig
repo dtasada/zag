@@ -934,6 +934,34 @@ fn registerConstants(self: *Self) !void {
             },
         },
     });
+
+    try self.registerSymbol("xor", .{
+        .symbol = .{
+            .is_mut = false,
+            .type = .{
+                .function = .{
+                    .name = "xor",
+                    .generic_params = b: {
+                        var params: std.ArrayList(Type.Function.Param) = .empty;
+                        try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
+                        break :b params;
+                    },
+                    .return_type = b: {
+                        const t = try self.alloc.create(Type);
+                        t.* = .usize; // Default, will be overridden
+                        break :b t;
+                    },
+                    .params = b: {
+                        var params: std.ArrayList(Type.Function.Param) = .empty;
+                        try params.append(self.alloc, .{ .name = "a", .type = .any });
+                        try params.append(self.alloc, .{ .name = "b", .type = .any });
+                        break :b params;
+                    },
+                    .module = null,
+                },
+            },
+        },
+    });
 }
 
 pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {

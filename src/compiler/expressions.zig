@@ -639,11 +639,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 
             const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
             const received_args = call_expr.args.items.len;
-            if (expected_args < received_args) return errors.tooManyArguments(
-                expected_args,
-                received_args,
-                call_expr.pos,
-            ) else if (expected_args > received_args) return errors.missingArguments(
+            if (expected_args != received_args) return errors.argumentCountMismatch(
                 expected_args,
                 received_args,
                 call_expr.pos,
@@ -715,15 +711,38 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.Call) !void {
     if (function.generic_instantiation) |inst| {
         if (std.mem.eql(u8, inst.base_name, "sizeof")) {
+            if (call_expr.args.items.len != 0) return errors.argumentCountMismatch(
+                0,
+                call_expr.args.items.len,
+                call_expr.pos,
+            );
+
             try self.write("sizeof(");
             try self.compileType(inst.args[0].type, .{});
             try self.write(")");
             return;
         } else if (std.mem.eql(u8, inst.base_name, "cast")) {
+            if (call_expr.args.items.len != 1) return errors.argumentCountMismatch(
+                1,
+                call_expr.args.items.len,
+                call_expr.pos,
+            );
+
             try self.write("(");
             try self.compileType(inst.args[0].type, .{});
             try self.write(")");
             try compile(self, &call_expr.args.items[0], .{});
+            return;
+        } else if (std.mem.eql(u8, inst.base_name, "xor")) {
+            if (call_expr.args.items.len != 2) return errors.argumentCountMismatch(
+                2,
+                call_expr.args.items.len,
+                call_expr.pos,
+            );
+
+            try compile(self, &call_expr.args.items[0], .{});
+            try self.write(" ^ ");
+            try compile(self, &call_expr.args.items[1], .{});
             return;
         }
 
@@ -760,17 +779,11 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         break :b null;
     };
 
-    if (variadic_arg != null) {
-        if (received_args < expected_args - 1) return errors.missingArguments(
-            expected_args - 1,
-            received_args,
-            call_expr.pos,
-        );
-    } else if (expected_args < received_args) return errors.tooManyArguments(
-        expected_args,
+    if (variadic_arg != null and received_args < expected_args - 1) return errors.argumentCountMismatch(
+        expected_args - 1,
         received_args,
         call_expr.pos,
-    ) else if (expected_args > received_args) return errors.missingArguments(
+    ) else if (expected_args != received_args) return errors.argumentCountMismatch(
         expected_args,
         received_args,
         call_expr.pos,

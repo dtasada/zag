@@ -10,5 +10,6 @@ fn main() i32 {
 
     ar.deinit();
 
-    let a = 2^4;
+    let a = xor<usize>(4,3);
+    c.printf("xor: %d\n", a);
 }

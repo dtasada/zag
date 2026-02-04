@@ -4,6 +4,7 @@ const utils = @import("utils");
 const Type = @import("Type.zig").Type;
 
 pub const CompilerError = error{
+    ArgumentCountMismatch,
     AssignmentToImmutableVariable,
     BadMutability,
     DuplicateMember,
@@ -17,13 +18,11 @@ pub const CompilerError = error{
     IllegalStatement,
     MemberExpressionOnPrimitiveType,
     MemberIsNotAMethod,
-    MissingArguments,
     MissingElseClause,
     MissingReturnStatement,
     NoSuchMember,
     OutOfMemory,
     SymbolNotVariable,
-    TooManyArguments,
     TypeMismatch,
     TypeNotGeneric,
     TypeNotPrimitive,
@@ -79,28 +78,15 @@ pub fn undeclaredProperty(
     );
 }
 
-pub fn tooManyArguments(
+pub fn argumentCountMismatch(
     expected_args: usize,
     received_args: usize,
     position: utils.Position,
 ) CompilerError {
     return utils.printErr(
-        error.TooManyArguments,
-        "comperr: Too many arguments in method call at {f}. Expected {}, found {}.\n",
-        .{ position, expected_args, received_args },
-        .red,
-    );
-}
-
-pub fn missingArguments(
-    expected_args: usize,
-    received_args: usize,
-    position: utils.Position,
-) CompilerError {
-    return utils.printErr(
-        error.MissingArguments,
-        "comperr: Missing arguments in method call at {f}. Expected {}, found {}.\n",
-        .{ position, expected_args, received_args },
+        error.ArgumentCountMismatch,
+        "comperr: Expected {} arguments in function call, found {} ({f}).\n",
+        .{ expected_args, received_args, position },
         .red,
     );
 }

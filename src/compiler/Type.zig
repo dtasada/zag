@@ -481,6 +481,32 @@ pub const Type = union(enum) {
             try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
 
             return new_type;
+        } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "xor")) {
+            var new_f = base_type.function;
+            new_f.name = name;
+            new_f.generic_params = .empty;
+            new_f.generic_instantiation = .{
+                .base_name = base_name,
+                .args = try compiler.alloc.dupe(Value, args.items),
+            };
+
+            // Set the return type to T (args[0])
+            if (args.items.len > 0) switch (args.items[0]) {
+                .type => |t| {
+                    const ret_ptr = try compiler.alloc.create(Type);
+                    ret_ptr.* = t;
+                    new_f.return_type = ret_ptr;
+                },
+                else => {},
+            };
+
+            const new_type: Type = .{ .function = new_f };
+
+            // Register globally
+            var global_scope = &compiler.scopes.items[0];
+            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
+
+            return new_type;
         } else return utils.printErr(
             error.GenericInstantiationFailed,
             "comperr: Cannot instantiate {f} (missing definition or unsupported) ({f})\n",
@@ -845,14 +871,9 @@ pub const Type = union(enum) {
             const length = (try compiler.solveComptimeExpression(array.length.*)).u64;
 
             const expected_length = array.contents.items.len;
-            if (expected_length < length) return utils.printErr(
-                error.MissingArguments,
+            if (expected_length != length) return utils.printErr(
+                error.ArgumentCountMismatch,
                 "comperr: Too many items in array initializer list. Expected {}, received {} ({f})\n",
-                .{ expected_length, length, array.pos },
-                .red,
-            ) else if (expected_length > length) return utils.printErr(
-                error.TooManyArguments,
-                "comperr: Missing items in array initializer list. Expected {}, received {} ({f})\n",
                 .{ expected_length, length, array.pos },
                 .red,
             );
