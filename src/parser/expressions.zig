@@ -13,7 +13,7 @@ const BindingPower = Self.BindingPower;
 pub fn primary(self: *Self) !ast.Expression {
     const pos = self.currentPosition();
 
-    return switch (self.advance()) {
+    var expr: ast.Expression = switch (self.advance()) {
         .int => |int| .{ .uint = .{ .pos = pos, .uint = int } },
         .float => |float| .{ .float = .{ .pos = pos, .float = float } },
         .ident => |ident| .{ .ident = .{ .pos = pos, .ident = ident } },
@@ -21,6 +21,16 @@ pub fn primary(self: *Self) !ast.Expression {
         .char => |char| .{ .char = .{ .pos = pos, .char = char } },
         else => |other| return self.unexpectedToken("primary expression", "(int | float | ident | string | char)", other),
     };
+
+    if (expr == .ident and self.currentTokenKind() == .@"<") {
+        if (isGenericLookahead(self)) {
+            const old_expr = try self.alloc.create(ast.Expression);
+            old_expr.* = expr;
+            expr = try generic(self, old_expr, .default);
+        }
+    }
+
+    return expr;
 }
 
 pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
@@ -206,7 +216,7 @@ pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErro
 }
 
 pub fn ambiguousLessThan(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
-    return if (isGenericLookahead(self)) generic(self, lhs, bp) else binary(self, lhs, bp);
+    return if (isGenericLookahead(self)) generic(self, lhs, bp) else binary(self, lhs, .relational);
 }
 
 fn isGenericLookahead(self: *Self) bool {
