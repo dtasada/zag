@@ -9,4 +9,6 @@ fn main() i32 {
     c.printf("item 1: %d\n", ar.items[1]);
 
     ar.deinit();
+
+    return 0;
 }

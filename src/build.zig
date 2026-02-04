@@ -95,7 +95,7 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const cmd_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "/usr/bin/cc", "-o", main_obj },
         files.items,
-        &.{ @"-Iinclude", "-Wall", "-Wextra" },
+        &.{ @"-Iinclude", "-Wall", "-Wextra", "-Wno-parentheses-equality", "-Wno-sign-compare" },
     });
     defer alloc.free(cmd_args);
 
@@ -163,8 +163,8 @@ pub fn run() anyerror!void {
         return err;
     };
 
-    if (stdout.len != 0) utils.print("{s}\n", .{stdout}, .white);
-    if (stderr.len != 0) utils.print("{s}\n", .{stderr}, .red);
+    if (stdout.len != 0) utils.print("{s}{s}", .{ stdout, if (stdout[stdout.len - 1] == '\n') "" else "\n" }, .white);
+    if (stderr.len != 0) utils.print("{s}{s}", .{ stderr, if (stdout[stdout.len - 1] == '\n') "" else "\n" }, .red);
 
     return checkResult(error.RuntimeError, result);
 }

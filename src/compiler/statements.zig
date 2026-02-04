@@ -4,6 +4,7 @@ const utils = @import("utils");
 const ast = @import("Parser").ast;
 const expressions = @import("expressions.zig");
 const errors = @import("errors.zig");
+const analysis = @import("analysis.zig");
 
 const Type = @import("Type.zig").Type;
 const Module = @import("Module.zig");
@@ -165,11 +166,29 @@ fn compoundTypeDeclaration(
         }
         try self.write(") ");
 
-        try self.compileBlock(method.body, .{});
+        const returns_on_all_paths = analysis.blockReturns(method.body);
+
+        var inject_return: ?[]const u8 = null;
+
+        switch (self.current_return_type.?) {
+            .void => {},
+            .error_union => |error_union| if (error_union.success.* == .void) {
+                // return dummy 0 when return type is !void, since unions in C can't have void members
+                inject_return = "return 0;";
+            },
+            else => if (!returns_on_all_paths) return utils.printErr(
+                error.MissingReturnStatement,
+                "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
+                .{ method.name, self.current_return_type.?, method.pos },
+                .red,
+            ),
+        }
+
+        try self.compileBlock(method.body, .{ .inject_return = inject_return });
     }
 }
 
-fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!void {
+pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!void {
     const expected_type = self.current_return_type orelse return utils.printErr(
         error.IllegalStatement,
         "comperr: Return statement outside of function ({f}).\n",
@@ -419,14 +438,25 @@ fn functionDefinition(
         }
         try self.write(") ");
 
-        try self.compileBlock(function_def.body, .{});
+        const returns_on_all_paths = analysis.blockReturns(function_def.body);
 
-        // if (!guarantee_return) return utils.printErr(
-        //     error.MissingReturnStatement,
-        //     "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
-        //     .{ function_def.name, try Type.fromAst(self, function_def.return_type), function_def.pos },
-        //     .red,
-        // );
+        var inject_return: ?[]const u8 = null;
+
+        switch (self.current_return_type.?) {
+            .void => {},
+            .error_union => |error_union| if (error_union.success.* == .void) {
+                // return dummy 0 when return type is !void, since unions in C can't have void members
+                inject_return = "return 0;";
+            },
+            else => if (!returns_on_all_paths) return utils.printErr(
+                error.MissingReturnStatement,
+                "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
+                .{ function_def.name, self.current_return_type.?, function_def.pos },
+                .red,
+            ),
+        }
+
+        try self.compileBlock(function_def.body, .{ .inject_return = inject_return });
     }
 }
 

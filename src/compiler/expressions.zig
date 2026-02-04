@@ -57,6 +57,8 @@ pub fn compile(
                     try self.print("({s}){{ .is_success = false, .payload = {{ .failure = ", .{error_union_type_name});
                     try compile(self, expression, .{});
                     try self.write(" } }");
+                } else if (error_union.success.* == .void and received_type == .i32) {
+                    try self.print("({s}){{ .is_success = true, .payload = {{ .success = 0 }} }}", .{error_union_type_name});
                 } else unreachable;
             },
             else => try compile(self, expression, .{ .binding_mut = opts.binding_mut }),

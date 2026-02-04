@@ -69,7 +69,6 @@ pub fn undeclaredProperty(
     member_name: []const u8,
     position: utils.Position,
 ) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UndeclaredProperty,
         "comperr: '{f}' has no member '{s}' ({f}).\n",

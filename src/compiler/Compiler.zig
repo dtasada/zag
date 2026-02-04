@@ -535,6 +535,7 @@ pub fn compileBlock(
             capture_name: []const u8,
             index: []const u8,
         } = null,
+        inject_return: ?[]const u8 = null,
     },
 ) CompilerError!void {
     try self.pushScope();
@@ -578,6 +579,9 @@ pub fn compileBlock(
         try self.indent();
         try statements.compile(self, statement);
     }
+
+    if (opts.inject_return) |ir| try self.write(ir);
+
     self.indent_level -= 1;
 
     try self.indent();
@@ -633,7 +637,13 @@ pub fn compileType(
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
                 try self.compileType(error_union.failure.*, new_opts);
                 try self.write(", ");
-                try self.compileType(error_union.success.*, new_opts);
+
+                // if the success type is void, use u8 as a small dummy type since C union members can't be void
+                try self.compileType(switch (error_union.success.*) {
+                    .void => .u8,
+                    else => |other| other,
+                }, new_opts);
+
                 try self.write(")\n");
                 try self.flush();
 

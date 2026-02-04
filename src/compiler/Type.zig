@@ -993,6 +993,11 @@ pub const Type = union(enum) {
                 else => false,
             },
             .optional => |inner| inner.check(received),
+            // .error_union => |error_union| if (error_union.success.* == .void and received == .i32)
+            //     // implicit 'return 0' for `!void` infers to i32 // TODO: that means let a: `!void = 1;` works; it shouldn't
+            //     true
+            // else
+            //     received.check(error_union.success.*) or received.check(error_union.failure.*),
             .error_union => |error_union| received.check(error_union.success.*) or
                 received.check(error_union.failure.*),
             else => received.eql(expected),
