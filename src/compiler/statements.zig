@@ -54,8 +54,8 @@ fn compoundTypeDeclaration(
         else => {},
     }
 
-    const output_writer = self.writer;
-    if (type_decl.is_pub and self.module_header != null) self.writer = &self.module_header.?;
+    if (type_decl.is_pub and self.module_header != null)
+        try self.switchWriter(.module_header);
 
     try self.print("typedef {s} {{\n", .{switch (T) {
         .@"struct" => "struct",
@@ -109,7 +109,7 @@ fn compoundTypeDeclaration(
     self.indent_level -= 1;
     try self.print("}} {s};\n\n", .{compound_type.name});
 
-    self.writer = output_writer;
+    try self.switchWriter(.output);
 
     for (type_decl.methods.items) |method| {
         try self.pushScope();
@@ -142,7 +142,8 @@ fn compoundTypeDeclaration(
         try self.registerSymbol(method.name, .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
 
         if (type_decl.is_pub and self.module_header != null) {
-            self.writer = &self.module_header.?;
+            try self.switchWriter(.module_header);
+
             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
             for (method.parameters.items, 1..) |parameter_type, i| {
@@ -150,7 +151,8 @@ fn compoundTypeDeclaration(
                 if (i < method.parameters.items.len) try self.write(", ");
             }
             try self.write(");\n");
-            self.writer = output_writer;
+
+            try self.switchWriter(.output);
         }
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
@@ -349,14 +351,14 @@ fn functionDefinition(
     try self.pushScope();
     defer self.popScope();
 
-    const output_writer = self.writer;
-
     const previous_return_type = self.current_return_type;
     defer self.current_return_type = previous_return_type;
     self.current_return_type = try Type.fromAst(self, function_def.return_type);
 
     if (function_def.is_pub and self.module_header != null) {
-        self.writer = &self.module_header.?;
+        try self.switchWriter(.module_header);
+        defer self.switchWriterBack();
+
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.
         try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
@@ -366,7 +368,6 @@ fn functionDefinition(
             if (i < function_def.parameters.items.len) try self.write(", ");
         }
         try self.write(");\n");
-        self.writer = output_writer;
     }
 
     // we'll set the type of the function return type to be mutable because cc warns when a
@@ -405,8 +406,8 @@ fn bindingFunctionDeclaration(
         } });
     }
 
-    const output_writer = self.writer;
-    if (function_def.is_pub and self.module_header != null) self.writer = &self.module_header.?;
+    if (function_def.is_pub and self.module_header != null)
+        try self.switchWriter(.module_header);
 
     // we'll set the type of the function return type to be mutable because cc warns when a
     // function's return type is `const` qualified.
@@ -422,7 +423,8 @@ fn bindingFunctionDeclaration(
     }
     try self.write(");\n");
 
-    self.writer = output_writer;
+    if (function_def.is_pub and self.module_header != null)
+        self.switchWriterBack();
 }
 
 fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {

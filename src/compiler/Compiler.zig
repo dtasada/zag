@@ -33,6 +33,9 @@ exported_symbols: std.StringHashMap(Module.Symbol),
 /// Points to whichever file should be written to.
 writer: ?*File,
 
+/// Saves the last file that was being written to. Used in `switchFileBack`.
+previous_writer: ?*File,
+
 /// The C source file being written to.
 output: ?File,
 
@@ -45,6 +48,7 @@ zag_source: ?File,
 /// The header file for the module being compiled (e.g. `lib.zag.h`).
 module_header: ?File,
 
+///
 /// Maps a type to its inner name.
 zag_header_contents: std.HashMap(
     Type,
@@ -167,7 +171,6 @@ const File = struct {
 
     /// writes `bytes` to the file writer
     fn write(self: *File, bytes: []const u8) !void {
-        try self.flush();
         _ = try self.writer.interface.write(bytes);
     }
 
@@ -181,6 +184,24 @@ const File = struct {
         try self.writer.interface.flush();
     }
 };
+
+/// Flushes the writer and then points it to `target`.
+pub fn switchWriter(self: *Self, target: enum { output, zag_header, zag_source, module_header }) !void {
+    self.previous_writer = self.writer;
+    try self.flush();
+    self.writer = switch (target) {
+        .output => &self.output.?,
+        .zag_header => &self.zag_header.?,
+        .zag_source => &self.zag_source.?,
+        .module_header => &self.module_header.?,
+    };
+}
+
+/// Flushes the writer and then points it to `self.previous_writer` (set by `switchWriter`).
+pub fn switchWriterBack(self: *Self) void {
+    self.flush() catch utils.print("Error flushing to '{s}'!", .{self.writer.?.path}, .red);
+    self.writer = self.previous_writer;
+}
 
 /// initializes a new `Compiler`.
 /// creates `.zag-out` folder and mirrors the `src` directory with compiled C code.
@@ -210,6 +231,7 @@ pub fn init(
         .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
         .writer = null,
         .pending_instantiations = .empty,
+        .previous_writer = null,
     };
 
     switch (mode) {
@@ -241,7 +263,7 @@ pub fn init(
             self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
             self.zag_source = try .init(alloc, zag_source_path, zag_source_file);
 
-            self.writer = &self.output.?;
+            self.writer = &self.output.?; // don't change to switchWriter, because it'll flush which will panic in analysis mode
 
             try self.zag_source.?.write(
                 \\#include <stdlib.h>
@@ -583,9 +605,8 @@ pub fn compileType(
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                const previous_writer = self.writer;
-                self.writer = &self.zag_header.?;
-                defer self.writer = previous_writer;
+                try self.switchWriter(.zag_header);
+                defer self.switchWriterBack();
 
                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
                 try self.compileType(optional.*, new_opts);
@@ -600,9 +621,8 @@ pub fn compileType(
         .error_union => |error_union| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                const previous_writer = self.writer;
-                self.writer = &self.zag_header.?;
-                defer self.writer = previous_writer;
+                try self.switchWriter(.zag_header);
+                defer self.switchWriterBack();
 
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
                 try self.compileType(error_union.failure.*, new_opts);
@@ -619,9 +639,8 @@ pub fn compileType(
         .slice => |slice| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                const previous_writer = self.writer;
-                self.writer = &self.zag_header.?;
-                defer self.writer = previous_writer;
+                try self.switchWriter(.zag_header);
+                defer self.switchWriterBack();
 
                 try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
                 try self.compileType(slice.inner.*, .{

@@ -1,0 +1,199 @@
+diff --git a/src/compiler/Compiler.zig b/src/compiler/Compiler.zig
+index 638d3e1..82cd93c 100644
+--- a/src/compiler/Compiler.zig
++++ b/src/compiler/Compiler.zig
+@@ -33,6 +33,9 @@ exported_symbols: std.StringHashMap(Module.Symbol),
+ /// Points to whichever file should be written to.
+ writer: ?*File,
+ 
++/// Saves the last file that was being written to. Used in `switchFileBack`.
++previous_writer: ?*File,
++
+ /// The C source file being written to.
+ output: ?File,
+ 
+@@ -45,6 +48,7 @@ zag_source: ?File,
+ /// The header file for the module being compiled (e.g. `lib.zag.h`).
+ module_header: ?File,
+ 
++///
+ /// Maps a type to its inner name.
+ zag_header_contents: std.HashMap(
+     Type,
+@@ -167,7 +171,7 @@ const File = struct {
+ 
+     /// writes `bytes` to the file writer
+     fn write(self: *File, bytes: []const u8) !void {
+-        try self.flush();
++        // try self.flush();
+         _ = try self.writer.interface.write(bytes);
+     }
+ 
+@@ -182,6 +186,24 @@ const File = struct {
+     }
+ };
+ 
++/// Flushes the writer and then points it to `target`.
++pub fn switchWriter(self: *Self, target: enum { output, zag_header, zag_source, module_header }) !void {
++    self.previous_writer = self.writer;
++    try self.flush();
++    self.writer = switch (target) {
++        .output => &self.output.?,
++        .zag_header => &self.zag_header.?,
++        .zag_source => &self.zag_source.?,
++        .module_header => &self.module_header.?,
++    };
++}
++
++/// Flushes the writer and then points it to `self.previous_writer` (set by `switchWriter`).
++pub fn switchWriterBack(self: *Self) void {
++    self.flush() catch utils.print("Error flushing to '{s}'!", .{self.writer.?.path}, .red);
++    self.writer = self.previous_writer;
++}
++
+ /// initializes a new `Compiler`.
+ /// creates `.zag-out` folder and mirrors the `src` directory with compiled C code.
+ /// also creates `.zag-out/bin` folder but doesn't write anything to it.
+@@ -210,6 +232,7 @@ pub fn init(
+         .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
+         .writer = null,
+         .pending_instantiations = .empty,
++        .previous_writer = null,
+     };
+ 
+     switch (mode) {
+@@ -241,7 +264,7 @@ pub fn init(
+             self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
+             self.zag_source = try .init(alloc, zag_source_path, zag_source_file);
+ 
+-            self.writer = &self.output.?;
++            self.writer = &self.output.?; // don't change to switchWriter, because it'll flush which will panic in analysis mode
+ 
+             try self.zag_source.?.write(
+                 \\#include <stdlib.h>
+@@ -583,9 +606,8 @@ pub fn compileType(
+         .optional => |optional| {
+             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
+             if (self.zag_header_contents.get(t) == null) {
+-                const previous_writer = self.writer;
+-                self.writer = &self.zag_header.?;
+-                defer self.writer = previous_writer;
++                try self.switchWriter(.zag_header);
++                defer self.switchWriterBack();
+ 
+                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
+                 try self.compileType(optional.*, new_opts);
+@@ -600,9 +622,8 @@ pub fn compileType(
+         .error_union => |error_union| {
+             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
+             if (self.zag_header_contents.get(t) == null) {
+-                const previous_writer = self.writer;
+-                self.writer = &self.zag_header.?;
+-                defer self.writer = previous_writer;
++                try self.switchWriter(.zag_header);
++                defer self.switchWriterBack();
+ 
+                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
+                 try self.compileType(error_union.failure.*, new_opts);
+@@ -619,9 +640,8 @@ pub fn compileType(
+         .slice => |slice| {
+             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
+             if (self.zag_header_contents.get(t) == null) {
+-                const previous_writer = self.writer;
+-                self.writer = &self.zag_header.?;
+-                defer self.writer = previous_writer;
++                try self.switchWriter(.zag_header);
++                defer self.switchWriterBack();
+ 
+                 try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
+                 try self.compileType(slice.inner.*, .{
+diff --git a/src/compiler/statements.zig b/src/compiler/statements.zig
+index 523c598..4bc9ba7 100644
+--- a/src/compiler/statements.zig
++++ b/src/compiler/statements.zig
+@@ -54,8 +54,8 @@ fn compoundTypeDeclaration(
+         else => {},
+     }
+ 
+-    const output_writer = self.writer;
+-    if (type_decl.is_pub and self.module_header != null) self.writer = &self.module_header.?;
++    if (type_decl.is_pub and self.module_header != null)
++        try self.switchWriter(.module_header);
+ 
+     try self.print("typedef {s} {{\n", .{switch (T) {
+         .@"struct" => "struct",
+@@ -109,7 +109,7 @@ fn compoundTypeDeclaration(
+     self.indent_level -= 1;
+     try self.print("}} {s};\n\n", .{compound_type.name});
+ 
+-    self.writer = output_writer;
++    self.switchWriterBack();
+ 
+     for (type_decl.methods.items) |method| {
+         try self.pushScope();
+@@ -142,7 +142,9 @@ fn compoundTypeDeclaration(
+         try self.registerSymbol(method.name, .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
+ 
+         if (type_decl.is_pub and self.module_header != null) {
+-            self.writer = &self.module_header.?;
++            try self.switchWriter(.module_header);
++            defer self.switchWriterBack();
++
+             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
+             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
+             for (method.parameters.items, 1..) |parameter_type, i| {
+@@ -150,7 +152,6 @@ fn compoundTypeDeclaration(
+                 if (i < method.parameters.items.len) try self.write(", ");
+             }
+             try self.write(");\n");
+-            self.writer = output_writer;
+         }
+ 
+         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
+@@ -349,14 +350,14 @@ fn functionDefinition(
+     try self.pushScope();
+     defer self.popScope();
+ 
+-    const output_writer = self.writer;
+-
+     const previous_return_type = self.current_return_type;
+     defer self.current_return_type = previous_return_type;
+     self.current_return_type = try Type.fromAst(self, function_def.return_type);
+ 
+     if (function_def.is_pub and self.module_header != null) {
+-        self.writer = &self.module_header.?;
++        try self.switchWriter(.module_header);
++        defer self.switchWriterBack();
++
+         // we'll set the type of the function return type to be mutable because cc warns when a
+         // function's return type is `const` qualified.
+         try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
+@@ -366,7 +367,6 @@ fn functionDefinition(
+             if (i < function_def.parameters.items.len) try self.write(", ");
+         }
+         try self.write(");\n");
+-        self.writer = output_writer;
+     }
+ 
+     // we'll set the type of the function return type to be mutable because cc warns when a
+@@ -405,8 +405,8 @@ fn bindingFunctionDeclaration(
+         } });
+     }
+ 
+-    const output_writer = self.writer;
+-    if (function_def.is_pub and self.module_header != null) self.writer = &self.module_header.?;
++    if (function_def.is_pub and self.module_header != null)
++        try self.switchWriter(.module_header);
+ 
+     // we'll set the type of the function return type to be mutable because cc warns when a
+     // function's return type is `const` qualified.
+@@ -422,7 +422,8 @@ fn bindingFunctionDeclaration(
+     }
+     try self.write(");\n");
+ 
+-    self.writer = output_writer;
++    if (function_def.is_pub and self.module_header != null)
++        self.switchWriterBack();
+ }
+ 
+ fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
