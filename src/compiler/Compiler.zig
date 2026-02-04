@@ -167,6 +167,7 @@ const File = struct {
 
     /// writes `bytes` to the file writer
     fn write(self: *File, bytes: []const u8) !void {
+        // try self.flush();
         _ = try self.writer.interface.write(bytes);
     }
 
@@ -193,7 +194,8 @@ pub fn init(
 ) CompilerError!*Self {
     const self = try alloc.create(Self);
 
-    var visited: std.ArrayList(Type.Context.Visited) = try .initCapacity(alloc, 128);
+    const visited = try alloc.create(std.ArrayList(Type.Context.Visited));
+    visited.* = try .initCapacity(alloc, 128);
 
     self.* = .{
         .alloc = alloc,
@@ -205,7 +207,7 @@ pub fn init(
         .module_header = null,
         .zag_header = null,
         .zag_source = null,
-        .zag_header_contents = .initContext(alloc, .{ .visited = &visited }),
+        .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
         .writer = null,
         .pending_instantiations = .empty,
     };
@@ -595,7 +597,6 @@ pub fn compileType(
 
             try self.write(type_name);
         },
-
         .error_union => |error_union| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
@@ -615,7 +616,6 @@ pub fn compileType(
 
             try self.write(type_name);
         },
-
         .slice => |slice| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {

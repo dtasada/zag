@@ -46,4 +46,10 @@ pub const CONTENT =
     \\        usize len;                \
     \\    } name;
     \\
+    \\#define __ZAG_SLICE_SLICE(type_name, slice, start, end) \
+    \\    (type_name){ .ptr = &((slice).ptr[start]), .len = (end) - (start) }
+    \\
+    \\#define __ZAG_SLICE_ARRAY(type_name, slice, start, end) \
+    \\    (type_name){ .ptr = &((slice)[start]), .len = (end) - (start) }
+    \\
 ;

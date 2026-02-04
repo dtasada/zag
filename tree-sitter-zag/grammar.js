@@ -54,6 +54,7 @@ export default grammar({
       $.match_expression,
       $.break_statement,
       $.continue_statement,
+      $.block,
     ),
 
     expression_statement: $ => seq($.expression, ";"),
@@ -81,10 +82,18 @@ export default grammar({
       $.range_expression,
       $.reference_expression,
       $.match_expression,
+      $.index_expression,
     ),
 
     break_statement: $ => seq("break", ";"),
     continue_statement: $ => seq("continue", ";"),
+
+    index_expression: $ => seq(
+      $.expression,
+      "[",
+      $.expression,
+      "]",
+    ),
 
     match_expression: $ => seq(
       "match",

@@ -174,21 +174,20 @@ pub fn compile(
             if (t == .array)
                 t = .{ .slice = .{ .inner = t.array.inner, .is_mut = true } }; // TODO: slice mutability
 
-            try self.write("(");
-            try self.compileType(t, .{ .binding_mut = opts.binding_mut });
-            try self.write("){ .ptr = &((");
+            try self.write(if (t == .slice)
+                "__ZAG_SLICE_SLICE("
+            else
+                "__ZAG_SLICE_ARRAY(");
+            try self.compileType(t, .{ .binding_mut = true });
+            try self.write(", ");
             try compile(self, slice.lhs, .{});
-            try self.write(")");
-            if (t == .slice) try self.write(".ptr");
-            try self.write("[");
+            try self.write(", ");
             try compile(self, slice.start, .{});
-            try self.write("]), .len = ");
-            if (slice.inclusive) try self.write("1 + ");
-            try self.write("(");
+            try self.write(", ");
+            if (slice.inclusive) try self.write("1 + (");
             try compile(self, slice.end, .{});
-            try self.write(") - (");
-            try compile(self, slice.start, .{});
-            try self.write(") }");
+            if (slice.inclusive) try self.write(")");
+            try self.write(")");
         },
         .bad_node => unreachable,
     }
@@ -196,6 +195,7 @@ pub fn compile(
 
 fn generic(self: *Self, g: ast.Expression.Generic) !void {
     const t = try Type.infer(self, .{ .generic = g });
+
     switch (t) {
         .function => |f| try self.write(f.name),
         else => try self.compileType(t, .{}),
@@ -499,11 +499,10 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                 const func_type = try Type.infer(self, call_expr.callee.*);
                 switch (func_type) {
                     .function => |f| {
-                        if (try tryResolveStaticType(self, m.parent.*)) |_| {
-                            try functionCall(self, f, call_expr);
-                        } else {
+                        if (try tryResolveStaticType(self, m.parent.*)) |_|
+                            try functionCall(self, f, call_expr)
+                        else
                             try methodCall(self, call_expr, m, f);
-                        }
                         return;
                     },
                     else => {},
@@ -736,6 +735,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
     }
 
     try compile(self, call_expr.callee, .{});
+
     try self.write("(");
     for (call_expr.args.items, 1..) |*e, i| {
         try compile(self, e, .{});

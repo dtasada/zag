@@ -289,6 +289,10 @@
           "named": true
         },
         {
+          "type": "block",
+          "named": true
+        },
+        {
           "type": "break_statement",
           "named": true
         },
@@ -612,6 +616,10 @@
           "named": true
         },
         {
+          "type": "index_expression",
+          "named": true
+        },
+        {
           "type": "match_expression",
           "named": true
         },
@@ -683,6 +691,10 @@
         "types": [
           {
             "type": "binding_function_declaration",
+            "named": true
+          },
+          {
+            "type": "block",
             "named": true
           },
           {
@@ -1000,6 +1012,10 @@
             "named": true
           },
           {
+            "type": "block",
+            "named": true
+          },
+          {
             "type": "break_statement",
             "named": true
           },
@@ -1086,6 +1102,10 @@
             "named": true
           },
           {
+            "type": "block",
+            "named": true
+          },
+          {
             "type": "break_statement",
             "named": true
           },
@@ -1165,6 +1185,21 @@
     }
   },
   {
+    "type": "index_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "match_expression",
     "named": true,
     "fields": {},
@@ -1174,6 +1209,10 @@
       "types": [
         {
           "type": "binding_function_declaration",
+          "named": true
+        },
+        {
+          "type": "block",
           "named": true
         },
         {
@@ -1452,6 +1491,10 @@
       "types": [
         {
           "type": "binding_function_declaration",
+          "named": true
+        },
+        {
+          "type": "block",
           "named": true
         },
         {
@@ -1853,6 +1896,10 @@
         "types": [
           {
             "type": "binding_function_declaration",
+            "named": true
+          },
+          {
+            "type": "block",
             "named": true
           },
           {
