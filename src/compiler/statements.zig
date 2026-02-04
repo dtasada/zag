@@ -13,9 +13,9 @@ const CompilerError = errors.CompilerError;
 
 pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void {
     switch (statement.*) {
-        .function_definition => |*fn_def| try functionDefinition(self, fn_def),
+        .function_definition => |*fn_def| try functionDefinition(self, false, fn_def),
         .import => |import_statement| try import(self, import_statement),
-        .binding_function_declaration => |bind| try bindingFunctionDeclaration(self, bind),
+        .binding_function_declaration => |*bind| try functionDefinition(self, true, bind),
         .struct_declaration => |*struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
         .@"return" => |return_expr| try @"return"(self, return_expr),
         .variable_definition => |var_decl| try variableDefinition(self, var_decl),
@@ -212,10 +212,7 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
 
     try self.compileVariableSignature(v.variable_name, expected_type orelse received_type, .{ .binding_mut = v.is_mut });
 
-    if (v.assigned_value != .ident or
-        v.assigned_value == .ident and
-            !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined"))
-    {
+    if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
         try self.write(" = ");
 
         try expressions.compile(self, &v.assigned_value, .{
@@ -339,19 +336,22 @@ fn conditional(
 
 fn functionDefinition(
     self: *Self,
-    function_def: *const ast.Statement.FunctionDefinition,
+    comptime binding_function: bool,
+    function_def: *const if (binding_function)
+        ast.Statement.BindingFunctionDefinition
+    else
+        ast.Statement.FunctionDefinition,
 ) CompilerError!void {
-    var type_obj: Type = undefined;
-    if (self.getSymbolType(function_def.name)) |t| {
-        type_obj = t;
-    } else |_| {
-        type_obj = try Type.fromAst(self, function_def.getType());
-        type_obj.function.definition = function_def;
-
+    _ = self.getSymbolType(function_def.name) catch
         try self.registerSymbol(function_def.name, .{ .symbol = .{
-            .type = type_obj,
+            .type = b: {
+                var type_obj = try Type.fromAst(self, function_def.getType());
+                if (!binding_function)
+                    type_obj.function.definition = function_def;
+
+                break :b type_obj;
+            },
         } });
-    }
 
     if (function_def.generic_parameters.items.len > 0) return;
 
@@ -362,7 +362,7 @@ fn functionDefinition(
     defer self.current_return_type = previous_return_type;
     self.current_return_type = try Type.fromAst(self, function_def.return_type);
 
-    if (function_def.is_pub and self.module_header != null) {
+    if (binding_function or function_def.is_pub and self.module_header != null) {
         try self.switchWriter(.module_header);
         defer self.switchWriterBack();
 
@@ -377,61 +377,30 @@ fn functionDefinition(
         try self.write(");\n");
     }
 
-    // we'll set the type of the function return type to be mutable because cc warns when a
-    // function's return type is `const` qualified.
-    try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
-    try self.print(" {s}(", .{function_def.name});
-    for (function_def.parameters.items, 1..) |parameter, i| {
-        try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
-        if (i < function_def.parameters.items.len) try self.write(", ");
+    if (!binding_function) {
+        // we'll set the type of the function return type to be mutable because cc warns when a
+        // function's return type is `const` qualified.
+        try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
+        try self.print(" {s}(", .{function_def.name});
+        for (function_def.parameters.items, 1..) |parameter, i| {
+            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
+            if (i < function_def.parameters.items.len) try self.write(", ");
 
-        try self.registerSymbol(parameter.name, .{
-            .symbol = .{ .type = try .fromAst(self, parameter.type) },
-        });
+            try self.registerSymbol(parameter.name, .{
+                .symbol = .{ .type = try .fromAst(self, parameter.type) },
+            });
+        }
+        try self.write(") ");
+
+        try self.compileBlock(function_def.body, .{});
+
+        // if (!guarantee_return) return utils.printErr(
+        //     error.MissingReturnStatement,
+        //     "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
+        //     .{ function_def.name, try Type.fromAst(self, function_def.return_type), function_def.pos },
+        //     .red,
+        // );
     }
-    try self.write(") ");
-
-    try self.compileBlock(function_def.body, .{});
-
-    // if (!guarantee_return) return utils.printErr(
-    //     error.MissingReturnStatement,
-    //     "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
-    //     .{ function_def.name, try Type.fromAst(self, function_def.return_type), function_def.pos },
-    //     .red,
-    // );
-}
-
-fn bindingFunctionDeclaration(
-    self: *Self,
-    function_def: ast.Statement.BindingFunctionDefinition,
-) CompilerError!void {
-    if (self.getSymbolType(function_def.name)) |_| {
-        // Already registered
-    } else |_| {
-        try self.registerSymbol(function_def.name, .{ .symbol = .{
-            .type = try .fromAst(self, function_def.getType()),
-        } });
-    }
-
-    if (function_def.is_pub and self.module_header != null)
-        try self.switchWriter(.module_header);
-
-    // we'll set the type of the function return type to be mutable because cc warns when a
-    // function's return type is `const` qualified.
-    try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
-    try self.print(" {s}(", .{function_def.name});
-    for (function_def.parameters.items, 1..) |parameter, i| {
-        try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
-        if (i < function_def.parameters.items.len) try self.write(", ");
-
-        try self.registerSymbol(parameter.name, .{
-            .symbol = .{ .type = try .fromAst(self, parameter.type) },
-        });
-    }
-    try self.write(");\n");
-
-    if (function_def.is_pub and self.module_header != null)
-        self.switchWriterBack();
 }
 
 fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
