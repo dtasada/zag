@@ -1116,7 +1116,7 @@ pub const Type = union(enum) {
 
                 .reference, .slice => |r| {
                     h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
-                    h.update(std.mem.asBytes(&r.is_mut));
+                    // h.update(std.mem.asBytes(&r.is_mut)); // TODO: re-enable this
                 },
 
                 .array => |a| {

@@ -8,6 +8,9 @@ fn main() i32 {
     ar.append(69);
     c.printf("item 1: %d\n", ar.items[1]);
 
+    let mut array = [4]u8{1, 2, 3, 4};
+    let slice = array[0..4];
+
     ar.deinit();
 
     return 0;

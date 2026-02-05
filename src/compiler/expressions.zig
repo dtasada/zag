@@ -134,8 +134,7 @@ pub fn compile(
         },
         .array_instantiation => |array| {
             try self.write("(");
-            if (opts.binding_mut) try self.write("const ");
-            try self.compileType(try .fromAst(self, array.type), .{});
+            try self.compileType(try .fromAst(self, array.type), .{ .binding_mut = opts.binding_mut });
             try self.print("[]){{", .{});
             for (array.contents.items, 1..) |*item, i| {
                 try compile(self, item, .{});
@@ -211,14 +210,25 @@ pub fn compile(
             if (t != .slice and t != .array)
                 return errors.illegalSliceExpression(t, slice.pos);
 
-            if (t == .array)
-                t = .{ .slice = .{ .inner = t.array.inner, .is_mut = true } }; // TODO: slice mutability
+            const is_slice = t == .slice;
+            const is_mut = switch (slice.lhs.*) {
+                .ident => |ident| try self.getSymbolMutability(ident.ident),
+                else => false,
+            };
 
-            try self.write(if (t == .slice)
-                "__ZAG_SLICE_SLICE("
-            else
-                "__ZAG_SLICE_ARRAY(");
-            try self.compileType(t, .{ .binding_mut = true });
+            if (!is_slice) {
+                // leave it like this instead of inlining it because zig is stupid
+                const inner = t.array.inner;
+                t = .{
+                    .slice = .{
+                        .inner = inner,
+                        .is_mut = is_mut,
+                    },
+                };
+            }
+
+            try self.write(if (is_slice) "__ZAG_SLICE_SLICE(" else "__ZAG_SLICE_ARRAY(");
+            try self.compileType(t, .{ .binding_mut = opts.binding_mut });
             try self.write(", ");
             try compile(self, slice.lhs, .{});
             try self.write(", ");
@@ -462,7 +472,7 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
     }
 
     try compile(self, expr.assignee, .{});
-    try self.print(" {s} ", .{@tagName(expr.op)});
+    try self.print(" {s} ", .{@tagName(expr.op)}); // TODO: ^= will xor but it should power
     try compile(self, expr.value, .{ .expected_type = expected_type });
 }
 

@@ -46,7 +46,6 @@ zag_header: ?File,
 /// The header file for the module being compiled (e.g. `lib.zag.h`).
 module_header: ?File,
 
-///
 /// Maps a type to its inner name.
 zag_header_contents: std.HashMap(
     Type,
@@ -709,7 +708,7 @@ pub fn compileType(
                 try self.compileType(slice.inner.*, .{
                     .binding_mut = slice.is_mut,
                     .is_top_level = new_opts.is_top_level,
-                }); // TODO: check if slice mutability is being emitted correctly
+                });
                 try self.write(")\n");
                 try self.flush();
 
