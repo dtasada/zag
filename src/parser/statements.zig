@@ -84,19 +84,30 @@ pub fn compoundTypeDeclaration(
 
     _ = self.advance(); // consume `struct`, `enum`, or `union` keyword.
 
-    var compound: switch (T) {
-        .@"struct" => ast.Statement.StructDeclaration,
-        .@"enum" => ast.Statement.EnumDeclaration,
-        .@"union" => ast.Statement.UnionDeclaration,
-    } = .{
-        .pos = pos,
-        .is_pub = is_pub,
-        .name = try self.expect(
-            self.advance(),
-            .ident,
-            context,
-            @tagName(T) ++ "struct name",
-        ),
+    var compound = switch (T) {
+        .@"struct" => ast.Statement.StructDeclaration{
+            .pos = pos,
+            .is_pub = is_pub,
+            .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "struct name"),
+            .generic_types = .empty,
+            .members = .empty,
+            .methods = .empty,
+        },
+        .@"union" => ast.Statement.UnionDeclaration{
+            .pos = pos,
+            .is_pub = is_pub,
+            .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "union name"),
+            .generic_types = .empty,
+            .members = .empty,
+            .methods = .empty,
+        },
+        .@"enum" => ast.Statement.EnumDeclaration{
+            .pos = pos,
+            .is_pub = is_pub,
+            .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "enum name"),
+            .members = .empty,
+            .methods = .empty,
+        },
     };
 
     if (self.currentTokenKind() == .@"<") {

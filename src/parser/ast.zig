@@ -295,16 +295,16 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        generic_types: ?ParameterList = null,
-        members: std.ArrayList(Member) = .empty,
-        methods: std.ArrayList(FunctionDefinition) = .empty,
+        generic_types: ParameterList,
+        members: std.ArrayList(Member),
+        methods: std.ArrayList(FunctionDefinition),
 
         pub fn clone(self: *const StructDeclaration, alloc: std.mem.Allocator) !StructDeclaration {
             return .{
                 .pos = self.pos,
                 .is_pub = self.is_pub,
                 .name = self.name, // notice: doesn't clone the name.
-                .generic_types = if (self.generic_types) |gt| try gt.clone(alloc) else null,
+                .generic_types = try self.generic_types.clone(alloc),
                 .members = try self.members.clone(alloc),
                 .methods = try self.methods.clone(alloc),
             };
@@ -319,9 +319,9 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         name: []const u8,
-        generic_types: ?ParameterList = null,
-        members: std.ArrayList(Member) = .empty,
-        methods: std.ArrayList(FunctionDefinition) = .empty,
+        generic_types: ParameterList,
+        members: std.ArrayList(Member),
+        methods: std.ArrayList(FunctionDefinition),
     };
 
     pub const While = struct {

@@ -397,7 +397,7 @@ pub const Type = union(enum) {
                 .@"struct" => |s| blk: {
                     var copy_decl = try s.clone(compiler.alloc);
                     copy_decl.name = name;
-                    copy_decl.generic_types = null;
+                    copy_decl.generic_types = .empty;
 
                     var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy_decl);
                     t.generic_instantiation = .{
@@ -409,7 +409,7 @@ pub const Type = union(enum) {
                 .@"union" => |d| blk: {
                     var copy = d.*;
                     copy.name = name;
-                    copy.generic_types = null;
+                    copy.generic_types = .empty;
                     var t = try fromCompoundTypeDeclaration(compiler, .@"union", &copy);
                     t.generic_instantiation = .{
                         .base_name = base_name,
@@ -806,18 +806,14 @@ pub const Type = union(enum) {
         }
 
         switch (T) {
-            .@"struct", .@"union" => {
-                if (type_decl.generic_types) |generic_types| {
-                    for (generic_types.items) |g| {
-                        try compound_type.generic_params.append(compiler.alloc, .{
-                            .name = g.name,
-                            .type = if (g.type == .inferred)
-                                .{ .type = null }
-                            else
-                                try .fromAst(compiler, g.type),
-                        });
-                    }
-                }
+            .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
+                try compound_type.generic_params.append(compiler.alloc, .{
+                    .name = g.name,
+                    .type = if (g.type == .inferred)
+                        .{ .type = null }
+                    else
+                        try .fromAst(compiler, g.type),
+                });
             },
             else => {},
         }
@@ -834,14 +830,12 @@ pub const Type = union(enum) {
         defer compiler.popScope();
 
         switch (T) {
-            .@"struct", .@"union" => if (type_decl.generic_types) |generic_types| {
-                for (generic_types.items) |g|
-                    try compiler.registerSymbol(
-                        g.name,
-                        .{ .type = .{ .generic_param = g.name } },
-                        .{},
-                    );
-            },
+            .@"struct", .@"union" => for (type_decl.generic_types.items) |g|
+                try compiler.registerSymbol(
+                    g.name,
+                    .{ .type = .{ .generic_param = g.name } },
+                    .{},
+                ),
             else => {},
         }
 

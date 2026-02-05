@@ -50,8 +50,7 @@ fn compoundTypeDeclaration(
     }, type_decl);
 
     switch (T) {
-        .@"struct" => if (type_decl.generic_types) |g| if (g.items.len > 0) return,
-        .@"union" => if (type_decl.generic_types) |g| if (g.items.len > 0) return,
+        inline .@"struct", .@"union" => if (type_decl.generic_types.items.len > 0) return,
         else => {},
     }
 
@@ -122,15 +121,10 @@ fn compoundTypeDeclaration(
         if (outer_scope_idx >= 0) {
             var outer_scope = &self.scopes.items[outer_scope_idx];
             switch (T) {
-                .@"struct", .@"union" => {
-                    if (type_decl.generic_types) |generic_types| {
-                        for (generic_types.items) |g| {
-                            // Copy from outer scope if it exists there
-                            if (outer_scope.get(g.name)) |outer_item| {
-                                try self.scopes.items[self.scopes.items.len - 1].put(g.name, outer_item);
-                            }
-                        }
-                    }
+                .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
+                    // Copy from outer scope if it exists there
+                    if (outer_scope.get(g.name)) |outer_item|
+                        try self.scopes.items[self.scopes.items.len - 1].put(g.name, outer_item);
                 },
                 else => {},
             }

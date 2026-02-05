@@ -42,9 +42,6 @@ output: ?File,
 /// The helper `zag.h` header file that contains zag language level dependencies like auto-generated types.
 zag_header: ?File,
 
-/// The helper `zag.c` source file that contains zag language level implementations like auto-generated types.
-zag_source: ?File,
-
 /// The header file for the module being compiled (e.g. `lib.zag.h`).
 module_header: ?File,
 
@@ -189,13 +186,12 @@ const File = struct {
 };
 
 /// Flushes the writer and then points it to `target`.
-pub fn switchWriter(self: *Self, target: enum { output, zag_header, zag_source, module_header }) !void {
+pub fn switchWriter(self: *Self, target: enum { output, zag_header, module_header }) !void {
     self.previous_writer = self.writer;
     try self.flush();
     self.writer = switch (target) {
         .output => &self.output.?,
         .zag_header => &self.zag_header.?,
-        .zag_source => &self.zag_source.?,
         .module_header => &self.module_header.?,
     };
 }
@@ -230,7 +226,6 @@ pub fn init(
         .output = null,
         .module_header = null,
         .zag_header = null,
-        .zag_source = null,
         .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
         .writer = null,
         .pending_instantiations = .empty,
@@ -258,21 +253,11 @@ pub fn init(
             const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
             const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
 
-            const zag_source_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.c" });
-            const zag_source_file = try @".zag-out/zag".createFile("zag.c", .{});
-
             self.output = try .init(alloc, @".c", output_file);
             self.module_header = try .init(alloc, @".h", module_header_file);
             self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
-            self.zag_source = try .init(alloc, zag_source_path, zag_source_file);
 
             self.writer = &self.output.?; // don't change to switchWriter, because it'll flush which will panic in analysis mode
-
-            try self.zag_source.?.write(
-                \\#include <stdlib.h>
-                \\#include <zag.h>
-                \\
-            );
 
             try self.zag_header.?.write(@import("zag.h.zig").CONTENT);
 
@@ -811,26 +796,25 @@ fn solveGenerics(self: *Self) !void {
 
         switch (instantiation.t) {
             inline .@"struct", .@"union" => |s, tag| {
-                if (s.generic_types) |params|
-                    for (params.items, 0..) |param, j| {
-                        const val = instantiation.args[j];
-                        switch (val) {
-                            .type => |t| try self.registerSymbol(param.name, .{ .type = t }, .{}),
-                            else => try self.registerSymbol(param.name, .{
-                                .constant = .{
-                                    .type = val.getType(),
-                                    .value = val,
-                                },
-                            }, .{}),
-                        }
-                    };
+                for (s.generic_types.items, 0..) |param, j| {
+                    const val = instantiation.args[j];
+                    switch (val) {
+                        .type => |t| try self.registerSymbol(param.name, .{ .type = t }, .{}),
+                        else => try self.registerSymbol(param.name, .{
+                            .constant = .{
+                                .type = val.getType(),
+                                .value = val,
+                            },
+                        }, .{}),
+                    }
+                }
 
                 try statements.compile(self, &@unionInit(
                     ast.Statement,
                     @tagName(tag) ++ "_declaration",
                     .{
                         .name = instantiation.inner_name,
-                        .generic_types = null,
+                        .generic_types = .empty,
                         .is_pub = true,
                         .pos = s.pos,
                         .members = s.members,
