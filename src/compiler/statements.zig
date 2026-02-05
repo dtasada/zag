@@ -174,7 +174,11 @@ fn compoundTypeDeclaration(
             .void => {},
             .error_union => |error_union| if (error_union.success.* == .void) {
                 // return dummy 0 when return type is !void, since unions in C can't have void members
-                inject_return = "return 0;";
+                inject_return = try std.fmt.allocPrint(
+                    self.alloc,
+                    "return ({s}){{ .is_success = true, .payload = {{ .success = 0 }} }};\n",
+                    .{self.zag_header_contents.get(self.current_return_type.?).?},
+                );
             },
             else => if (!returns_on_all_paths) return utils.printErr(
                 error.MissingReturnStatement,
@@ -446,7 +450,11 @@ fn functionDefinition(
             .void => {},
             .error_union => |error_union| if (error_union.success.* == .void) {
                 // return dummy 0 when return type is !void, since unions in C can't have void members
-                inject_return = "return 0;";
+                inject_return = try std.fmt.allocPrint(
+                    self.alloc,
+                    "return ({s}){{ .is_success = true, .payload = {{ .success = 0 }} }};\n",
+                    .{self.zag_header_contents.get(self.current_return_type.?).?},
+                );
             },
             else => if (!returns_on_all_paths) return utils.printErr(
                 error.MissingReturnStatement,
