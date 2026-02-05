@@ -152,3 +152,12 @@ pub fn symbolShadowing(name: []const u8, pos: utils.Position) CompilerError {
         .red,
     );
 }
+
+pub fn illegalPrefixExpression(op: @import("Parser").ast.PrefixOperator, t: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Illegal prefix operator '{s}' used on '{f}' ({f}).\n",
+        .{ @tagName(op), t, pos },
+        .red,
+    );
+}

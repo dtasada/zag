@@ -82,11 +82,18 @@ pub fn compile(
             .red,
         ),
         .prefix => |prefix| {
-            try self.write(switch (prefix.op) {
-                .@"-" => "-",
-                .@"!" => "!",
-            });
-            try compile(self, prefix.rhs, .{});
+            const t = try Type.infer(self, prefix.rhs.*);
+            const valid = switch (prefix.op) {
+                .@"-" => t.isNumeric(),
+                .@"!" => t == .bool,
+            };
+
+            if (valid) {
+                try self.write(@tagName(prefix.op));
+                try self.write("(");
+                try compile(self, prefix.rhs, .{});
+                try self.write(")");
+            } else return errors.illegalPrefixExpression(prefix.op, t, prefix.pos);
         },
         .ident => |ident| if (self.getSymbolType(ident.ident)) |_|
             try self.write(ident.ident)
@@ -138,7 +145,25 @@ pub fn compile(
         },
         .index => |index| switch (try Type.infer(self, index.lhs.*)) {
             .array => |array| {
-                _ = array; // TODO: compile time checks for array indexes with constexpr indexes.
+                if (self.solveComptimeExpression(index.index.*)) |ce| switch (ce) {
+                    inline .i64, .u64, .u8 => |int| {
+                        if (array.size <= int) return utils.printErr(
+                            error.IllegalExpression,
+                            "comperr: Tried to index array of length {} with index {} ({f}).\n",
+                            .{ array.size, int, index.pos },
+                            .red,
+                        );
+
+                        if (int < 0) return utils.printErr(
+                            error.IllegalExpression,
+                            "comperr: Tried to index array with negative index {} ({f}).\n",
+                            .{ int, index.pos },
+                            .red,
+                        );
+                    },
+                    else => {},
+                } else |_| {}
+
                 try compile(self, index.lhs, .{});
                 try self.write("[");
                 try compile(self, index.index, .{});

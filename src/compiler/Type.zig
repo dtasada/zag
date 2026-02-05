@@ -903,17 +903,17 @@ pub const Type = union(enum) {
         const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident.ident, "_"))
             array.contents.items.len
         else b: {
-            const length = (try compiler.solveComptimeExpression(array.length.*)).u64;
+            const expected_length = (try compiler.solveComptimeExpression(array.length.*)).u64;
 
-            const expected_length = array.contents.items.len;
-            if (expected_length != length) return utils.printErr(
+            const received_length = array.contents.items.len;
+            if (received_length != expected_length) return utils.printErr(
                 error.ArgumentCountMismatch,
-                "comperr: Too many items in array initializer list. Expected {}, received {} ({f})\n",
-                .{ expected_length, length, array.pos },
+                "comperr: Expected {} items in array initializer list, found {} ({f}).\n",
+                .{ expected_length, received_length, array.pos },
                 .red,
             );
 
-            break :b length;
+            break :b expected_length;
         };
 
         return .{
@@ -1030,11 +1030,6 @@ pub const Type = union(enum) {
                 else => false,
             },
             .optional => |inner| inner.check(received),
-            // .error_union => |error_union| if (error_union.success.* == .void and received == .i32)
-            //     // implicit 'return 0' for `!void` infers to i32 // TODO: that means let a: `!void = 1;` works; it shouldn't
-            //     true
-            // else
-            //     received.check(error_union.success.*) or received.check(error_union.failure.*),
             .error_union => |error_union| received.check(error_union.success.*) or
                 received.check(error_union.failure.*),
             else => received.eql(expected),

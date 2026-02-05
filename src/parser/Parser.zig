@@ -135,6 +135,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(.ident, expressions.primary);
     try self.nud(.string, expressions.primary);
     try self.nud(.@"-", expressions.prefix);
+    try self.nud(.@"!", expressions.prefix);
     try self.nud(.@"(", expressions.group);
 
     // Call/member expressions

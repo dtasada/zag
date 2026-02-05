@@ -781,6 +781,20 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         },
         .generic => .{ .type = try .infer(self, expression) },
         .type => |t| .{ .type = try .fromAst(self, t) },
+        .prefix => |prefix| switch (prefix.op) {
+            .@"-" => switch (try solveComptimeExpression(self, prefix.rhs.*)) {
+                inline .i64, .u64, .f64 => |number, tag| @unionInit(
+                    Value,
+                    if (tag == .u64) "i64" else @tagName(tag),
+                    if (tag == .u64) -@as(i64, @intCast(number)) else -number,
+                ),
+                else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
+            },
+            .@"!" => switch (try solveComptimeExpression(self, prefix.rhs.*)) {
+                .bool => |b| .{ .bool = !b },
+                else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
+            },
+        },
         else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
 }
