@@ -294,11 +294,11 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     const iterator = try expressions.parse(self, .default);
     try self.expect(self.advance(), .@")", "for statement iterator", ")");
 
-    const capture = if (self.expect(self.advance(), .@"|", "for statement capture", "|") catch null) |_| b: {
+    const capture = if (self.expect(self.advance(), .@"|", "for statement capture", "|")) |_| b: {
         const capture = try self.expect(self.advance(), .ident, "for statement capture", "for statement capture identifier");
         try self.expect(self.advance(), .@"|", "for statement capture", "|");
         break :b capture;
-    } else null;
+    } else |_| null;
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentTokenKind() == .@"{")

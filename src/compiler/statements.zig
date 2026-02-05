@@ -108,7 +108,7 @@ fn compoundTypeDeclaration(
     }
 
     self.indent_level -= 1;
-    try self.print("}} {s};\n\n", .{compound_type.name});
+    try self.print("}} {s};\n\n", .{try self.getInnerName(type_decl.name)});
 
     try self.switchWriter(.output);
 
@@ -140,7 +140,11 @@ fn compoundTypeDeclaration(
         defer self.current_return_type = previous_return_type;
         self.current_return_type = try Type.fromAst(self, method.return_type);
 
-        try self.registerSymbol(method.name, try self.mangle(method.name), .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
+        try self.registerSymbol(
+            method.name,
+            .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } },
+            .{ .inner_name = try self.mangle(method.name) },
+        );
 
         if (type_decl.is_pub and self.module_header != null) {
             try self.switchWriter(.module_header);
@@ -160,7 +164,7 @@ fn compoundTypeDeclaration(
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
-            try self.registerSymbol(parameter.name, null, .{ .symbol = .{ .type = param_type } });
+            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type } }, .{});
             try self.compileVariableSignature(parameter.name, param_type, .{});
             if (i < method.parameters.items.len) try self.write(", ");
         }
@@ -219,12 +223,9 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
 
-    if (self.getScopeItem(v.variable_name)) |_| return utils.printErr(
-        error.IllegalStatement,
-        "comperr: Symbol shadowing is not allowed: attempt to redeclare '{s}' ({f}).\n",
-        .{ v.variable_name, v.pos },
-        .red,
-    ) else |_| {}
+    if (self.getScopeItem(v.variable_name)) |_|
+        return errors.symbolShadowing(v.variable_name, v.pos)
+    else |_| {}
 
     if (expected_type) |et| if (!received_type.check(et))
         return errors.typeMismatch(
@@ -244,12 +245,12 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
         });
     }
 
-    try self.registerSymbol(v.variable_name, null, .{
+    try self.registerSymbol(v.variable_name, .{
         .symbol = .{
             .is_mut = v.is_mut,
             .type = expected_type orelse received_type,
         },
-    });
+    }, .{});
 
     try self.write(";\n");
 }
@@ -322,7 +323,7 @@ fn conditional(
                 try self.print("{s}-- ", .{capture_ident});
 
                 if (statement.capture) |capture|
-                    try self.registerSymbol(capture, null, .{ .symbol = .{ .type = .usize } });
+                    try self.registerSymbol(capture, .{ .symbol = .{ .type = .usize } }, .{});
             },
             else => |other| {
                 capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
@@ -394,16 +395,22 @@ fn functionDefinition(
 ) CompilerError!void {
     const inner_name = if (binding_function) function_def.name else try self.mangle(function_def.name);
 
-    _ = self.getSymbolType(function_def.name) catch
-        try self.registerSymbol(function_def.name, inner_name, .{ .symbol = .{
-            .type = b: {
-                var type_obj = try Type.fromAst(self, function_def.getType());
-                if (!binding_function)
-                    type_obj.function.definition = function_def;
+    if (self.getSymbolDefined(function_def.name)) |sd| {
+        if (sd) return errors.symbolShadowing(function_def.name, function_def.pos);
+    } else |err| switch (err) {
+        error.SymbolNotVariable => return err,
+        else => {},
+    }
 
-                break :b type_obj;
-            },
-        } });
+    try self.registerSymbol(function_def.name, .{ .symbol = .{
+        .type = b: {
+            var type_obj = try Type.fromAst(self, function_def.getType());
+            if (!binding_function)
+                type_obj.function.definition = function_def;
+
+            break :b type_obj;
+        },
+    } }, .{ .inner_name = inner_name });
 
     if (!binding_function and function_def.generic_parameters.items.len > 0) return;
 
@@ -442,12 +449,12 @@ fn functionDefinition(
             );
             if (i < function_def.parameters.items.len) try self.write(", ");
 
-            try self.registerSymbol(parameter.name, null, .{
+            try self.registerSymbol(parameter.name, .{
                 .symbol = .{
                     .type = try .fromAst(self, parameter.type),
                     .is_mut = parameter.is_mut,
                 },
-            });
+            }, .{});
         }
         try self.write(") ");
 
@@ -481,7 +488,7 @@ fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
     const module = try self.processImport(&statement);
 
     const name = statement.alias orelse statement.module_name.getLast();
-    try self.registerSymbol(name, null, .{ .module = module });
+    try self.registerSymbol(name, .{ .module = module }, .{});
 
     // Emit #include "path/to/header.h"
     try self.write("#include \"");

@@ -88,9 +88,9 @@ pub fn compile(
             });
             try compile(self, prefix.rhs, .{});
         },
-        .ident => |ident| if (self.getSymbolType(ident.ident) catch null) |_|
+        .ident => |ident| if (self.getSymbolType(ident.ident)) |_|
             try self.write(ident.ident)
-        else
+        else |_|
             return errors.unknownSymbol(ident.ident, expression.getPosition()),
         .struct_instantiation => |struct_inst| {
             const val = try self.solveComptimeExpression(struct_inst.type_expr.*);

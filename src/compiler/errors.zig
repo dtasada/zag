@@ -143,3 +143,12 @@ pub fn badMutability(position: utils.Position) CompilerError {
         .red,
     );
 }
+
+pub fn symbolShadowing(name: []const u8, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalStatement,
+        "comperr: Symbol shadowing is not allowed: attempt to redeclare '{s}' ({f}).\n",
+        .{ name, pos },
+        .red,
+    );
+}

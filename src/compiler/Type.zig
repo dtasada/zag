@@ -59,6 +59,7 @@ pub const Type = union(enum) {
             };
 
             name: []const u8,
+            inner_name: []const u8,
             members: *std.StringArrayHashMap(MemberType),
             methods: *std.StringArrayHashMap(Method),
             generic_params: std.ArrayList(Function.Param),
@@ -100,7 +101,7 @@ pub const Type = union(enum) {
                 return error.NoSuchMember;
             }
 
-            pub fn init(alloc: std.mem.Allocator, name: []const u8, tag_type: ?Type) !CompoundType(T) {
+            pub fn init(alloc: std.mem.Allocator, name: []const u8, inner_name: []const u8, tag_type: ?Type) !CompoundType(T) {
                 if (T == .@"struct" and tag_type != null) @panic("Struct type can't have a tag type");
 
                 const members = try alloc.create(std.StringArrayHashMap(MemberType));
@@ -117,6 +118,7 @@ pub const Type = union(enum) {
 
                 return .{
                     .name = name,
+                    .inner_name = inner_name,
                     .members = members,
                     .methods = methods,
                     .generic_params = .empty,
@@ -230,7 +232,7 @@ pub const Type = union(enum) {
                             else
                                 try .fromAst(compiler, p.type),
                         });
-                        try compiler.registerSymbol(p.name, null, .{ .type = .{ .generic_param = p.name } });
+                        try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } }, .{});
                     }
 
                     var params: std.ArrayList(Function.Param) = .empty;
@@ -373,13 +375,21 @@ pub const Type = union(enum) {
         if (definition_wrapper) |def_wrap| {
             try compiler.pushScope();
 
-            try compiler.registerSymbol(base_name, try compiler.mangle(base_name), .{ .type = base_type });
+            try compiler.registerSymbol(
+                base_name,
+                .{ .type = base_type },
+                .{ .inner_name = try compiler.mangle(base_name) },
+            );
 
             for (params.items, 0..) |param, i| {
                 const val = args.items[i];
                 switch (val) {
-                    .type => |t| try compiler.registerSymbol(param.name, null, .{ .type = t }),
-                    else => try compiler.registerSymbol(param.name, null, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                    .type => |t| try compiler.registerSymbol(param.name, .{ .type = t }, .{}),
+                    else => try compiler.registerSymbol(
+                        param.name,
+                        .{ .constant = .{ .type = val.getType(), .value = val } },
+                        .{},
+                    ),
                 }
             }
 
@@ -425,7 +435,11 @@ pub const Type = union(enum) {
 
             // Register globally
             var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
+            try global_scope.put(name, .{ .type = .{
+                .type = new_type,
+                .inner_name = name,
+                .is_defined = false,
+            } });
 
             // Add to pending instantiations
             try compiler.pending_instantiations.append(compiler.alloc, .{
@@ -452,7 +466,11 @@ pub const Type = union(enum) {
 
             // Register globally
             var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
+            try global_scope.put(name, .{ .type = .{
+                .type = new_type,
+                .inner_name = name,
+                .is_defined = true,
+            } });
 
             return new_type;
         } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "cast")) {
@@ -480,7 +498,11 @@ pub const Type = union(enum) {
 
             // Register globally
             var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
+            try global_scope.put(name, .{ .type = .{
+                .type = new_type,
+                .inner_name = name,
+                .is_defined = true,
+            } });
 
             return new_type;
         } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "xor")) {
@@ -506,7 +528,11 @@ pub const Type = union(enum) {
 
             // Register globally
             var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{ .type = new_type, .inner_name = name } });
+            try global_scope.put(name, .{ .type = .{
+                .type = new_type,
+                .inner_name = name,
+                .is_defined = true,
+            } });
 
             return new_type;
         } else return utils.printErr(
@@ -682,6 +708,18 @@ pub const Type = union(enum) {
         .@"union" => Type.Union,
         .@"enum" => Type.Enum,
     } {
+        const inner_name = try compiler.mangle(type_decl.name);
+
+        const should_define = if (compiler.getSymbolDefined(type_decl.name)) |sd| b: {
+            if (sd)
+                return errors.symbolShadowing(type_decl.name, type_decl.pos)
+            else
+                break :b false;
+        } else |err| switch (err) {
+            error.SymbolNotVariable => return err,
+            else => true,
+        };
+
         // register struct in scope
         var compound_type: switch (T) {
             .@"struct" => Type.Struct,
@@ -696,7 +734,7 @@ pub const Type = union(enum) {
             // If type mismatch or not found (logic error in scan?), create new.
             // But strict forward decl implies we should find it.
             // However, we fallback to init for safety/standalone usage.
-            break :b try .init(compiler.alloc, type_decl.name, switch (T) {
+            break :b try .init(compiler.alloc, type_decl.name, inner_name, switch (T) {
                 .@"struct" => null,
                 .@"enum" => getTagType(type_decl.members.items.len),
                 .@"union" => b2: {
@@ -719,7 +757,7 @@ pub const Type = union(enum) {
                     };
                 },
             });
-        } else |_| try .init(compiler.alloc, type_decl.name, switch (T) {
+        } else |_| try .init(compiler.alloc, type_decl.name, inner_name, switch (T) {
             .@"struct" => null,
             .@"enum" => getTagType(type_decl.members.items.len),
             .@"union" => b: {
@@ -786,20 +824,23 @@ pub const Type = union(enum) {
 
         compound_type.definition = type_decl;
 
-        try compiler.registerSymbol(type_decl.name, try compiler.mangle(type_decl.name), .{ .type = @unionInit(Type, @tagName(T), compound_type) });
+        try compiler.registerSymbol(
+            type_decl.name,
+            .{ .type = @unionInit(Type, @tagName(T), compound_type) },
+            .{ .is_defined = should_define, .inner_name = try compiler.mangle(type_decl.name) },
+        );
 
         try compiler.pushScope();
         defer compiler.popScope();
 
         switch (T) {
-            .@"struct", .@"union" => {
-                if (type_decl.generic_types) |generic_types| {
-                    for (generic_types.items) |g| {
-                        try compiler.registerSymbol(g.name, null, .{ .type = .{ .generic_param = g.name } });
-                    }
-                }
-
-                try compiler.registerSymbol(type_decl.name, try compiler.mangle(type_decl.name), .{ .type = @unionInit(Type, @tagName(T), compound_type) }); // TODO: test removing this line
+            .@"struct", .@"union" => if (type_decl.generic_types) |generic_types| {
+                for (generic_types.items) |g|
+                    try compiler.registerSymbol(
+                        g.name,
+                        .{ .type = .{ .generic_param = g.name } },
+                        .{},
+                    );
             },
             else => {},
         }
