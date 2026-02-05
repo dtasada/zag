@@ -212,7 +212,7 @@ fn generic(self: *Self, g: ast.Expression.Generic) !void {
     const t = try Type.infer(self, .{ .generic = g });
 
     switch (t) {
-        .function => |f| try self.write(f.name),
+        .function => |f| try self.write(f.inner_name),
         else => try self.compileType(t, .{}),
     }
 }
@@ -513,6 +513,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                         .method => |method| {
                             try functionCall(self, .{
                                 .name = method.inner_name,
+                                .inner_name = method.inner_name,
                                 .generic_params = method.generic_params,
                                 .params = method.params,
                                 .return_type = method.return_type,
@@ -550,6 +551,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                 .@"struct" => |s| if (s.getProperty(m.member_name)) |prop| switch (prop) {
                     .method => |method| .{
                         .name = method.inner_name,
+                        .inner_name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
                         .return_type = method.return_type,
@@ -561,6 +563,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                 .@"union" => |u| if (u.getProperty(m.member_name)) |prop| switch (prop) {
                     .method => |method| .{
                         .name = method.inner_name,
+                        .inner_name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
                         .return_type = method.return_type,

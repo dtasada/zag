@@ -374,6 +374,7 @@ pub const Statement = union(enum) {
 };
 
 pub const VariableSignature = struct {
+    is_mut: bool,
     name: []const u8,
     type: Type,
 };

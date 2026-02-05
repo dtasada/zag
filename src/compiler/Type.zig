@@ -22,6 +22,7 @@ pub const Type = union(enum) {
         };
 
         name: []const u8,
+        inner_name: []const u8,
         params: std.ArrayList(Param),
         generic_params: std.ArrayList(Function.Param),
         return_type: *const Self,
@@ -229,7 +230,7 @@ pub const Type = union(enum) {
                             else
                                 try .fromAst(compiler, p.type),
                         });
-                        try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } });
+                        try compiler.registerSymbol(p.name, null, .{ .type = .{ .generic_param = p.name } });
                     }
 
                     var params: std.ArrayList(Function.Param) = .empty;
@@ -242,6 +243,7 @@ pub const Type = union(enum) {
 
                     break :b .{
                         .name = function.name,
+                        .inner_name = try compiler.mangle(function.name),
                         .params = params,
                         .generic_params = generic_params,
                         .return_type = try .fromAstPtr(compiler, function.return_type.*),
@@ -371,13 +373,13 @@ pub const Type = union(enum) {
         if (definition_wrapper) |def_wrap| {
             try compiler.pushScope();
 
-            try compiler.registerSymbol(base_name, .{ .type = base_type });
+            try compiler.registerSymbol(base_name, try compiler.mangle(base_name), .{ .type = base_type });
 
             for (params.items, 0..) |param, i| {
                 const val = args.items[i];
                 switch (val) {
-                    .type => |t| try compiler.registerSymbol(param.name, .{ .type = t }),
-                    else => try compiler.registerSymbol(param.name, .{ .constant = .{ .type = val.getType(), .value = val } }),
+                    .type => |t| try compiler.registerSymbol(param.name, null, .{ .type = t }),
+                    else => try compiler.registerSymbol(param.name, null, .{ .constant = .{ .type = val.getType(), .value = val } }),
                 }
             }
 
@@ -784,7 +786,7 @@ pub const Type = union(enum) {
 
         compound_type.definition = type_decl;
 
-        try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
+        try compiler.registerSymbol(type_decl.name, try compiler.mangle(type_decl.name), .{ .type = @unionInit(Type, @tagName(T), compound_type) });
 
         try compiler.pushScope();
         defer compiler.popScope();
@@ -793,11 +795,11 @@ pub const Type = union(enum) {
             .@"struct", .@"union" => {
                 if (type_decl.generic_types) |generic_types| {
                     for (generic_types.items) |g| {
-                        try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } });
+                        try compiler.registerSymbol(g.name, null, .{ .type = .{ .generic_param = g.name } });
                     }
                 }
 
-                try compiler.registerSymbol(type_decl.name, .{ .type = @unionInit(Type, @tagName(T), compound_type) });
+                try compiler.registerSymbol(type_decl.name, try compiler.mangle(type_decl.name), .{ .type = @unionInit(Type, @tagName(T), compound_type) }); // TODO: test removing this line
             },
             else => {},
         }
@@ -898,6 +900,7 @@ pub const Type = union(enum) {
                     .method => |method| return .{
                         .function = .{
                             .name = method.inner_name,
+                            .inner_name = method.inner_name,
                             .params = method.params,
                             .generic_params = method.generic_params,
                             .return_type = method.return_type,
@@ -917,6 +920,7 @@ pub const Type = union(enum) {
                 .method => |method| return .{
                     .function = .{
                         .name = method.inner_name,
+                        .inner_name = method.inner_name,
                         .params = method.params,
                         .generic_params = method.generic_params,
                         .return_type = method.return_type,

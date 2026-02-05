@@ -476,6 +476,7 @@ export default grammar({
     parameter_list: $ => seq(
       "(",
       optional(seq(
+        optional("mut"),
         commaSep(choice(
           $.variable_signature,
           field("name", $.ident),

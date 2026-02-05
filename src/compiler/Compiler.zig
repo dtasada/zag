@@ -358,6 +358,10 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.solveGenerics();
 
+    if (std.mem.eql(u8, self.source_path, "src/main.zag")) {
+        try self.write("int main() { main_main(); }\n");
+    }
+
     try self.output.?.flush();
 
     try self.zag_header.?.write("\n#endif");
@@ -367,12 +371,19 @@ pub fn emit(self: *Self) CompilerError!void {
     try self.module_header.?.flush();
 }
 
+pub fn mangle(self: *const Self, name: []const u8) ![]const u8 {
+    var module_name_it = std.mem.splitBackwardsAny(u8, self.source_path, "/.");
+    _ = module_name_it.next().?;
+    const module_name = module_name_it.next().?;
+    return try std.fmt.allocPrint(self.alloc, "{s}_{s}", .{ module_name, name });
+}
+
 pub fn scan(self: *Self) CompilerError!void {
     for (self.input.items) |*statement| switch (statement.*) {
-        .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }),
-        .struct_declaration => |*struct_decl| try self.registerSymbol(struct_decl.name, .{ .type = .{ .@"struct" = try Type.Struct.init(self.alloc, struct_decl.name, null) } }),
-        .union_declaration => |*union_decl| try self.registerSymbol(union_decl.name, .{ .type = .{ .@"union" = try Type.Union.init(self.alloc, union_decl.name, null) } }),
-        .enum_declaration => |*enum_decl| try self.registerSymbol(enum_decl.name, .{ .type = .{ .@"enum" = try Type.Enum.init(self.alloc, enum_decl.name, Type.getTagType(enum_decl.members.items.len)) } }),
+        .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), null, .{ .module = try self.processImport(import_stmt) }),
+        .struct_declaration => |*struct_decl| try self.registerSymbol(struct_decl.name, try self.mangle(struct_decl.name), .{ .type = .{ .@"struct" = try Type.Struct.init(self.alloc, struct_decl.name, null) } }),
+        .union_declaration => |*union_decl| try self.registerSymbol(union_decl.name, try self.mangle(union_decl.name), .{ .type = .{ .@"union" = try Type.Union.init(self.alloc, union_decl.name, null) } }),
+        .enum_declaration => |*enum_decl| try self.registerSymbol(enum_decl.name, try self.mangle(enum_decl.name), .{ .type = .{ .@"enum" = try Type.Enum.init(self.alloc, enum_decl.name, Type.getTagType(enum_decl.members.items.len)) } }),
         else => {},
     };
 
@@ -384,10 +395,11 @@ pub fn scan(self: *Self) CompilerError!void {
             .function_definition => |*func| {
                 var t = try Type.fromAst(self, func.getType());
                 t.function.definition = func;
-                try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
+                try self.registerSymbol(func.name, try self.mangle(func.name), .{ .symbol = .{ .type = t } });
             },
             .binding_function_declaration => |*func| try self.registerSymbol(
                 func.name,
+                null,
                 .{ .symbol = .{ .type = try Type.fromAst(self, func.getType()) } },
             ),
             else => {},
@@ -407,7 +419,7 @@ pub fn analyze(self: *Self) CompilerError!void {
             .function_definition => |*func| {
                 var t = try Type.fromAst(self, func.getType());
                 t.function.definition = func;
-                try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
+                try self.registerSymbol(func.name, try self.mangle(func.name), .{ .symbol = .{ .type = t } });
                 if (func.is_pub) try self.exported_symbols.put(func.name, .{
                     .name = func.name,
                     .is_pub = func.is_pub,
@@ -416,7 +428,7 @@ pub fn analyze(self: *Self) CompilerError!void {
             },
             .binding_function_declaration => |*func| {
                 const t = try Type.fromAst(self, func.getType());
-                try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } });
+                try self.registerSymbol(func.name, null, .{ .symbol = .{ .type = t } });
                 if (func.is_pub) try self.exported_symbols.put(func.name, .{
                     .name = func.name,
                     .is_pub = func.is_pub,
@@ -431,7 +443,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 const final_type = expected_type orelse received_type;
 
-                try self.registerSymbol(var_def.variable_name, .{
+                try self.registerSymbol(var_def.variable_name, try self.mangle(var_def.variable_name), .{
                     .symbol = .{
                         .is_mut = var_def.is_mut,
                         .type = final_type,
@@ -554,7 +566,7 @@ pub fn compileBlock(
         try expressions.compile(self, capture.condition, .{});
         try self.write(").payload;\n");
 
-        try self.registerSymbol(capture.name, .{ .symbol = .{ .type = inner_type } });
+        try self.registerSymbol(capture.name, null, .{ .symbol = .{ .type = inner_type } });
     }
 
     if (opts.iterator) |iterator| {
@@ -572,7 +584,7 @@ pub fn compileBlock(
         if (t == .slice) try self.write(".ptr");
         try self.print("[{s}];\n", .{iterator.index});
 
-        try self.registerSymbol(iterator.capture_name, .{ .symbol = .{ .type = inner_type } });
+        try self.registerSymbol(iterator.capture_name, null, .{ .symbol = .{ .type = inner_type } });
     }
 
     for (block.items) |*statement| {
@@ -775,11 +787,13 @@ fn solveGenerics(self: *Self) !void {
                     for (params.items, 0..) |param, j| {
                         const val = instantiation.args[j];
                         switch (val) {
-                            .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
-                            else => try self.registerSymbol(param.name, .{ .constant = .{
-                                .type = val.getType(),
-                                .value = val,
-                            } }),
+                            .type => |t| try self.registerSymbol(param.name, null, .{ .type = t }),
+                            else => try self.registerSymbol(param.name, null, .{
+                                .constant = .{
+                                    .type = val.getType(),
+                                    .value = val,
+                                },
+                            }),
                         }
                     };
 
@@ -800,11 +814,13 @@ fn solveGenerics(self: *Self) !void {
                 for (f.generic_parameters.items, 0..) |param, j| {
                     const val = instantiation.args[j];
                     switch (val) {
-                        .type => |t| try self.registerSymbol(param.name, .{ .type = t }),
-                        else => try self.registerSymbol(param.name, .{ .constant = .{
-                            .type = val.getType(),
-                            .value = val,
-                        } }),
+                        .type => |t| try self.registerSymbol(param.name, null, .{ .type = t }),
+                        else => try self.registerSymbol(param.name, null, .{
+                            .constant = .{
+                                .type = val.getType(),
+                                .value = val,
+                            },
+                        }),
                     }
                 }
 
@@ -839,6 +855,7 @@ pub fn popScope(self: *Self) void {
 pub fn registerSymbol(
     self: *Self,
     name: []const u8,
+    inner_name: ?[]const u8,
     symbol_or_type: union(enum) {
         symbol: struct { is_mut: bool = false, type: Type },
         type: Type,
@@ -852,16 +869,13 @@ pub fn registerSymbol(
             .symbol = .{
                 .is_mut = symbol.is_mut,
                 .type = symbol.type,
-                // UNIMPLEMENTED: Name mangling is not implemented.
-                // Symbols are emitted with their raw names, which will cause link errors if multiple modules define the same symbol.
-                .inner_name = name,
+                .inner_name = inner_name orelse name,
             },
         },
         .type => |@"type"| .{
             .type = .{
                 .type = @"type",
-                // UNIMPLEMENTED: Name mangling is not implemented.
-                .inner_name = name,
+                .inner_name = inner_name orelse name,
             },
         },
         .module => |module| .{ .module = module },
@@ -871,42 +885,43 @@ pub fn registerSymbol(
 
 /// Registers boolean constants, null, undefined, and primitive types
 fn registerConstants(self: *Self) !void {
-    try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } });
-    try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } });
-    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } });
-    try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } });
+    try self.registerSymbol("true", null, .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("false", null, .{ .symbol = .{ .type = .bool } });
+    try self.registerSymbol("null", null, .{ .symbol = .{ .type = .@"typeof(null)" } });
+    try self.registerSymbol("undefined", null, .{ .symbol = .{ .type = .@"typeof(undefined)" } });
 
-    try self.registerSymbol("i8", .{ .type = .i8 });
-    try self.registerSymbol("i16", .{ .type = .i16 });
-    try self.registerSymbol("i32", .{ .type = .i32 });
-    try self.registerSymbol("i64", .{ .type = .i64 });
+    try self.registerSymbol("i8", null, .{ .type = .i8 });
+    try self.registerSymbol("i16", null, .{ .type = .i16 });
+    try self.registerSymbol("i32", null, .{ .type = .i32 });
+    try self.registerSymbol("i64", null, .{ .type = .i64 });
 
-    try self.registerSymbol("u8", .{ .type = .u8 });
-    try self.registerSymbol("u16", .{ .type = .u16 });
-    try self.registerSymbol("u32", .{ .type = .u32 });
-    try self.registerSymbol("u64", .{ .type = .u64 });
+    try self.registerSymbol("u8", null, .{ .type = .u8 });
+    try self.registerSymbol("u16", null, .{ .type = .u16 });
+    try self.registerSymbol("u32", null, .{ .type = .u32 });
+    try self.registerSymbol("u64", null, .{ .type = .u64 });
 
-    try self.registerSymbol("usize", .{ .type = .usize });
+    try self.registerSymbol("usize", null, .{ .type = .usize });
 
-    try self.registerSymbol("f32", .{ .type = .f32 });
-    try self.registerSymbol("f64", .{ .type = .f64 });
+    try self.registerSymbol("f32", null, .{ .type = .f32 });
+    try self.registerSymbol("f64", null, .{ .type = .f64 });
 
-    try self.registerSymbol("void", .{ .type = .void });
-    try self.registerSymbol("bool", .{ .type = .bool });
-    try self.registerSymbol("any", .{ .type = .any });
+    try self.registerSymbol("void", null, .{ .type = .void });
+    try self.registerSymbol("bool", null, .{ .type = .bool });
+    try self.registerSymbol("any", null, .{ .type = .any });
 
-    try self.registerSymbol("type", .{ .type = .{ .type = null } });
+    try self.registerSymbol("type", null, .{ .type = .{ .type = null } });
 
-    try self.registerSymbol("c_int", .{ .type = .c_int });
-    try self.registerSymbol("c_char", .{ .type = .c_char });
-    try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } });
+    try self.registerSymbol("c_int", null, .{ .type = .c_int });
+    try self.registerSymbol("c_char", null, .{ .type = .c_char });
+    try self.registerSymbol("c_null", null, .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } });
 
-    try self.registerSymbol("sizeof", .{
+    try self.registerSymbol("sizeof", null, .{
         .symbol = .{
             .is_mut = false,
             .type = .{
                 .function = .{
                     .name = "sizeof",
+                    .inner_name = "sizeof",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
                         try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
@@ -924,12 +939,13 @@ fn registerConstants(self: *Self) !void {
         },
     });
 
-    try self.registerSymbol("cast", .{
+    try self.registerSymbol("cast", null, .{
         .symbol = .{
             .is_mut = false,
             .type = .{
                 .function = .{
                     .name = "cast",
+                    .inner_name = "cast",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
                         try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
@@ -951,12 +967,13 @@ fn registerConstants(self: *Self) !void {
         },
     });
 
-    try self.registerSymbol("xor", .{
+    try self.registerSymbol("xor", null, .{
         .symbol = .{
             .is_mut = false,
             .type = .{
                 .function = .{
                     .name = "xor",
+                    .inner_name = "xor",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
                         try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });

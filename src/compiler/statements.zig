@@ -140,7 +140,7 @@ fn compoundTypeDeclaration(
         defer self.current_return_type = previous_return_type;
         self.current_return_type = try Type.fromAst(self, method.return_type);
 
-        try self.registerSymbol(method.name, .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
+        try self.registerSymbol(method.name, try self.mangle(method.name), .{ .symbol = .{ .type = try .fromAst(self, method.getType()) } });
 
         if (type_decl.is_pub and self.module_header != null) {
             try self.switchWriter(.module_header);
@@ -160,7 +160,7 @@ fn compoundTypeDeclaration(
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name }); // TODO: mangling generics
         for (method.parameters.items, 1..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
-            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type } });
+            try self.registerSymbol(parameter.name, null, .{ .symbol = .{ .type = param_type } });
             try self.compileVariableSignature(parameter.name, param_type, .{});
             if (i < method.parameters.items.len) try self.write(", ");
         }
@@ -244,7 +244,7 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
         });
     }
 
-    try self.registerSymbol(v.variable_name, .{
+    try self.registerSymbol(v.variable_name, null, .{
         .symbol = .{
             .is_mut = v.is_mut,
             .type = expected_type orelse received_type,
@@ -322,7 +322,7 @@ fn conditional(
                 try self.print("{s}-- ", .{capture_ident});
 
                 if (statement.capture) |capture|
-                    try self.registerSymbol(capture, .{ .symbol = .{ .type = .usize } });
+                    try self.registerSymbol(capture, null, .{ .symbol = .{ .type = .usize } });
             },
             else => |other| {
                 capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
@@ -392,8 +392,10 @@ fn functionDefinition(
     else
         ast.Statement.FunctionDefinition,
 ) CompilerError!void {
+    const inner_name = if (binding_function) function_def.name else try self.mangle(function_def.name);
+
     _ = self.getSymbolType(function_def.name) catch
-        try self.registerSymbol(function_def.name, .{ .symbol = .{
+        try self.registerSymbol(function_def.name, inner_name, .{ .symbol = .{
             .type = b: {
                 var type_obj = try Type.fromAst(self, function_def.getType());
                 if (!binding_function)
@@ -419,7 +421,7 @@ fn functionDefinition(
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.
         try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
-        try self.print(" {s}(", .{function_def.name});
+        try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 1..) |parameter, i| {
             try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
             if (i < function_def.parameters.items.len) try self.write(", ");
@@ -431,13 +433,20 @@ fn functionDefinition(
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.
         try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
-        try self.print(" {s}(", .{function_def.name});
+        try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 1..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
+            try self.compileVariableSignature(
+                parameter.name,
+                try .fromAst(self, parameter.type),
+                .{ .binding_mut = parameter.is_mut },
+            );
             if (i < function_def.parameters.items.len) try self.write(", ");
 
-            try self.registerSymbol(parameter.name, .{
-                .symbol = .{ .type = try .fromAst(self, parameter.type) },
+            try self.registerSymbol(parameter.name, null, .{
+                .symbol = .{
+                    .type = try .fromAst(self, parameter.type),
+                    .is_mut = parameter.is_mut,
+                },
             });
         }
         try self.write(") ");
@@ -472,10 +481,7 @@ fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
     const module = try self.processImport(&statement);
 
     const name = statement.alias orelse statement.module_name.getLast();
-    try self.registerSymbol(
-        name,
-        .{ .module = module },
-    );
+    try self.registerSymbol(name, null, .{ .module = module });
 
     // Emit #include "path/to/header.h"
     try self.write("#include \"");

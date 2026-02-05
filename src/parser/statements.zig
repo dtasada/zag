@@ -221,7 +221,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     };
     const parameters = try self.parseParameters();
     const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
-        error.HandlerDoesNotExist => return utils.printErr(
+        error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
             error.MissingReturnType,
             "Parser error: missing return type in function '{s}' at {f}.\n",
             .{ function_name, self.currentPosition() },

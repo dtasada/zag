@@ -403,10 +403,16 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
             defer param_names.deinit(self.alloc);
 
             const first_pos = self.currentPosition();
+
+            const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
+                _ = self.advance();
+                break :b true;
+            } else false;
+
             const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
             try param_names.append(self.alloc, .{ .name = first_name, .pos = first_pos });
 
-            while (self.currentTokenKind() == .@",") {
+            while (self.currentToken() == .@",") {
                 _ = self.advance();
                 const pos = self.currentPosition();
                 const name = try self.expect(self.advance(), .ident, context, "parameter name");
@@ -439,9 +445,11 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 ),
             }
 
-            for (param_names.items) |p| {
-                try params.append(self.alloc, .{ .name = p.name, .type = param_type });
-            }
+            for (param_names.items) |p| try params.append(self.alloc, .{
+                .is_mut = is_mut,
+                .name = p.name,
+                .type = param_type,
+            });
 
             self.expectSilent(self.currentToken(), .@",") catch {
                 try self.expect(
