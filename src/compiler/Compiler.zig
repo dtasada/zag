@@ -27,7 +27,8 @@ alloc: std.mem.Allocator,
 input: ast.RootNode,
 source_path: []const u8,
 
-module_registry: *std.StringHashMap(*Module),
+module: Module,
+module_registry: *std.StringHashMap(Module),
 exported_symbols: std.StringHashMap(Module.Symbol),
 
 /// Points to whichever file should be written to.
@@ -68,7 +69,7 @@ pending_instantiations: std.ArrayList(GenericInstantiation),
 const GenericInstantiation = struct {
     inner_name: []const u8,
     args: []const Value,
-    module: ?*Module,
+    module: Module,
     t: GenericInstantiation.Type,
 
     pub const Type = union(enum) {
@@ -97,7 +98,7 @@ pub const ScopeItem = union(enum) {
         value: Value,
         inner_name: []const u8,
     },
-    module: *Module,
+    module: Module,
 };
 
 pub fn getAST(
@@ -140,7 +141,7 @@ pub fn getAST(
 }
 
 /// Helper file handling structure. Used for commodity when writing to a file.
-const File = struct {
+pub const File = struct {
     handler: std.fs.File,
     writer: std.fs.File.Writer,
     buf: []u8,
@@ -186,14 +187,10 @@ const File = struct {
 };
 
 /// Flushes the writer and then points it to `target`.
-pub fn switchWriter(self: *Self, target: enum { output, zag_header, module_header }) !void {
+pub fn switchWriter(self: *Self, target: ?*File) !void {
     self.previous_writer = self.writer;
     try self.flush();
-    self.writer = switch (target) {
-        .output => &self.output.?,
-        .zag_header => &self.zag_header.?,
-        .module_header => &self.module_header.?,
-    };
+    self.writer = target.?;
 }
 
 /// Flushes the writer and then points it to `self.previous_writer` (set by `switchWriter`).
@@ -209,7 +206,7 @@ pub fn init(
     alloc: std.mem.Allocator,
     input: ast.RootNode,
     file_path: []const u8,
-    registry: *std.StringHashMap(*Module),
+    registry: *std.StringHashMap(Module),
     mode: Mode,
 ) CompilerError!*Self {
     const self = try alloc.create(Self);
@@ -221,6 +218,7 @@ pub fn init(
         .alloc = alloc,
         .input = input,
         .source_path = try alloc.dupe(u8, file_path),
+        .module = undefined,
         .module_registry = registry,
         .exported_symbols = .init(alloc),
         .output = null,
@@ -230,6 +228,12 @@ pub fn init(
         .writer = null,
         .pending_instantiations = .empty,
         .previous_writer = null,
+    };
+
+    const module_name = b: {
+        var module_name_it = std.mem.splitBackwardsAny(u8, self.source_path, "/.");
+        _ = module_name_it.next().?;
+        break :b module_name_it.next().?;
     };
 
     switch (mode) {
@@ -268,10 +272,13 @@ pub fn init(
             // Include module header in module source
             try self.output.?.print("#include \"{s}.h\"\n\n", .{std.fs.path.basename(file_path)});
 
-            var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
-            defer @".zag-out/bin".close();
+            try @".zag-out".makePath("bin");
+
+            self.module = try .init(alloc, module_name, &self.output.?);
         },
-        .analysis => {},
+        .analysis => {
+            self.module = try .init(alloc, module_name, null);
+        },
     }
 
     return self;
@@ -371,17 +378,17 @@ pub fn scan(self: *Self) CompilerError!void {
         .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }, .{}),
         .struct_declaration => |*struct_decl| try self.registerSymbol(
             struct_decl.name,
-            .{ .type = .{ .@"struct" = try Type.Struct.init(self.alloc, struct_decl.name, try self.mangle(struct_decl.name), null) } },
+            .{ .type = .{ .@"struct" = try Type.Struct.init(self, struct_decl.name, try self.mangle(struct_decl.name), null) } },
             .{ .inner_name = try self.mangle(struct_decl.name), .is_defined = false },
         ),
         .union_declaration => |*union_decl| try self.registerSymbol(
             union_decl.name,
-            .{ .type = .{ .@"union" = try Type.Union.init(self.alloc, union_decl.name, try self.mangle(union_decl.name), null) } },
+            .{ .type = .{ .@"union" = try Type.Union.init(self, union_decl.name, try self.mangle(union_decl.name), null) } },
             .{ .inner_name = try self.mangle(union_decl.name), .is_defined = false },
         ),
         .enum_declaration => |*enum_decl| try self.registerSymbol(
             enum_decl.name,
-            .{ .type = .{ .@"enum" = try Type.Enum.init(self.alloc, enum_decl.name, try self.mangle(enum_decl.name), Type.getTagType(enum_decl.members.items.len)) } },
+            .{ .type = .{ .@"enum" = try Type.Enum.init(self, enum_decl.name, try self.mangle(enum_decl.name), Type.getTagType(enum_decl.members.items.len)) } },
             .{ .inner_name = try self.mangle(enum_decl.name), .is_defined = false },
         ),
         else => {},
@@ -495,7 +502,7 @@ pub fn analyze(self: *Self) CompilerError!void {
     }
 }
 
-pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!*Module {
+pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!Module {
     var parts: std.ArrayList([]const u8) = .empty;
     defer parts.deinit(self.alloc);
 
@@ -520,11 +527,27 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     try child_compiler.analyze();
 
+    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+    defer @".zag-out".close();
+    // mkdir .zag-out/src
+    try @".zag-out".makePath(std.fs.path.dirname(full_path) orelse "");
+
+    var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
+    defer @".zag-out/zag".close();
+
+    const @".c" = try std.fmt.allocPrint(self.alloc, "{s}.c", .{full_path}); // src/main.zag -> src/main.zag.c
+    const output_file = try @".zag-out".openFile(@".c", .{ .mode = .read_write });
+
+    const module_file = try self.alloc.create(File);
+    module_file.* = try .init(self.alloc, @".c", output_file);
+
     // Create module from exports
     // Allocate on heap to ensure pointer stability
-    var mod = try self.alloc.create(Module);
-    mod.* = Module.init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast(), full_path);
-    mod.source_buffer = ast_res.source;
+    var mod = try Module.init(
+        self.alloc,
+        import_stmt.alias orelse import_stmt.module_name.getLast(),
+        module_file,
+    );
 
     var it = child_compiler.exported_symbols.iterator();
     while (it.next()) |entry| {
@@ -639,7 +662,7 @@ pub fn compileType(
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                try self.switchWriter(.zag_header);
+                try self.switchWriter(&self.zag_header.?);
                 defer self.switchWriterBack();
 
                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
@@ -655,7 +678,7 @@ pub fn compileType(
         .error_union => |error_union| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                try self.switchWriter(.zag_header);
+                try self.switchWriter(&self.zag_header.?);
                 defer self.switchWriterBack();
 
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
@@ -679,7 +702,7 @@ pub fn compileType(
         .slice => |slice| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                try self.switchWriter(.zag_header);
+                try self.switchWriter(&self.zag_header.?);
                 defer self.switchWriterBack();
 
                 try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
@@ -763,8 +786,8 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
 }
 
 fn solveGenerics(self: *Self) !void {
+    // this is a while loop because the iterator grows, so a for loop won't work
     var processed: usize = 0;
-
     while (processed < self.pending_instantiations.items.len) {
         const instantiation = self.pending_instantiations.items[processed];
         processed += 1;
@@ -782,17 +805,15 @@ fn solveGenerics(self: *Self) !void {
         try self.pushScope();
         defer self.popScope();
 
-        if (instantiation.module) |mod| {
-            var it = mod.symbols.iterator();
-            var last = &self.scopes.items[self.scopes.items.len - 1];
-            while (it.next()) |entry|
-                try last.put(entry.key_ptr.*, .{ .symbol = .{
-                    .type = entry.value_ptr.type,
-                    .inner_name = entry.value_ptr.name,
-                    .is_mut = false,
-                    .is_defined = true,
-                } });
-        }
+        var it = instantiation.module.symbols.iterator();
+        var last = &self.scopes.items[self.scopes.items.len - 1];
+        while (it.next()) |entry|
+            try last.put(entry.key_ptr.*, .{ .symbol = .{
+                .type = entry.value_ptr.type,
+                .inner_name = entry.value_ptr.name,
+                .is_mut = false,
+                .is_defined = true,
+            } });
 
         switch (instantiation.t) {
             inline .@"struct", .@"union" => |s, tag| {
@@ -873,7 +894,7 @@ pub fn registerSymbol(
             type: Type,
         },
         type: Type,
-        module: *Module,
+        module: Module,
         constant: struct { type: Type, value: Value },
     },
     opts: struct {
@@ -959,7 +980,7 @@ fn registerConstants(self: *Self) !void {
                         break :b t;
                     },
                     .params = .empty,
-                    .module = null,
+                    .module = undefined,
                 },
             },
         },
@@ -987,7 +1008,7 @@ fn registerConstants(self: *Self) !void {
                         try params.append(self.alloc, .{ .name = "val", .type = .any });
                         break :b params;
                     },
-                    .module = null,
+                    .module = undefined,
                 },
             },
         },
@@ -1016,7 +1037,7 @@ fn registerConstants(self: *Self) !void {
                         try params.append(self.alloc, .{ .name = "b", .type = .any });
                         break :b params;
                     },
-                    .module = null,
+                    .module = undefined,
                 },
             },
         },

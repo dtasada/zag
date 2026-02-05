@@ -7,7 +7,7 @@ const Compiler = @import("Compiler");
 pub fn transpile(
     alloc: std.mem.Allocator,
     file_path: []const u8,
-    registry: *std.StringHashMap(*Compiler.Module),
+    registry: *std.StringHashMap(Compiler.Module),
 ) !void {
     const ast = try Compiler.getAST(alloc, file_path);
 
@@ -33,7 +33,7 @@ pub fn transpile(
 fn transpileModule(
     alloc: std.mem.Allocator,
     dir_path: []const u8,
-    registry: *std.StringHashMap(*Compiler.Module),
+    registry: *std.StringHashMap(Compiler.Module),
 ) !void {
     var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer dir.close();
@@ -60,7 +60,7 @@ pub fn build() !void {
     defer arena_back.deinit();
     const arena = arena_back.allocator();
 
-    var registry = std.StringHashMap(*Compiler.Module).init(arena);
+    var registry = std.StringHashMap(Compiler.Module).init(arena);
     try transpileModule(arena, "src", &registry);
 
     try compile(alloc);

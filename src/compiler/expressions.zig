@@ -808,14 +808,13 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
                 }
             }
 
-            if (!already_pending) {
+            if (!already_pending)
                 try self.pending_instantiations.append(self.alloc, .{
                     .inner_name = function.name,
                     .args = inst.args,
                     .module = function.module,
                     .t = .{ .function = def.* },
                 });
-            }
         }
     }
 

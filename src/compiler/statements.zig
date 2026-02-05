@@ -55,7 +55,7 @@ fn compoundTypeDeclaration(
     }
 
     if (type_decl.is_pub and self.module_header != null)
-        try self.switchWriter(.module_header);
+        try self.switchWriter(&self.module_header.?);
 
     try self.print("typedef {s} {{\n", .{switch (T) {
         .@"struct" => "struct",
@@ -109,7 +109,7 @@ fn compoundTypeDeclaration(
     self.indent_level -= 1;
     try self.print("}} {s};\n\n", .{try self.getInnerName(type_decl.name)});
 
-    try self.switchWriter(.output);
+    try self.switchWriter(&self.output.?);
 
     for (type_decl.methods.items) |method| {
         try self.pushScope();
@@ -141,7 +141,7 @@ fn compoundTypeDeclaration(
         );
 
         if (type_decl.is_pub and self.module_header != null) {
-            try self.switchWriter(.module_header);
+            try self.switchWriter(&self.module_header.?);
 
             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
@@ -151,7 +151,7 @@ fn compoundTypeDeclaration(
             }
             try self.write(");\n");
 
-            try self.switchWriter(.output);
+            try self.switchWriter(&self.output.?);
         }
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
@@ -416,7 +416,7 @@ fn functionDefinition(
     self.current_return_type = try Type.fromAst(self, function_def.return_type);
 
     if (binding_function or function_def.is_pub and self.module_header != null) {
-        try self.switchWriter(.module_header);
+        try self.switchWriter(&self.module_header.?);
         defer self.switchWriterBack();
 
         // we'll set the type of the function return type to be mutable because cc warns when a

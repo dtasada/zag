@@ -27,7 +27,7 @@ pub const Type = union(enum) {
         generic_params: std.ArrayList(Function.Param),
         return_type: *const Self,
         definition: ?*const ast.Statement.FunctionDefinition = null,
-        module: ?*Module = null,
+        module: Module,
         generic_instantiation: ?GenericInstantiation = null,
     };
 
@@ -65,7 +65,7 @@ pub const Type = union(enum) {
             generic_params: std.ArrayList(Function.Param),
             tag_type: ?*const Type, // only for unions and enums
             definition: ?*const Definition,
-            module: ?*Module = null,
+            module: Module,
             generic_instantiation: ?GenericInstantiation = null,
 
             /// get member or method. returns `null` if no member or method is found with `name`.
@@ -101,18 +101,18 @@ pub const Type = union(enum) {
                 return error.NoSuchMember;
             }
 
-            pub fn init(alloc: std.mem.Allocator, name: []const u8, inner_name: []const u8, tag_type: ?Type) !CompoundType(T) {
+            pub fn init(compiler: *Compiler, name: []const u8, inner_name: []const u8, tag_type: ?Type) !CompoundType(T) {
                 if (T == .@"struct" and tag_type != null) @panic("Struct type can't have a tag type");
 
-                const members = try alloc.create(std.StringArrayHashMap(MemberType));
-                members.* = .init(alloc);
+                const members = try compiler.alloc.create(std.StringArrayHashMap(MemberType));
+                members.* = .init(compiler.alloc);
 
-                const methods = try alloc.create(std.StringArrayHashMap(Method));
-                methods.* = .init(alloc);
+                const methods = try compiler.alloc.create(std.StringArrayHashMap(Method));
+                methods.* = .init(compiler.alloc);
 
                 var tag: ?*Type = null;
                 if (tag_type) |t| {
-                    tag = try alloc.create(Type);
+                    tag = try compiler.alloc.create(Type);
                     tag.?.* = t;
                 }
 
@@ -124,7 +124,7 @@ pub const Type = union(enum) {
                     .generic_params = .empty,
                     .tag_type = tag,
                     .definition = null,
-                    .module = null,
+                    .module = compiler.module,
                     .generic_instantiation = null,
                 };
             }
@@ -193,7 +193,7 @@ pub const Type = union(enum) {
     array: Array,
     error_union: ErrorUnion,
     function: Function,
-    module: *Module,
+    module: Module,
     variadic,
 
     /// Converts an AST type to a Compiler type.
@@ -222,8 +222,7 @@ pub const Type = union(enum) {
                     try compiler.pushScope();
                     defer compiler.popScope();
 
-                    var generic_params: std.ArrayList(Function.Param) = .empty;
-                    try generic_params.ensureTotalCapacity(compiler.alloc, function.generic_parameters.items.len);
+                    var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.generic_parameters.items.len);
                     for (function.generic_parameters.items) |p| {
                         generic_params.appendAssumeCapacity(.{
                             .name = p.name,
@@ -235,8 +234,7 @@ pub const Type = union(enum) {
                         try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } }, .{});
                     }
 
-                    var params: std.ArrayList(Function.Param) = .empty;
-                    try params.ensureTotalCapacity(compiler.alloc, function.parameters.items.len);
+                    var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.parameters.items.len);
                     for (function.parameters.items) |p|
                         params.appendAssumeCapacity(.{
                             .name = p.name,
@@ -249,7 +247,7 @@ pub const Type = union(enum) {
                         .params = params,
                         .generic_params = generic_params,
                         .return_type = try .fromAstPtr(compiler, function.return_type.*),
-                        .module = null,
+                        .module = compiler.module,
                     };
                 },
             },
@@ -369,7 +367,7 @@ pub const Type = union(enum) {
             .@"struct" => |s| s.module,
             .@"union" => |u| u.module,
             .function => |f| f.module,
-            else => null,
+            else => unreachable,
         };
 
         if (definition_wrapper) |def_wrap| {
@@ -734,7 +732,7 @@ pub const Type = union(enum) {
             // If type mismatch or not found (logic error in scan?), create new.
             // But strict forward decl implies we should find it.
             // However, we fallback to init for safety/standalone usage.
-            break :b try .init(compiler.alloc, type_decl.name, inner_name, switch (T) {
+            break :b try .init(compiler, type_decl.name, inner_name, switch (T) {
                 .@"struct" => null,
                 .@"enum" => getTagType(type_decl.members.items.len),
                 .@"union" => b2: {
@@ -757,7 +755,7 @@ pub const Type = union(enum) {
                     };
                 },
             });
-        } else |_| try .init(compiler.alloc, type_decl.name, inner_name, switch (T) {
+        } else |_| try .init(compiler, type_decl.name, inner_name, switch (T) {
             .@"struct" => null,
             .@"enum" => getTagType(type_decl.members.items.len),
             .@"union" => b: {
