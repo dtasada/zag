@@ -95,8 +95,8 @@ pub fn compile(
                 try self.write(")");
             } else return errors.illegalPrefixExpression(prefix.op, t, prefix.pos);
         },
-        .ident => |ident| if (self.getSymbolType(ident.ident)) |_|
-            try self.write(ident.ident)
+        .ident => |ident| if (self.getInnerName(ident.ident)) |inner_name|
+            try self.write(inner_name)
         else |_|
             return errors.unknownSymbol(ident.ident, expression.getPosition()),
         .struct_instantiation => |struct_inst| {

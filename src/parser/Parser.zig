@@ -154,7 +154,8 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"[", .call, expressions.index);
 
     // Statements
-    try self.statement(.let, statements.variableDeclaration);
+    try self.statement(.let, statements.variableDefinition);
+    try self.statement(.@"const", statements.constDefinition);
     try self.statement(.@"struct", statements.structDeclaration);
     try self.statement(.@"enum", statements.enumDeclaration);
     try self.statement(.@"union", statements.unionDeclaration);

@@ -658,6 +658,10 @@
           "named": true
         },
         {
+          "type": "type",
+          "named": true
+        },
+        {
           "type": "undefined_literal",
           "named": true
         }
@@ -2284,6 +2288,10 @@
     "type": "comment",
     "named": true,
     "extra": true
+  },
+  {
+    "type": "const",
+    "named": false
   },
   {
     "type": "continue",

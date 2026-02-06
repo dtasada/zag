@@ -228,25 +228,35 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
             v.assigned_value.getPosition(),
         );
 
-    try self.compileVariableSignature(v.variable_name, expected_type orelse received_type, .{ .binding_mut = v.is_mut });
+    if (received_type == .type) {
+        try self.write("typedef ");
+        try expressions.compile(self, &v.assigned_value, .{ .binding_mut = true });
+        try self.print(" {s}", .{v.variable_name});
+    } else {
+        try self.compileVariableSignature(
+            v.variable_name,
+            expected_type orelse received_type,
+            .{ .binding_mut = v.binding == .is_mut, .is_const = v.binding == .is_const },
+        );
 
-    if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
-        try self.write(" = ");
+        if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
+            try self.write(" = ");
 
-        try expressions.compile(self, &v.assigned_value, .{
-            .binding_mut = v.is_mut,
-            .expected_type = expected_type,
-        });
+            try expressions.compile(self, &v.assigned_value, .{
+                .binding_mut = v.binding == .is_mut,
+                .expected_type = expected_type,
+            });
+        }
     }
+
+    try self.write(";\n");
 
     try self.registerSymbol(v.variable_name, .{
         .symbol = .{
-            .is_mut = v.is_mut,
+            .is_mut = v.binding == .is_mut,
             .type = expected_type orelse received_type,
         },
     }, .{});
-
-    try self.write(";\n");
 }
 
 fn conditional(

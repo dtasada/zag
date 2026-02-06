@@ -366,7 +366,7 @@ pub const Statement = union(enum) {
     pub const VariableDefinition = struct {
         pos: utils.Position,
         is_pub: bool,
-        is_mut: bool,
+        binding: enum { is_mut, is_const, neither },
         variable_name: []const u8,
         type: Type,
         assigned_value: ast.Expression,

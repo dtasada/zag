@@ -4,6 +4,7 @@
  "as"
  "bind"
  "break"
+ "const"
  "continue"
  "else"
  "enum"

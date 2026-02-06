@@ -461,7 +461,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 try self.registerSymbol(
                     var_def.variable_name,
-                    .{ .symbol = .{ .is_mut = var_def.is_mut, .type = final_type } },
+                    .{ .symbol = .{ .is_mut = var_def.binding == .is_mut, .type = final_type } },
                     .{
                         .is_defined = false,
                         .inner_name = try self.mangle(var_def.variable_name),
@@ -734,8 +734,13 @@ pub fn compileVariableSignature(
     t: Type,
     opts: struct {
         binding_mut: bool = false,
+        is_const: bool = false,
     },
 ) CompilerError!void {
+    if (t == .type) unreachable;
+
+    if (opts.is_const) try self.write("static ");
+
     switch (t) {
         .array => |array| {
             try self.compileType(array.inner.*, .{ .binding_mut = opts.binding_mut });

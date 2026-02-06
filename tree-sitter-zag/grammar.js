@@ -12,7 +12,10 @@ function commaSep(item) {
 }
 
 function commaSep1(item) {
-  return seq(repeat1(seq(item, ",")), optional(item));
+  return choice(
+    item,
+    seq(repeat1(seq(item, ",")), optional(item)),
+  );
 }
 
 export default grammar({
@@ -27,6 +30,10 @@ export default grammar({
     [$._statement, $.expression],
     [$.expression, $.ident_type],
     [$.expression, $.call_callee],
+    [$.type, $.generic_type],
+    [$.expression, $.ident_type, $.call_callee],
+    [$.expression, $.generic_argument_list],
+    [$.expression],
   ],
 
   rules: {
@@ -79,6 +86,7 @@ export default grammar({
       $.match_expression,
       $.index_expression,
       $.generic_expression,
+      $.type,
     ),
 
     break_statement: $ => seq("break", ";"),
@@ -141,8 +149,13 @@ export default grammar({
     ),
 
     variable_definition: $ => seq(
-      "let",
-      optional("mut"),
+      choice(
+        seq(
+          "let",
+          optional("mut"),
+        ),
+        "const",
+      ),
       field("variable_name", $.ident),
       optional(seq(
         ":",

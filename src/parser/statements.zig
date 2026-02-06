@@ -21,21 +21,27 @@ pub fn parse(self: *Self) ParserError!ast.Statement {
     return .{ .expression = expression };
 }
 
-pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
+pub fn variableDefinition(self: *Self) ParserError!ast.Statement {
+    return try variableDeclarationGeneric(self, false);
+}
+
+pub fn constDefinition(self: *Self) ParserError!ast.Statement {
+    return try variableDeclarationGeneric(self, true);
+}
+
+fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!ast.Statement {
+    const env_small = if (is_const) "constant" else "variable";
+    const environment = env_small ++ " declaration statement";
+
     const is_pub = isPub(self);
 
     const pos = self.currentPosition();
     _ = self.advance(); // consume `let`
 
     const is_mut = self.currentTokenKind() == .mut;
-    if (is_mut) _ = self.advance(); // consume `mut`
+    if (!is_const and is_mut) _ = self.advance(); // consume `mut`
 
-    const var_name = try self.expect(
-        self.advance(),
-        .ident,
-        "variable declaration statement",
-        "variable name",
-    );
+    const var_name = try self.expect(self.advance(), .ident, environment, env_small);
 
     // optionally parse type
     var @"type": ast.Type = .{ .inferred = .{ .pos = self.currentPosition() } };
@@ -44,23 +50,18 @@ pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
         @"type" = try self.type_parser.parseType(self.alloc, .default);
     }
 
-    try self.expect(self.advance(), .@"=", "variable declaration statement", "=");
+    try self.expect(self.advance(), .@"=", environment, "=");
 
     const assigned_value = try expressions.parse(self, .assignment, .{});
 
-    try self.expect(
-        self.advance(),
-        .@";",
-        "variable declaration statement",
-        ";",
-    );
+    try self.expect(self.advance(), .@";", environment, ";");
 
     return .{
         .variable_definition = .{
             .pos = pos,
             .is_pub = is_pub,
             .variable_name = var_name,
-            .is_mut = is_mut,
+            .binding = if (is_const) .is_const else if (is_mut) .is_mut else .neither,
             .assigned_value = assigned_value,
             .type = @"type",
         },
