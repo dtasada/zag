@@ -29,6 +29,7 @@ pub const Type = union(enum) {
         definition: ?*const ast.Statement.FunctionDefinition = null,
         module: Module,
         generic_instantiation: ?GenericInstantiation = null,
+        is_bind: bool = false,
     };
 
     pub const GenericInstantiation = struct {

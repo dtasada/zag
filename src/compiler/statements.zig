@@ -216,6 +216,7 @@ pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!v
 fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) CompilerError!void {
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
+    const final_type = expected_type orelse received_type;
 
     if (self.getScopeItem(v.variable_name)) |_|
         return errors.symbolShadowing(v.variable_name, v.pos)
@@ -228,15 +229,36 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
             v.assigned_value.getPosition(),
         );
 
-    if (received_type == .type) {
+    if (final_type == .type) {
         try self.write("typedef ");
         try expressions.compile(self, &v.assigned_value, .{ .binding_mut = true });
         try self.print(" {s}", .{v.variable_name});
+        try self.write(";\n");
+        try self.registerSymbol(v.variable_name, .{ .type = final_type }, .{});
     } else {
+        const mangled_name = try self.mangle(v.variable_name);
+        defer self.alloc.free(mangled_name);
+
+        try self.registerSymbol(v.variable_name, .{
+            .symbol = .{
+                .is_mut = v.binding == .is_mut,
+                .type = final_type,
+            },
+        }, .{ .inner_name = mangled_name });
+
+        if (v.is_pub) {
+            try self.switchWriter(&self.module_header.?);
+            defer self.switchWriterBack();
+            try self.write("extern ");
+            // For extern, it's a declaration. binding_mut=false gives 'const' for let/const.
+            try self.compileVariableSignature(mangled_name, final_type, .{ .binding_mut = v.binding == .is_mut });
+            try self.write(";\n");
+        }
+
         try self.compileVariableSignature(
-            v.variable_name,
-            expected_type orelse received_type,
-            .{ .binding_mut = v.binding == .is_mut, .is_const = v.binding == .is_const },
+            mangled_name,
+            final_type,
+            .{ .binding_mut = v.binding == .is_mut, .is_const = v.binding == .is_const and !v.is_pub },
         );
 
         if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
@@ -247,16 +269,8 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
                 .expected_type = expected_type,
             });
         }
+        try self.write(";\n");
     }
-
-    try self.write(";\n");
-
-    try self.registerSymbol(v.variable_name, .{
-        .symbol = .{
-            .is_mut = v.binding == .is_mut,
-            .type = expected_type orelse received_type,
-        },
-    }, .{});
 }
 
 fn conditional(

@@ -1,5 +1,7 @@
 import c;
 
+pub const N = 3;
+
 pub fn min<T>(a, b: T) T -> return if (a > b) b else a;
 pub fn max<T>(a, b: T) T -> return if (a > b) a else b;
 

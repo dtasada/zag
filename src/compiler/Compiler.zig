@@ -410,9 +410,13 @@ pub fn scan(self: *Self) CompilerError!void {
                     },
                 );
             },
-            .binding_function_declaration => |*func| try self.registerSymbol(func.name, .{
-                .symbol = .{ .type = try Type.fromAst(self, func.getType()) },
-            }, .{ .is_defined = false }),
+            .binding_function_declaration => |*func| {
+                var t = try Type.fromAst(self, func.getType());
+                t.function.is_bind = true;
+                try self.registerSymbol(func.name, .{
+                    .symbol = .{ .type = t },
+                }, .{ .is_defined = false });
+            },
             else => {},
         }
     }
@@ -443,7 +447,8 @@ pub fn analyze(self: *Self) CompilerError!void {
                 });
             },
             .binding_function_declaration => |*func| {
-                const t = try Type.fromAst(self, func.getType());
+                var t = try Type.fromAst(self, func.getType());
+                t.function.is_bind = true;
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } }, .{ .is_defined = false });
                 if (func.is_pub) try self.exported_symbols.put(func.name, .{
                     .name = func.name,
@@ -472,6 +477,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                     .name = var_def.variable_name,
                     .is_pub = var_def.is_pub,
                     .type = final_type,
+                    .is_mut = var_def.binding == .is_mut,
                 });
             },
             inline .struct_declaration, .union_declaration, .enum_declaration => |*struct_decl| {
@@ -542,7 +548,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     // Create module from exports
     // Allocate on heap to ensure pointer stability
-    var mod = try Module.init(
+    var mod: Module = try .init(
         self.alloc,
         import_stmt.alias orelse import_stmt.module_name.getLast(),
         module_file,
@@ -1080,11 +1086,12 @@ pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
 }
 
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
+    std.debug.dumpCurrentStackTrace(null);
     return switch (try self.getScopeItem(symbol)) {
         .symbol => |s| s.is_mut,
         else => return utils.printErr(
             error.SymbolNotVariable,
-            "Compiler error: Symbol {s} is not a variable\n",
+            "Compiler error: Symbol '{s}' is not a variable\n",
             .{symbol},
             .red,
         ),

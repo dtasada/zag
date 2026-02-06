@@ -418,7 +418,10 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         },
 
         .module => |module| if (module.symbols.get(expr.member_name)) |symbol| {
-            try self.write(symbol.name);
+            if (symbol.type == .function and symbol.type.function.is_bind)
+                try self.write(symbol.name)
+            else
+                try self.print("{s}_{s}", .{ module.name, symbol.name });
         } else return utils.printErr(
             error.UndeclaredProperty,
             "comperr: Module '{s}' has no member '{s}' ({f}).\n",
@@ -469,8 +472,13 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
         .ident => |ident| if (!try self.getSymbolMutability(ident.ident))
             return errors.badMutability(expr.pos),
         .member => |m| {
-            switch (try Type.infer(self, m.parent.*)) {
-                .reference => |ref| if (!ref.is_mut) continue :b m.parent.*,
+            const parent_type = try Type.infer(self, m.parent.*);
+            switch (parent_type) {
+                .module => |mod| {
+                    const symbol = mod.symbols.get(m.member_name) orelse
+                        return errors.unknownSymbol(m.member_name, m.pos);
+                    if (!symbol.is_mut) return errors.badMutability(expr.pos);
+                },
                 else => continue :b m.parent.*,
             }
         },
