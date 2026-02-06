@@ -26,9 +26,7 @@ export default grammar({
   conflicts: $ => [
     [$._statement, $.expression],
     [$.expression, $.ident_type],
-    [$.expression, $.ident_type, $.call_callee],
     [$.expression, $.call_callee],
-    [$.ident_type, $.call_callee],
   ],
 
   rules: {
@@ -80,15 +78,24 @@ export default grammar({
       $.reference_expression,
       $.match_expression,
       $.index_expression,
+      $.generic_expression,
     ),
 
     break_statement: $ => seq("break", ";"),
     continue_statement: $ => seq("continue", ";"),
 
+    generic_expression: $ => seq(
+      $.expression,
+      $.generic_argument_list,
+    ),
+
     index_expression: $ => seq(
       $.expression,
       "[",
-      $.expression,
+      choice(
+        $.expression,
+        seq(choice("..", "..="), field("end", $.expression)),
+      ),
       "]",
     ),
 
@@ -158,7 +165,7 @@ export default grammar({
     ),
 
     struct_member: $ => seq(
-      commaSep(field("name", $.ident)),
+      commaSep1(field("name", $.ident)),
       ":",
       field("type", $.type),
     ),
@@ -349,17 +356,10 @@ export default grammar({
       "}",
     ),
 
-    call_expression: $ => prec(10, choice(
-      seq(
-        field("callee", $.call_callee),
-        field("arguments", $.argument_list),
-      ),
-      seq(
-        field("callee", $.call_callee),
-        field("generic_arguments", $.generic_argument_list),
-        field("arguments", $.argument_list),
-      ),
-    )),
+    call_expression: $ => seq(
+      field("callee", $.call_callee),
+      field("arguments", $.argument_list),
+    ),
 
     call_callee: $ => choice(
       $.ident,
@@ -463,7 +463,7 @@ export default grammar({
     range_expression: $ => prec.left(5, seq(
       field("start", $.expression),
       choice("..", "..="),
-      field("end", $.expression),
+      field("end", optional($.expression)),
     )),
 
     reference_expression: $ => prec.right(9, seq(

@@ -49,28 +49,35 @@ pub struct ArrayList<T> {
     pub fn init() ArrayList<T> {
         return ArrayList<T> {
             items: alloc_slice<T>(0),
-            capacity: 16,
+            capacity: 0,
         };
     }
 
     fn ensure_capacity(self: &mut ArrayList<T>, min_cap: usize) void {
         if (self.capacity >= min_cap) return;
 
-        let new_cap = max<usize>(min_cap, self.capacity * 2 + 1);
+        let new_cap = max<usize>(min_cap, if (self.capacity == 0) 16 else self.capacity * 2);
 
         let new_buf = if (self.capacity == 0)
             alloc_slice<T>(new_cap)
         else
-            realloc_slice<T>(self.items[0..self.capacity], new_cap);
+            // `realloc_slice` only cares about the pointer, so passing `self.items` is fine.
+            realloc_slice<T>(self.items, new_cap);
 
+        // The new buffer (`new_buf`) has length `new_cap`. We want our `items` slice
+        // to point to this new buffer, but maintain its old logical length.
         self.items = new_buf[0..self.items.len];
         self.capacity = new_cap;
     }
 
     pub fn append(self: &mut ArrayList<T>, item: T) void {
         self.ensure_capacity(self.items.len + 1);
-        self.items[self.items.len] = item;
-        self.items = self.items[0..=self.items.len];
+        
+        // Correctly grow the slice's length by 1 by re-slicing from the base pointer.
+        self.items = self.items[0..self.items.len + 1];
+        
+        // Assign the new item to the new last slot.
+        self.items[self.items.len - 1] = item;
     }
 
     pub fn pop(self: &mut ArrayList<T>) ?T {
@@ -79,19 +86,21 @@ pub struct ArrayList<T> {
         let idx = self.items.len - 1;
         let val = self.items[idx];
 
+        // Correctly shrink the slice by re-slicing.
         self.items = self.items[0..idx];
         return val;
     }
 
 
     pub fn clear(self: &mut ArrayList<T>) void {
-        self.items = self.items[0..=0];
+        // Correctly set length to 0.
+        self.items = self.items[..0];
     }
 
     pub fn deinit(self: &mut ArrayList<T>) void {
         if (self.capacity != 0)
-            free_slice<T>(self.items[0..self.capacity]);
-       
+            // To free the whole buffer, we must create a slice representing the full capacity.
+            free_slice<T>(self.items[..self.capacity]);
     }
 
     pub fn contains(self: &ArrayList<T>, item: T) bool {
@@ -103,6 +112,7 @@ pub struct ArrayList<T> {
     }
 
     pub fn eq(self: &ArrayList<T>, rhs: &ArrayList<T>) bool {
+        if (self.items.len != rhs.items.len) return false;
         for (0..self.items.len) |i| {
             if (self.items[i] != rhs.items[i]) return false;
         }
@@ -118,7 +128,8 @@ pub struct ArrayList<T> {
     }
 
     pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
-        for (self.items.len-1..=0) |i| {
+        if (self.items.len == 0) return c_null;
+        for (self.items.len - 1..=0) |i| {
             if (self.items[i] == item) return i;
         }
 
@@ -126,8 +137,16 @@ pub struct ArrayList<T> {
     }
 
     pub fn remove(self: &mut ArrayList<T>, index: usize) !void {
-        let src = self.items[index + 1..self.items.len];
-        memmove<T>(self.items[index..self.items.len][0..src.len], src);
-        self.items.len -= 1;
+        if (index >= self.items.len) return c_null;
+
+        if (index < self.items.len - 1) {
+            // Only memmove if it's not the last element
+            let src = self.items[index + 1..self.items.len];
+            let dst = self.items[index .. self.items.len - 1];
+            memmove<T>(dst, src);
+        }
+        
+        // Correctly shrink the slice.
+        self.items = self.items[0..self.items.len - 1];
     }
 }

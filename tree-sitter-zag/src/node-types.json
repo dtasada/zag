@@ -434,16 +434,6 @@
             "named": true
           }
         ]
-      },
-      "generic_arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_argument_list",
-            "named": true
-          }
-        ]
       }
     }
   },
@@ -609,6 +599,10 @@
         },
         {
           "type": "false_literal",
+          "named": true
+        },
+        {
+          "type": "generic_expression",
           "named": true
         },
         {
@@ -964,6 +958,25 @@
     }
   },
   {
+    "type": "generic_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "generic_argument_list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "generic_parameter_list",
     "named": true,
     "fields": {
@@ -1261,7 +1274,18 @@
   {
     "type": "index_expression",
     "named": true,
-    "fields": {},
+    "fields": {
+      "end": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -1470,7 +1494,7 @@
     "fields": {
       "end": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "expression",
@@ -1759,7 +1783,7 @@
     "fields": {
       "name": {
         "multiple": true,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "ident",
