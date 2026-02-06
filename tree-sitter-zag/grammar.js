@@ -26,10 +26,6 @@ export default grammar({
   conflicts: $ => [
     [$._statement, $.expression],
     [$.expression, $.ident_type],
-    [$.call_expression, $.binary_expression, $.reference_expression],
-    [$.call_expression, $.binary_expression, $.prefix_expression],
-    [$.call_expression, $.binary_expression],
-    [$.type, $.generic_parameter_list],
     [$.expression, $.ident_type, $.call_callee],
     [$.expression, $.call_callee],
     [$.ident_type, $.call_callee],
@@ -120,7 +116,10 @@ export default grammar({
       optional(field("generic_parameters", $.generic_parameter_list)),
       field("parameters", $.parameter_list),
       field("return_type", $.type),
-      field("body", $.block),
+      choice(
+        field("body", $.block),
+        seq("->", $._statement),
+      ),
     ),
 
     binding_function_declaration: $ => seq(

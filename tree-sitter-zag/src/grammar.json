@@ -455,12 +455,30 @@
           }
         },
         {
-          "type": "FIELD",
-          "name": "body",
-          "content": {
-            "type": "SYMBOL",
-            "name": "block"
-          }
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "body",
+              "content": {
+                "type": "SYMBOL",
+                "name": "block"
+              }
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "->"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_statement"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -3440,24 +3458,6 @@
     [
       "expression",
       "ident_type"
-    ],
-    [
-      "call_expression",
-      "binary_expression",
-      "reference_expression"
-    ],
-    [
-      "call_expression",
-      "binary_expression",
-      "prefix_expression"
-    ],
-    [
-      "call_expression",
-      "binary_expression"
-    ],
-    [
-      "type",
-      "generic_parameter_list"
     ],
     [
       "expression",

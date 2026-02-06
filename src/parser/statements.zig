@@ -240,7 +240,22 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
         ),
         else => return err,
     };
-    const body = try self.parseBlock();
+
+    const body: ast.Block = switch (self.currentToken()) {
+        .@"{" => try self.parseBlock(),
+        .@"->" => b: {
+            _ = self.advance();
+            var block: ast.Block = .empty;
+            try block.append(self.alloc, try parse(self));
+            break :b block;
+        },
+        else => return utils.printErr(
+            error.UnexpectedToken,
+            "Parser error: expected block after function definition type ({f}).\n",
+            .{self.currentPosition()},
+            .red,
+        ),
+    };
 
     return .{
         .function_definition = .{

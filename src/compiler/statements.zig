@@ -355,8 +355,9 @@ fn conditional(
         switch (statement.body.*) {
             .block => |block| block.block,
             else => b: {
-                var slice = [_]ast.Statement{statement.body.*};
-                break :b ast.Block.fromOwnedSlice(&slice);
+                var block: ast.Block = .empty;
+                try block.append(self.alloc, statement.body.*);
+                break :b block;
             },
         },
         switch (T) {

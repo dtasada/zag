@@ -1,18 +1,17 @@
 import c;
 
+pub fn min<T>(a, b: T) T -> return if (a > b) b else a;
+pub fn max<T>(a, b: T) T -> return if (a > b) a else b;
+
 pub fn alloc<T>() !&mut T {
     let ptr = c.malloc(sizeof<T>());
     if (ptr == c_null) c.printf("error allocating");
     return ptr;
 }
 
-pub fn free<T>(ptr: &T) void {
-    c.free(ptr);
-}
+pub fn free<T>(ptr: &T) void -> c.free(ptr);
 
-pub fn free_slice<T>(slice: []mut T) void {
-    c.free(cast<&mut void>(slice.ptr));
-}
+pub fn free_slice<T>(slice: []mut T) void -> c.free(cast<&mut void>(slice.ptr));
 
 pub fn alloc_slice<T>(N: usize) []mut T {
     let mut slice: []mut T = undefined;
@@ -21,7 +20,7 @@ pub fn alloc_slice<T>(N: usize) []mut T {
     return slice;
 }
 
-// Invalidates old `slice`
+// Invalidates old slice
 pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
     let mut new_slice: []mut T = undefined;
     new_slice.ptr = cast<&mut T>(c.realloc(cast<&mut void>(slice.ptr), new_size * sizeof<T>()));
@@ -29,9 +28,7 @@ pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
     return new_slice;
 }
 
-pub fn memcpy<T>(dst: &mut T, src: &T) void {
-    c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>());
-}
+pub fn memcpy<T>(dst: &mut T, src: &T) void -> c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>());
 
 pub fn memcpy_slice<T>(dst: []mut T, src: []T) !void {
     if (dst.len != src.len) return c_null;
@@ -43,14 +40,6 @@ pub fn memmove<T>(dst: []mut T, src: []T) !void {
     if (dst.len != src.len) return c_null;
 
     c.memmove(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
-}
-
-pub fn min<T>(a, b: T) T {
-    return if (a > b) b else a;
-}
-
-pub fn max<T>(a, b: T) T {
-    return if (a > b) a else b;
 }
 
 pub struct ArrayList<T> {
