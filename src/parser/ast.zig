@@ -182,7 +182,7 @@ pub const Expression = union(enum) {
     const Range = struct {
         pos: utils.Position,
         start: *const Expression,
-        end: *const Expression,
+        end: ?*const Expression,
         inclusive: bool,
     };
 
@@ -209,8 +209,8 @@ pub const Expression = union(enum) {
     const Slice = struct {
         pos: utils.Position,
         lhs: *const Expression,
-        start: *const Expression,
-        end: *const Expression,
+        start: ?*const Expression,
+        end: ?*const Expression,
         inclusive: bool,
     };
 

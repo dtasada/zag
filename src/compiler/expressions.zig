@@ -210,6 +210,8 @@ pub fn compile(
             if (t != .slice and t != .array)
                 return errors.illegalSliceExpression(t, slice.pos);
 
+            const array_length = if (t == .slice) null else t.array.size;
+
             const is_slice = t == .slice;
             const is_mut = switch (slice.lhs.*) {
                 .ident => |ident| try self.getSymbolMutability(ident.ident),
@@ -232,10 +234,21 @@ pub fn compile(
             try self.write(", ");
             try compile(self, slice.lhs, .{});
             try self.write(", ");
-            try compile(self, slice.start, .{});
+            if (slice.start) |start|
+                try compile(self, start, .{})
+            else
+                try self.write("0");
             try self.write(", ");
             if (slice.inclusive) try self.write("1 + (");
-            try compile(self, slice.end, .{});
+
+            if (slice.end) |end| {
+                try compile(self, end, .{});
+            } else if (is_slice) {
+                try self.write("(");
+                try compile(self, slice.lhs, .{});
+                try self.write(").len");
+            } else try self.print("{}", .{array_length.?});
+
             if (slice.inclusive) try self.write(")");
             try self.write(")");
         },

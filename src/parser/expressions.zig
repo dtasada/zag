@@ -36,7 +36,7 @@ pub fn primary(self: *Self) !ast.Expression {
 pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
     const op: ast.BinaryOperator = .fromLexerToken(self.advance());
-    const rhs = try parse(self, bp);
+    const rhs = try parse(self, bp, .{});
 
     const new_rhs = try self.alloc.create(ast.Expression);
     new_rhs.* = rhs;
@@ -76,9 +76,9 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
     }
 }
 
-pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
+pub fn parse(self: *Self, bp: BindingPower, opts: struct { silent_error: bool = false }) ParserError!ast.Expression {
     // first parse the NUD
-    const nud_fn = try self.getHandler(.nud, self.currentTokenKind());
+    const nud_fn = try self.getHandler(.nud, self.currentTokenKind(), .{ .silent_error = opts.silent_error });
     var lhs = try nud_fn(self);
 
     // while we have a led and (current bp < bp of current token)
@@ -87,12 +87,12 @@ pub fn parse(self: *Self, bp: BindingPower) ParserError!ast.Expression {
         if (@intFromEnum(current_bp) <= @intFromEnum(bp)) break;
 
         // This should be an assertion, since we found a bp
-        const led_fn = try self.getHandler(.led, self.currentTokenKind());
+        const led_fn = try self.getHandler(.led, self.currentTokenKind(), .{ .silent_error = opts.silent_error });
 
         const old_lhs = try self.alloc.create(ast.Expression);
         old_lhs.* = lhs;
 
-        lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentTokenKind()));
+        lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentTokenKind(), .{ .silent_error = opts.silent_error }));
     }
 
     return lhs;
@@ -103,7 +103,7 @@ pub fn assignment(self: *Self, lhs: *const ast.Expression, bp: BindingPower) Par
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
-    rhs.* = try parse(self, bp);
+    rhs.* = try parse(self, bp, .{});
 
     return .{
         .assignment = .{
@@ -134,7 +134,7 @@ pub fn prefix(self: *Self) ParserError!ast.Expression {
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
-    rhs.* = try parse(self, .unary);
+    rhs.* = try parse(self, .unary, .{});
 
     return .{
         .prefix = .{
@@ -147,7 +147,7 @@ pub fn prefix(self: *Self) ParserError!ast.Expression {
 
 pub fn group(self: *Self) ParserError!ast.Expression {
     try self.expect(self.advance(), .@"(", "group expression", "(");
-    const expr = try parse(self, .default);
+    const expr = try parse(self, .default, .{});
     try self.expect(self.advance(), .@")", "group expression", ")");
 
     return expr;
@@ -165,7 +165,7 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
     while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
         const member_name = try self.expect(self.advance(), .ident, "struct instantiation", "struct member name");
         try self.expect(self.advance(), .@":", "struct instantiation", ":");
-        const member_value = try parse(self, .default);
+        const member_value = try parse(self, .default, .{});
 
         try @"struct".members.put(member_name, member_value);
 
@@ -184,7 +184,7 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
 
     try self.expect(self.advance(), .@"[", "array instantiation", "[");
     const length = try self.alloc.create(ast.Expression);
-    length.* = try parse(self, .default);
+    length.* = try parse(self, .default, .{});
     try self.expect(self.advance(), .@"]", "array instantiation", "]");
 
     var array: ast.Expression.ArrayInstantiation = .{
@@ -195,7 +195,7 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
 
     try self.expect(self.advance(), .@"{", "array instantiation", "{");
     while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
-        try array.contents.append(self.alloc, try parse(self, .logical));
+        try array.contents.append(self.alloc, try parse(self, .logical, .{}));
 
         if (self.currentTokenKind() != .@"}")
             try self.expect(self.advance(), .@",", "array literal", ",");
@@ -253,7 +253,7 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
     try self.expect(self.advance(), .@"(", "if expression", "(");
 
     const condition = try self.alloc.create(ast.Expression);
-    condition.* = try parse(self, .default);
+    condition.* = try parse(self, .default, .{});
 
     try self.expect(self.advance(), .@")", "if expression", ")");
 
@@ -271,7 +271,7 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
     body.* = if (self.currentTokenKind() == .@"{")
         try block(self)
     else
-        try parse(self, .default);
+        try parse(self, .default, .{});
 
     var @"else": ?*ast.Expression = null;
     if (self.currentTokenKind() == .@"{") {
@@ -283,7 +283,7 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
         @"else".?.* = if (self.currentTokenKind() == .@"{")
             try block(self)
         else
-            try parse(self, .default);
+            try parse(self, .default, .{});
     }
 
     return .{
@@ -303,7 +303,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
 
     try self.expect(self.advance(), .@"(", "match statement", "(");
     const condition = try self.alloc.create(ast.Expression);
-    condition.* = try parse(self, .default);
+    condition.* = try parse(self, .default, .{});
     try self.expect(self.advance(), .@")", "match statement", ")");
 
     try self.expect(self.advance(), .@"{", "match statement", "{");
@@ -318,11 +318,11 @@ pub fn match(self: *Self) ParserError!ast.Expression {
             break :b .@"else";
         } else b: {
             var conds: std.ArrayList(ast.Expression) = .empty;
-            try conds.append(self.alloc, try parse(self, .default));
+            try conds.append(self.alloc, try parse(self, .default, .{}));
 
             while (self.currentToken() == .@",") {
                 _ = self.advance();
-                try conds.append(self.alloc, try parse(self, .default));
+                try conds.append(self.alloc, try parse(self, .default, .{}));
             }
 
             break :b .{ .opts = conds };
@@ -338,7 +338,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
                 break :b try statement_fn(self);
             }
 
-            break :b .{ .expression = try parse(self, .default) };
+            break :b .{ .expression = try parse(self, .default, .{}) };
         };
 
         try cases.append(self.alloc, .{ .condition = cond, .pos = pos, .result = result });
@@ -366,8 +366,14 @@ pub fn block(self: *Self) ParserError!ast.Expression {
 pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     const token = self.advance(); // move past '..|..='
 
-    const end = try self.alloc.create(ast.Expression);
-    end.* = try parse(self, .default);
+    const end = if (parse(self, .default, .{ .silent_error = true })) |end| b: {
+        const ptr = try self.alloc.create(ast.Expression);
+        ptr.* = end;
+        break :b ptr;
+    } else |err| switch (err) {
+        error.HandlerDoesNotExist => null,
+        else => return err,
+    };
 
     return .{
         .range = .{
@@ -382,8 +388,35 @@ pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
 pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     _ = self.advance(); // move past '['
 
+    if (self.currentToken() == .@".." or self.currentToken() == .@"..=") {
+        const inclusive = self.advance() == .@"..=";
+
+        const end = try self.alloc.create(ast.Expression);
+        end.* = parse(self, .default, .{}) catch |err| switch (err) {
+            error.HandlerDoesNotExist => return utils.printErr(
+                error.SyntaxError,
+                "Parser error: slice expression with no start index must contain an end index ({f}).\n",
+                .{self.currentPosition()},
+                .red,
+            ),
+            else => return err,
+        };
+
+        try self.expect(self.advance(), .@"]", "index expression", "]");
+
+        return .{
+            .slice = .{
+                .pos = lhs.getPosition(),
+                .lhs = lhs,
+                .start = null,
+                .end = end,
+                .inclusive = inclusive,
+            },
+        };
+    }
+
     const i = try self.alloc.create(ast.Expression);
-    i.* = try parse(self, .default);
+    i.* = try parse(self, .default, .{});
 
     const expr: ast.Expression = if (i.* == .range) .{
         .slice = .{
@@ -414,7 +447,7 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
     if (is_mut) _ = self.advance(); // consume `mut`
 
     const inner = try self.alloc.create(ast.Expression);
-    inner.* = try parse(self, .default);
+    inner.* = try parse(self, .default, .{});
 
     return .{
         .reference = .{

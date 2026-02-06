@@ -1,6 +1,6 @@
 const std = @import("std");
 const utils = @import("utils");
-const expression = @import("expressions.zig");
+const expressions = @import("expressions.zig");
 
 const Lexer = @import("Lexer");
 const Parser = @import("Parser.zig");
@@ -91,7 +91,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
 
     if (self.parent_parser.currentTokenKind() != .@">") {
         while (true) {
-            const arg = try expression.parse(self.parent_parser, .relational);
+            const arg = try expressions.parse(self.parent_parser, .relational, .{});
             try args.append(alloc, arg);
 
             if (self.parent_parser.currentTokenKind() == .@">") break;
@@ -193,7 +193,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     if (self.parent_parser.currentTokenKind() != .@"]") {
         size = try alloc.create(ast.Expression);
-        size.?.* = try expression.parse(self.parent_parser, .default);
+        size.?.* = try expressions.parse(self.parent_parser, .default, .{});
     }
 
     try self.parent_parser.expect(self.parent_parser.advance(), .@"]", "array type descriptor", "]");

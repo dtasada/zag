@@ -295,20 +295,27 @@ fn conditional(
                 try self.write(";");
 
                 try self.write("(");
-                try expressions.compile(self, range.end, .{});
+                const end = range.end orelse return utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: For statement iterator range expression must contain an end ({f}).\n",
+                    .{range.pos},
+                    .red,
+                );
+
+                try expressions.compile(self, end, .{});
                 try self.write(">");
                 try expressions.compile(self, range.start, .{});
                 try self.write(") ? ");
                 try self.print("{s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
-                try expressions.compile(self, range.end, .{});
+                try expressions.compile(self, end, .{});
 
                 try self.write(" : ");
                 try self.print("{s} {s} ", .{ capture_ident, if (range.inclusive) ">=" else ">" });
-                try expressions.compile(self, range.end, .{});
+                try expressions.compile(self, end, .{});
                 try self.write("; ");
 
                 try self.write("(");
-                try expressions.compile(self, range.end, .{});
+                try expressions.compile(self, end, .{});
                 try self.write(">");
                 try expressions.compile(self, range.start, .{});
                 try self.write(") ? ");

@@ -297,6 +297,7 @@ pub inline fn getHandler(
     self: *const Self,
     comptime handler_type: enum { statement, nud, led, bp },
     token: Lexer.TokenKind,
+    opts: struct { silent_error: bool = false },
 ) ParserError!switch (handler_type) {
     .statement => StatementHandler,
     .nud => NudHandler,
@@ -308,12 +309,15 @@ pub inline fn getHandler(
         .nud => self.nud_lookup,
         .led => self.led_lookup,
         .bp => self.bp_lookup,
-    }.get(token)) |handler| handler else return utils.printErr(
-        error.HandlerDoesNotExist,
-        "Parser error: Syntax error at {f}.\n",
-        .{self.currentPosition()},
-        .red,
-    );
+    }.get(token)) |handler| handler else return if (opts.silent_error)
+        error.HandlerDoesNotExist
+    else
+        utils.printErr(
+            error.HandlerDoesNotExist,
+            "Parser error: Syntax error at {f}.\n",
+            .{self.currentPosition()},
+            .red,
+        );
 }
 
 /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
@@ -350,9 +354,9 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
                 break :b .{ .type = t }
             else |_| {
                 self.pos = backup_pos;
-                break :b try expressions.parse(self, .default);
+                break :b try expressions.parse(self, .default, .{});
             }
-        } else try expressions.parse(self, .default));
+        } else try expressions.parse(self, .default, .{}));
 
         if (self.currentTokenKind() == .@",") _ = self.advance() else break;
     }

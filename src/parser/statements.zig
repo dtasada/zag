@@ -14,7 +14,7 @@ pub fn parse(self: *Self) ParserError!ast.Statement {
         return statement_fn(self);
     }
 
-    const expression = try expressions.parse(self, .default);
+    const expression = try expressions.parse(self, .default, .{});
 
     if (self.expect_semicolon) try self.expect(self.advance(), .@";", "statement", ";");
 
@@ -46,7 +46,7 @@ pub fn variableDeclaration(self: *Self) ParserError!ast.Statement {
 
     try self.expect(self.advance(), .@"=", "variable declaration statement", "=");
 
-    const assigned_value = try expressions.parse(self, .assignment);
+    const assigned_value = try expressions.parse(self, .assignment, .{});
 
     try self.expect(
         self.advance(),
@@ -163,7 +163,7 @@ pub fn compoundTypeDeclaration(
                     switch (T) {
                         .@"enum" => if (self.currentTokenKind() == .@"=") blk: {
                             _ = self.advance();
-                            break :blk try expressions.parse(self, .default);
+                            break :blk try expressions.parse(self, .default, .{});
                         } else null,
                         else => null,
                     };
@@ -291,7 +291,7 @@ pub fn @"return"(self: *Self) ParserError!ast.Statement {
 
     var expression: ?ast.Expression = null;
     if (self.currentTokenKind() != .@";")
-        expression = try expressions.parse(self, .default);
+        expression = try expressions.parse(self, .default, .{});
 
     if (self.expect_semicolon) try self.expect(self.advance(), .@";", "return statement", ";");
     return .{ .@"return" = .{ .pos = pos, .@"return" = expression } };
@@ -302,7 +302,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "for" keyeword and parse from there.
 
     try self.expect(self.advance(), .@"(", "for statement iterator", "(");
-    const iterator = try expressions.parse(self, .default);
+    const iterator = try expressions.parse(self, .default, .{});
     try self.expect(self.advance(), .@")", "for statement iterator", ")");
 
     const capture = if (self.expect(self.advance(), .@"|", "for statement capture", "|")) |_| b: {
@@ -346,7 +346,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
     try self.expect(self.advance(), .@"(", context, "(");
 
-    const condition = try expressions.parse(self, .default);
+    const condition = try expressions.parse(self, .default, .{});
 
     try self.expect(self.advance(), .@")", context, ")");
 
@@ -452,7 +452,7 @@ pub fn import(self: *Self) ParserError!ast.Statement {
 }
 
 pub fn match(self: *Self) ParserError!ast.Statement {
-    return .{ .expression = try expressions.parse(self, .primary) };
+    return .{ .expression = try expressions.parse(self, .primary, .{}) };
 }
 
 pub fn @"break"(self: *Self) ParserError!ast.Statement {
