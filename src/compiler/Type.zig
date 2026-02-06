@@ -492,7 +492,7 @@ pub const Type = union(enum) {
                 }
             }
 
-            const new_type = Type{ .function = new_f };
+            const new_type: Type = .{ .function = new_f };
 
             // Register globally
             var global_scope = &compiler.scopes.items[0];
@@ -1114,9 +1114,13 @@ pub const Type = union(enum) {
             switch (t) {
                 .optional => |inner| h.update(std.mem.asBytes(&ctx.hash(inner.*))),
 
-                .reference, .slice => |r| {
+                .reference => |r| {
                     h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
-                    // h.update(std.mem.asBytes(&r.is_mut)); // TODO: re-enable this
+                    h.update(std.mem.asBytes(&r.is_mut));
+                },
+
+                .slice => |r| {
+                    h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
                 },
 
                 .array => |a| {

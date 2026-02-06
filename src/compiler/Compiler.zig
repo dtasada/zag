@@ -975,6 +975,8 @@ fn registerConstants(self: *Self) !void {
     try self.registerSymbol("c_char", .{ .type = .c_char }, .{});
     try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } }, .{});
 
+    const builtins: Module = try .init(self.alloc, "builtins", null);
+
     try self.registerSymbol("sizeof", .{
         .symbol = .{
             .is_mut = false,
@@ -993,7 +995,7 @@ fn registerConstants(self: *Self) !void {
                         break :b t;
                     },
                     .params = .empty,
-                    .module = undefined,
+                    .module = builtins,
                 },
             },
         },
@@ -1021,7 +1023,7 @@ fn registerConstants(self: *Self) !void {
                         try params.append(self.alloc, .{ .name = "val", .type = .any });
                         break :b params;
                     },
-                    .module = undefined,
+                    .module = builtins,
                 },
             },
         },
@@ -1050,7 +1052,7 @@ fn registerConstants(self: *Self) !void {
                         try params.append(self.alloc, .{ .name = "b", .type = .any });
                         break :b params;
                     },
-                    .module = undefined,
+                    .module = builtins,
                 },
             },
         },

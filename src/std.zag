@@ -36,7 +36,13 @@ pub fn memcpy<T>(dst: &mut T, src: &T) void {
 pub fn memcpy_slice<T>(dst: []mut T, src: []T) !void {
     if (dst.len != src.len) return c_null;
 
-    c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>() * dst.len);
+    c.memcpy(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
+}
+
+pub fn memmove<T>(dst: []mut T, src: []T) !void {
+    if (dst.len != src.len) return c_null;
+
+    c.memmove(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
 }
 
 pub fn min<T>(a, b: T) T {
@@ -131,12 +137,8 @@ pub struct ArrayList<T> {
     }
 
     pub fn remove(self: &mut ArrayList<T>, index: usize) !void {
-        let len = self.items.len;
-        if (index >= len) return c_null;
-
-        if (index + 1 < len) {}
-
-        self.items[index..self.items.len-1] = self.items[index+1..self.items.len];
-        self.items = self.items[0..self.items.len-1];
+        let src = self.items[index + 1..self.items.len];
+        memmove<T>(self.items[index..self.items.len][0..src.len], src);
+        self.items.len -= 1;
     }
 }
