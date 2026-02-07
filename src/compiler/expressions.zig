@@ -416,7 +416,8 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
 
         .@"struct" => |@"struct"| if (@"struct".getProperty(expr.member_name)) |property| switch (property) {
             .variable => |variable| {
-                // here's the problem.
+                if (!std.mem.eql(u8, self.module.name, @"struct".module.name) and !variable.is_pub)
+                    return errors.badAccess(.@"struct", @"struct".name, expr.pos);
                 try self.write(variable.inner_name);
             },
             .member => {
@@ -428,13 +429,21 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         } else return errors.undeclaredProperty(.{ .@"struct" = @"struct" }, expr.member_name, expr.pos),
 
         .@"enum" => |@"enum"| if (@"enum".getProperty(expr.member_name)) |property| switch (property) {
-            .variable => |variable| try self.write(variable.inner_name),
+            .variable => |variable| {
+                if (!std.mem.eql(u8, self.module.name, @"enum".module.name) and !variable.is_pub)
+                    return errors.badAccess(.@"enum", @"enum".name, expr.pos);
+                try self.write(variable.inner_name);
+            },
             .member => try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name }),
             .method => |method| try self.write(method.inner_name),
         } else return errors.undeclaredProperty(.{ .@"enum" = @"enum" }, expr.member_name, expr.pos),
 
         .@"union" => |@"union"| if (@"union".getProperty(expr.member_name)) |property| switch (property) {
-            .variable => |variable| try self.write(variable.inner_name),
+            .variable => |variable| {
+                if (!std.mem.eql(u8, self.module.name, @"union".module.name) and !variable.is_pub)
+                    return errors.badAccess(.@"union", @"union".name, expr.pos);
+                try self.write(variable.inner_name);
+            },
             .member => {
                 try compile(self, expr.parent, .{});
                 try self.print("{s}payload.{s}", .{

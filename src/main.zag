@@ -3,8 +3,7 @@ import c;
 
 fn main() i32 {
     let arraylist = std.ArrayList<i32>.init();
-
-    c.printf("arraylist.N: %d\n", std.ArrayList<i32>.N);
+    arraylist.deinit();
 
     return 0;
 }

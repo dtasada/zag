@@ -43,8 +43,6 @@ pub fn memmove<T>(dst: []mut T, src: []T) !void {
 }
 
 pub struct ArrayList<T> {
-    let N = 42;
-
     items: []mut T,
     capacity: usize,
 

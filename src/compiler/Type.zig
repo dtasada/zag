@@ -429,6 +429,7 @@ pub const Type = union(enum) {
                     copy_decl.generic_types = .empty;
 
                     var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy_decl);
+                    t.module = module;
                     t.generic_instantiation = .{
                         .base_name = base_name,
                         .args = args.items,
@@ -440,6 +441,7 @@ pub const Type = union(enum) {
                     copy.name = name;
                     copy.generic_types = .empty;
                     var t = try fromCompoundTypeDeclaration(compiler, .@"union", &copy);
+                    t.module = module;
                     t.generic_instantiation = .{
                         .base_name = base_name,
                         .args = try compiler.alloc.dupe(Value, args.items),
