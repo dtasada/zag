@@ -506,6 +506,16 @@
             "named": true
           }
         ]
+      },
+      "variable": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "variable_definition",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -1716,6 +1726,16 @@
             "named": true
           }
         ]
+      },
+      "variable": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "variable_definition",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -1894,6 +1914,16 @@
         "types": [
           {
             "type": "ident_type",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "variable_definition",
             "named": true
           }
         ]

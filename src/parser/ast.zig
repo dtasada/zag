@@ -200,13 +200,13 @@ pub const Expression = union(enum) {
         @"else": ?*const Expression = null,
     };
 
-    const Index = struct {
+    pub const Index = struct {
         pos: utils.Position,
         lhs: *const Expression,
         index: *const Expression,
     };
 
-    const Slice = struct {
+    pub const Slice = struct {
         pos: utils.Position,
         lhs: *const Expression,
         start: ?*const Expression,
@@ -296,6 +296,7 @@ pub const Statement = union(enum) {
         is_pub: bool,
         name: []const u8,
         generic_types: ParameterList,
+        variables: std.ArrayList(VariableDefinition),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
 
@@ -305,6 +306,7 @@ pub const Statement = union(enum) {
                 .is_pub = self.is_pub,
                 .name = self.name, // notice: doesn't clone the name.
                 .generic_types = try self.generic_types.clone(alloc),
+                .variables = try self.variables.clone(alloc),
                 .members = try self.members.clone(alloc),
                 .methods = try self.methods.clone(alloc),
             };
@@ -320,6 +322,7 @@ pub const Statement = union(enum) {
         is_pub: bool,
         name: []const u8,
         generic_types: ParameterList,
+        variables: std.ArrayList(VariableDefinition),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
     };
@@ -358,6 +361,7 @@ pub const Statement = union(enum) {
         };
         pos: utils.Position,
         is_pub: bool,
+        variables: std.ArrayList(VariableDefinition),
         name: []const u8,
         members: std.ArrayList(Member) = .empty,
         methods: std.ArrayList(FunctionDefinition) = .empty,

@@ -19,7 +19,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         .binding_function_declaration => |*bind| try functionDefinition(self, true, bind),
         .struct_declaration => |*struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
         .@"return" => |return_expr| try @"return"(self, return_expr),
-        .variable_definition => |var_decl| try variableDefinition(self, var_decl),
+        .variable_definition => |var_decl| try variableDefinition(self, var_decl, .{}),
         .expression => |*expr| {
             try expressions.compile(self, expr, .{});
             try self.write(";\n");
@@ -188,6 +188,12 @@ fn compoundTypeDeclaration(
 
         try self.compileBlock(method.body, .{ .inject_return = inject_return });
     }
+
+    for (type_decl.variables.items) |variable| {
+        try variableDefinition(self, variable, .{
+            .inner_name = compound_type.variables.get(variable.variable_name).?.inner_name,
+        });
+    }
 }
 
 pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!void {
@@ -213,7 +219,11 @@ pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!v
     }
 }
 
-fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) CompilerError!void {
+fn variableDefinition(
+    self: *Self,
+    v: ast.Statement.VariableDefinition,
+    opts: struct { inner_name: ?[]const u8 = null },
+) CompilerError!void {
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
     const final_type = expected_type orelse received_type;
@@ -229,16 +239,15 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
             v.assigned_value.getPosition(),
         );
 
+    const mangled_name = opts.inner_name orelse try self.mangle(v.variable_name);
+
     if (final_type == .type) {
         try self.write("typedef ");
         try expressions.compile(self, &v.assigned_value, .{ .binding_mut = true });
-        try self.print(" {s}", .{v.variable_name});
+        try self.print(" {s}", .{mangled_name});
         try self.write(";\n");
         try self.registerSymbol(v.variable_name, .{ .type = final_type }, .{});
     } else {
-        const mangled_name = try self.mangle(v.variable_name);
-        defer self.alloc.free(mangled_name);
-
         try self.registerSymbol(v.variable_name, .{
             .symbol = .{
                 .is_mut = v.binding == .is_mut,
@@ -255,11 +264,10 @@ fn variableDefinition(self: *Self, v: ast.Statement.VariableDefinition) Compiler
             try self.write(";\n");
         }
 
-        try self.compileVariableSignature(
-            mangled_name,
-            final_type,
-            .{ .binding_mut = v.binding == .is_mut, .is_const = v.binding == .is_const and !v.is_pub },
-        );
+        try self.compileVariableSignature(mangled_name, final_type, .{
+            .binding_mut = v.binding == .is_mut,
+            .is_const = v.binding == .is_const and !v.is_pub,
+        });
 
         if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
             try self.write(" = ");

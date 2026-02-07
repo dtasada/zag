@@ -2,7 +2,9 @@ import std;
 import c;
 
 fn main() i32 {
-    c.printf("std.N: %d\n", std.N);
+    let arraylist = std.ArrayList<i32>.init();
+
+    c.printf("arraylist.N: %d\n", std.ArrayList<i32>.N);
 
     return 0;
 }

@@ -95,10 +95,9 @@ pub fn compile(
                 try self.write(")");
             } else return errors.illegalPrefixExpression(prefix.op, t, prefix.pos);
         },
-        .ident => |ident| if (self.getInnerName(ident.ident)) |inner_name|
-            try self.write(inner_name)
-        else |_|
-            return errors.unknownSymbol(ident.ident, expression.getPosition()),
+        .ident => |ident| if (self.getInnerName(ident.ident)) |inner_name| {
+            try self.write(inner_name);
+        } else |_| return errors.unknownSymbol(ident.ident, expression.getPosition()),
         .struct_instantiation => |struct_inst| {
             const val = try self.solveComptimeExpression(struct_inst.type_expr.*);
             const struct_type = switch (val.type) {
@@ -142,45 +141,7 @@ pub fn compile(
             }
             try self.write("}");
         },
-        .index => |index| switch (try Type.infer(self, index.lhs.*)) {
-            .array => |array| {
-                if (self.solveComptimeExpression(index.index.*)) |ce| switch (ce) {
-                    inline .i64, .u64, .u8 => |int| {
-                        if (array.size <= int) return utils.printErr(
-                            error.IllegalExpression,
-                            "comperr: Tried to index array of length {} with index {} ({f}).\n",
-                            .{ array.size, int, index.pos },
-                            .red,
-                        );
-
-                        if (int < 0) return utils.printErr(
-                            error.IllegalExpression,
-                            "comperr: Tried to index array with negative index {} ({f}).\n",
-                            .{ int, index.pos },
-                            .red,
-                        );
-                    },
-                    else => {},
-                } else |_| {}
-
-                try compile(self, index.lhs, .{});
-                try self.write("[");
-                try compile(self, index.index, .{});
-                try self.write("]");
-            },
-            .slice => {
-                try compile(self, index.lhs, .{});
-                try self.write(".ptr[");
-                try compile(self, index.index, .{});
-                try self.write("]");
-            },
-            else => |other| return utils.printErr(
-                error.IllegalExpression,
-                "comperr: Illegal index expression on '{f}' ({f}).\n",
-                .{ other, index.lhs.getPosition() },
-                .red,
-            ),
-        },
+        .index => |idx| try index(self, idx),
         .@"if" => |@"if"| {
             try self.write("((");
             try compile(self, @"if".condition, .{});
@@ -205,54 +166,99 @@ pub fn compile(
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
         .type => |t| try self.compileType(try .fromAst(self, t), .{}),
-        .slice => |slice| {
-            var t = try Type.infer(self, slice.lhs.*);
-            if (t != .slice and t != .array)
-                return errors.illegalSliceExpression(t, slice.pos);
-
-            const array_length = if (t == .slice) null else t.array.size;
-
-            const is_slice = t == .slice;
-            const is_mut = switch (slice.lhs.*) {
-                .ident => |ident| try self.getSymbolMutability(ident.ident),
-                else => false,
-            };
-
-            if (!is_slice) {
-                // leave it like this instead of inlining it because zig is stupid
-                const inner = t.array.inner;
-                t = .{
-                    .slice = .{
-                        .inner = inner,
-                        .is_mut = is_mut,
-                    },
-                };
-            }
-
-            try self.write(if (is_slice) "__ZAG_SLICE_SLICE(" else "__ZAG_SLICE_ARRAY(");
-            try self.compileType(t, .{ .binding_mut = opts.binding_mut });
-            try self.write(", ");
-            try compile(self, slice.lhs, .{});
-            try self.write(", ");
-            if (slice.start) |start|
-                try compile(self, start, .{})
-            else
-                try self.write("0");
-            try self.write(", ");
-            if (slice.inclusive) try self.write("1 + (");
-
-            if (slice.end) |end| {
-                try compile(self, end, .{});
-            } else if (is_slice) {
-                try self.write("(");
-                try compile(self, slice.lhs, .{});
-                try self.write(").len");
-            } else try self.print("{}", .{array_length.?});
-
-            if (slice.inclusive) try self.write(")");
-            try self.write(")");
-        },
+        .slice => |slc| try slice(self, slc, opts.binding_mut),
         .bad_node => unreachable,
+    }
+}
+
+fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {
+    var t = try Type.infer(self, slc.lhs.*);
+    if (t != .slice and t != .array)
+        return errors.illegalSliceExpression(t, slc.pos);
+
+    const array_length = if (t == .slice) null else t.array.size;
+
+    const is_slice = t == .slice;
+    const is_mut = switch (slc.lhs.*) {
+        .ident => |ident| try self.getSymbolMutability(ident.ident),
+        else => false,
+    };
+
+    if (!is_slice) {
+        // leave it like this instead of inlining it because zig is stupid
+        const inner = t.array.inner;
+        t = .{
+            .slice = .{
+                .inner = inner,
+                .is_mut = is_mut,
+            },
+        };
+    }
+
+    try self.write(if (is_slice) "__ZAG_SLICE_SLICE(" else "__ZAG_SLICE_ARRAY(");
+    try self.compileType(t, .{ .binding_mut = binding_mut });
+    try self.write(", ");
+
+    try compile(self, slc.lhs, .{});
+    try self.write(", ");
+    if (slc.start) |start|
+        try compile(self, start, .{})
+    else
+        try self.write("0");
+    try self.write(", ");
+    if (slc.inclusive) try self.write("1 + (");
+
+    if (slc.end) |end| {
+        try compile(self, end, .{});
+    } else if (is_slice) {
+        try self.write("(");
+        try compile(self, slc.lhs, .{});
+        try self.write(").len");
+    } else try self.print("{}", .{array_length.?});
+
+    if (slc.inclusive) try self.write(")");
+    try self.write(")");
+}
+
+fn index(self: *Self, idx: ast.Expression.Index) !void {
+    switch (try Type.infer(self, idx.lhs.*)) {
+        .array => |array| {
+            if (self.solveComptimeExpression(idx.index.*)) |ce| switch (ce) {
+                inline .i64, .u64, .u8 => |int| {
+                    if (array.size <= int) return utils.printErr(
+                        error.IllegalExpression,
+                        "comperr: Tried to index array of length {} with index {} ({f}).\n",
+                        .{ array.size, int, idx.pos },
+                        .red,
+                    );
+
+                    if (int < 0) return utils.printErr(
+                        error.IllegalExpression,
+                        "comperr: Tried to index array with negative index {} ({f}).\n",
+                        .{ int, idx.pos },
+                        .red,
+                    );
+                },
+                else => {},
+            } else |_| {}
+
+            try compile(self, idx.lhs, .{});
+            try self.write("[");
+            try compile(self, idx.index, .{});
+            try self.write("]");
+        },
+        .slice => {
+            try compile(self, idx.lhs, .{});
+            try self.write(".ptr[");
+            try compile(self, idx.index, .{});
+            try self.write("]");
+        },
+        else => |other| return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Illegal index expression on '{f}' ({f}).\n",
+            .{ other, idx.lhs.getPosition() },
+            .red,
+        ),
     }
 }
 
@@ -403,14 +409,42 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
     const parent_type: Type = try .infer(self, expr.parent.*);
     var delimiter: enum { @".", @"->" } = .@".";
     b: switch (parent_type) {
+        .type => |t_opt| if (t_opt) |t|
+            continue :b t.*
+        else
+            return errors.illegalMemberExpression(parent_type, expr.pos),
+
         .@"struct" => |@"struct"| if (@"struct".getProperty(expr.member_name)) |property| switch (property) {
+            .variable => |variable| {
+                // here's the problem.
+                try self.write(variable.inner_name);
+            },
             .member => {
                 try compile(self, expr.parent, .{});
                 try self.print("{s}{s}", .{ @tagName(delimiter), expr.member_name });
                 delimiter = .@".";
             },
             .method => |method| try self.write(method.inner_name),
-        } else return errors.undeclaredProperty(parent_type, expr.member_name, expr.pos),
+        } else return errors.undeclaredProperty(.{ .@"struct" = @"struct" }, expr.member_name, expr.pos),
+
+        .@"enum" => |@"enum"| if (@"enum".getProperty(expr.member_name)) |property| switch (property) {
+            .variable => |variable| try self.write(variable.inner_name),
+            .member => try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name }),
+            .method => |method| try self.write(method.inner_name),
+        } else return errors.undeclaredProperty(.{ .@"enum" = @"enum" }, expr.member_name, expr.pos),
+
+        .@"union" => |@"union"| if (@"union".getProperty(expr.member_name)) |property| switch (property) {
+            .variable => |variable| try self.write(variable.inner_name),
+            .member => {
+                try compile(self, expr.parent, .{});
+                try self.print("{s}payload.{s}", .{
+                    @tagName(delimiter),
+                    expr.member_name,
+                });
+                delimiter = .@".";
+            },
+            .method => |method| try self.write(method.inner_name),
+        } else return errors.undeclaredProperty(.{ .@"union" = @"union" }, expr.member_name, expr.pos),
 
         .reference => |reference| {
             delimiter = .@"->";
@@ -429,23 +463,6 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
             .red,
         ),
 
-        .@"enum" => |@"enum"| if (@"enum".getProperty(expr.member_name)) |property| switch (property) {
-            .member => try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name }),
-            .method => |method| try self.write(method.inner_name),
-        } else return errors.undeclaredProperty(parent_type, expr.member_name, expr.pos),
-
-        .@"union" => |@"union"| if (@"union".getProperty(expr.member_name)) |property| switch (property) {
-            .member => {
-                try compile(self, expr.parent, .{});
-                try self.print("{s}payload.{s}", .{
-                    @tagName(delimiter),
-                    expr.member_name,
-                });
-                delimiter = .@".";
-            },
-            .method => |method| try self.write(method.inner_name),
-        } else return errors.undeclaredProperty(parent_type, expr.member_name, expr.pos),
-
         .slice => if (std.mem.eql(u8, expr.member_name, "len") or std.mem.eql(u8, expr.member_name, "ptr")) {
             try self.write("(");
             try compile(self, expr.parent, .{});
@@ -457,7 +474,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
             .red,
         ),
 
-        else => return errors.illegalMemberExpression(parent_type, expr.pos),
+        else => |other| return errors.illegalMemberExpression(other, expr.pos),
     }
 }
 
@@ -479,11 +496,12 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
                         return errors.unknownSymbol(m.member_name, m.pos);
                     if (!symbol.is_mut) return errors.badMutability(expr.pos);
                 },
+                .reference => |ref| if (!ref.is_mut) return errors.badMutability(expr.pos),
                 else => continue :b m.parent.*,
             }
         },
-        .index => |index| continue :b index.lhs.*,
-        .slice => |slice| continue :b slice.lhs.*,
+        .index => |idx| continue :b idx.lhs.*,
+        .slice => |slc| continue :b slc.lhs.*,
         else => |other| return utils.printErr(
             error.IllegalExpression,
             "comperr: Illegal assignment expression on {s} ({f}).\n",
@@ -565,6 +583,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
             if (try tryResolveStaticType(self, m.parent.*)) |static_type| {
                 switch (static_type) {
                     .@"struct" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
+                        .variable => |v| return errors.expressionNotCallable(v.type, call_expr.callee.getPosition()),
                         .member => |member_type| return errors.expressionNotCallable(member_type.*, call_expr.callee.getPosition()),
                         .method => |method| {
                             try functionCall(self, .{

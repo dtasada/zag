@@ -275,9 +275,7 @@ pub fn init(
 
             self.module = try .init(alloc, module_name, &self.output.?);
         },
-        .analysis => {
-            self.module = try .init(alloc, module_name, null);
-        },
+        .analysis => self.module = try .init(alloc, module_name, null),
     }
 
     return self;
@@ -862,6 +860,7 @@ fn solveGenerics(self: *Self) !void {
                         .generic_types = .empty,
                         .is_pub = true,
                         .pos = s.pos,
+                        .variables = s.variables,
                         .members = s.members,
                         .methods = s.methods,
                     },
@@ -1086,7 +1085,6 @@ pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
 }
 
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
-    std.debug.dumpCurrentStackTrace(null);
     return switch (try self.getScopeItem(symbol)) {
         .symbol => |s| s.is_mut,
         else => return utils.printErr(
@@ -1117,7 +1115,7 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         if (scope.get(symbol)) |item| {
             return switch (item) {
                 .module => |module| module.name,
-                .constant => return utils.printErr(
+                .constant => utils.printErr(
                     error.SymbolNotVariable,
                     "comperr: Symbol '{s}' is a constant, not a variable\n",
                     .{symbol},

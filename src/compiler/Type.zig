@@ -30,6 +30,20 @@ pub const Type = union(enum) {
         module: Module,
         generic_instantiation: ?GenericInstantiation = null,
         is_bind: bool = false,
+
+        pub fn fromMethod(comptime T: CT, method: CompoundType(T).Method, module: Module) Type {
+            return .{
+                .function = .{
+                    .name = method.inner_name,
+                    .inner_name = method.inner_name,
+                    .params = method.params,
+                    .generic_params = method.generic_params,
+                    .return_type = method.return_type,
+                    .definition = method.definition,
+                    .module = module,
+                },
+            };
+        }
     };
 
     pub const GenericInstantiation = struct {
@@ -37,7 +51,8 @@ pub const Type = union(enum) {
         args: []const Value,
     };
 
-    fn CompoundType(T: enum { @"struct", @"enum", @"union" }) type {
+    const CT = enum { @"struct", @"enum", @"union" };
+    fn CompoundType(T: CT) type {
         return struct {
             pub const MemberType = switch (T) {
                 .@"struct", .@"union" => *const Self,
@@ -59,8 +74,15 @@ pub const Type = union(enum) {
                 definition: ?*const ast.Statement.FunctionDefinition = null,
             };
 
+            pub const Variable = struct {
+                is_pub: bool,
+                type: Type,
+                inner_name: []const u8,
+            };
+
             name: []const u8,
             inner_name: []const u8,
+            variables: *std.StringHashMap(Variable),
             members: *std.StringArrayHashMap(MemberType),
             methods: *std.StringArrayHashMap(Method),
             generic_params: std.ArrayList(Function.Param),
@@ -71,16 +93,20 @@ pub const Type = union(enum) {
 
             /// get member or method. returns `null` if no member or method is found with `name`.
             pub fn getProperty(self: *const CompoundType(T), name: []const u8) ?union(enum) {
+                variable: Variable,
                 member: MemberType,
                 method: Method,
             } {
                 const member = self.members.get(name);
                 const method = self.methods.get(name);
+                const variable = self.variables.get(name);
 
                 return if (member) |m|
                     .{ .member = m }
                 else if (method) |m|
                     .{ .method = m }
+                else if (variable) |v|
+                    .{ .variable = v }
                 else
                     null;
             }
@@ -105,6 +131,9 @@ pub const Type = union(enum) {
             pub fn init(compiler: *Compiler, name: []const u8, inner_name: []const u8, tag_type: ?Type) !CompoundType(T) {
                 if (T == .@"struct" and tag_type != null) @panic("Struct type can't have a tag type");
 
+                const variables = try compiler.alloc.create(std.StringHashMap(Variable));
+                variables.* = .init(compiler.alloc);
+
                 const members = try compiler.alloc.create(std.StringArrayHashMap(MemberType));
                 members.* = .init(compiler.alloc);
 
@@ -120,6 +149,7 @@ pub const Type = union(enum) {
                 return .{
                     .name = name,
                     .inner_name = inner_name,
+                    .variables = variables,
                     .members = members,
                     .methods = methods,
                     .generic_params = .empty,
@@ -742,6 +772,7 @@ pub const Type = union(enum) {
                         .pos = type_decl.pos,
                         .is_pub = false,
                         .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                        .variables = .empty,
                         .members = .empty,
                         .methods = .empty,
                     };
@@ -765,6 +796,7 @@ pub const Type = union(enum) {
                     .pos = type_decl.pos,
                     .is_pub = false,
                     .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                    .variables = .empty,
                     .members = .empty,
                     .methods = .empty,
                 };
@@ -790,6 +822,7 @@ pub const Type = union(enum) {
                 .pos = type_decl.pos,
                 .is_pub = false,
                 .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                .variables = .empty,
                 .members = .empty,
                 .methods = .empty,
             };
@@ -837,6 +870,23 @@ pub const Type = union(enum) {
                 ),
             else => {},
         }
+
+        for (type_decl.variables.items) |variable|
+            try compound_type.variables.put(
+                variable.variable_name,
+                .{
+                    .is_pub = variable.is_pub,
+                    .inner_name = try std.fmt.allocPrint(
+                        compiler.alloc,
+                        "{s}_{s}",
+                        .{ inner_name, variable.variable_name },
+                    ),
+                    .type = if (variable.type == .inferred)
+                        try infer(compiler, variable.assigned_value)
+                    else
+                        try fromAst(compiler, variable.type),
+                },
+            );
 
         var enum_last_value: usize = 0;
         for (type_decl.members.items) |member| {
@@ -930,39 +980,31 @@ pub const Type = union(enum) {
         b: switch (parent_type) {
             .@"struct" => |@"struct"| {
                 if (@"struct".getProperty(member.member_name)) |property| switch (property) {
+                    .variable => |v| return v.type,
                     .member => |m| return m.*,
-                    .method => |method| return .{
-                        .function = .{
-                            .name = method.inner_name,
-                            .inner_name = method.inner_name,
-                            .params = method.params,
-                            .generic_params = method.generic_params,
-                            .return_type = method.return_type,
-                            .definition = method.definition,
-                            .module = @"struct".module,
-                        },
-                    },
+                    .method => |method| return Type.Function.fromMethod(.@"struct", method, @"struct".module),
                 } else return utils.printErr(
                     error.UndeclaredProperty,
-                    "comperr: '{f}' has no member '{s}' ({f})\n",
+                    "comperr: '{f}' has no property '{s}' ({f})\n",
                     .{ parent_type, member.member_name, member.parent.getPosition() },
                     .red,
                 );
             },
             .@"union" => |@"union"| if (@"union".getProperty(member.member_name)) |property| switch (property) {
+                .variable => |v| return v.type,
                 .member => |member_type| return member_type.*,
-                .method => |method| return .{
-                    .function = .{
-                        .name = method.inner_name,
-                        .inner_name = method.inner_name,
-                        .params = method.params,
-                        .generic_params = method.generic_params,
-                        .return_type = method.return_type,
-                        .definition = method.definition,
-                        .module = @"union".module,
-                    },
-                },
+                .method => |method| return Type.Function.fromMethod(.@"struct", method, @"union".module),
             } else return errors.undeclaredProperty(parent_type, member.member_name, member.pos),
+            .@"enum" => |@"enum"| if (@"enum".getProperty(member.member_name)) |property| switch (property) {
+                .variable => |variable| return variable.type,
+                .member => return .{ .@"enum" = @"enum" },
+                .method => |method| return Type.Function.fromMethod(.@"enum", method, @"enum".module),
+            } else return utils.printErr(
+                error.UndeclaredProperty,
+                "comperr: Enum '{s}' has no property '{s}' ({f})\n",
+                .{ @"enum".name, member.member_name, member.pos },
+                .red,
+            ),
             .reference => |reference| continue :b reference.inner.*,
             .module => |module| if (module.symbols.get(member.member_name)) |symbol| {
                 return symbol.type;
@@ -970,14 +1012,6 @@ pub const Type = union(enum) {
                 error.UndeclaredProperty,
                 "comperr: Module '{s}' has no member '{s}' ({f})\n",
                 .{ module.name, member.member_name, member.pos },
-                .red,
-            ),
-            .@"enum" => |@"enum"| if (@"enum".members.contains(member.member_name)) {
-                return parent_type;
-            } else return utils.printErr(
-                error.UndeclaredProperty,
-                "comperr: Enum '{s}' has no member '{s}' ({f})\n",
-                .{ @"enum".name, member.member_name, member.pos },
                 .red,
             ),
             .slice => |slice| return if (std.mem.eql(u8, member.member_name, "len"))

@@ -91,6 +91,7 @@ pub fn compoundTypeDeclaration(
             .is_pub = is_pub,
             .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "struct name"),
             .generic_types = .empty,
+            .variables = .empty,
             .members = .empty,
             .methods = .empty,
         },
@@ -99,6 +100,7 @@ pub fn compoundTypeDeclaration(
             .is_pub = is_pub,
             .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "union name"),
             .generic_types = .empty,
+            .variables = .empty,
             .members = .empty,
             .methods = .empty,
         },
@@ -106,6 +108,7 @@ pub fn compoundTypeDeclaration(
             .pos = pos,
             .is_pub = is_pub,
             .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "enum name"),
+            .variables = .empty,
             .members = .empty,
             .methods = .empty,
         },
@@ -170,20 +173,11 @@ pub fn compoundTypeDeclaration(
                     };
 
                 for (member_names.items) |name| {
-                    try switch (T) {
-                        .@"struct" => compound.members.append(self.alloc, .{
-                            .name = name,
-                            .type = member_type.?,
-                        }),
-                        .@"enum" => compound.members.append(self.alloc, .{
-                            .name = name,
-                            .value = value,
-                        }),
-                        .@"union" => compound.members.append(self.alloc, .{
-                            .name = name,
-                            .type = member_type,
-                        }),
-                    };
+                    try compound.members.append(self.alloc, switch (T) {
+                        .@"struct" => .{ .name = name, .type = member_type.? },
+                        .@"enum" => .{ .name = name, .value = value },
+                        .@"union" => .{ .name = name, .type = member_type },
+                    });
                 }
 
                 self.expectSilent(self.currentToken(), .@",") catch break;
@@ -194,8 +188,14 @@ pub fn compoundTypeDeclaration(
                 (try functionDefinition(self)).function_definition,
             ),
             .@"pub" => _ = self.advance(),
+            .let, .@"const" => try compound.variables.append(self.alloc, (try variableDefinition(self)).variable_definition),
 
-            else => unreachable,
+            else => return utils.printErr(
+                error.SyntaxError,
+                "Parser error: expected {s} variable definition, member declaration or method definition in {s} '{s}' ({f}).\n",
+                .{ @tagName(T), @tagName(T), compound.name, self.currentPosition() },
+                .red,
+            ),
         }
     }
 
