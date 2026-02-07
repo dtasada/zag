@@ -5,3 +5,4 @@ zig-out/
 *.o
 .DS_Store
 .gemini/
+GEMINI.md

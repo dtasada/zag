@@ -1133,12 +1133,7 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         var scope_it = scope.iterator();
         while (scope_it.next()) |entry| {
             switch (entry.value_ptr.*) {
-                .module => |module| {
-                    if (module.symbols.get(symbol)) |s| {
-                        // TODO: mangling
-                        return s.name;
-                    }
-                },
+                .module => |module| if (module.symbols.get(symbol)) |s| return s.name,
                 else => {},
             }
         }

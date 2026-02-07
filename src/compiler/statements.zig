@@ -167,7 +167,7 @@ fn compoundTypeDeclaration(
         }
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
-        try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name }); // TODO: mangling generics
+        try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
         for (method.parameters.items, 1..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
             try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type } }, .{});

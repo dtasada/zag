@@ -143,25 +143,41 @@ pub fn compile(
         },
         .index => |idx| try index(self, idx),
         .@"if" => |@"if"| {
+            const @"else" = @"if".@"else" orelse
+                return errors.ifExpressionMustContainElseClause(@"if".pos);
+
+            const condition_type: Type = try .infer(self, @"if".condition.*);
+            if (@"if".capture) |capture| {
+                const capture_type = switch (condition_type) {
+                    .optional => |optional| optional.*,
+                    else => |other| other,
+                };
+
+                try self.pushScope();
+                try self.registerSymbol(capture, .{ .symbol = .{ .type = capture_type } }, .{});
+            }
+
+            const body_type: Type = try .infer(self, @"if".body.*);
+            const else_type: Type = try .infer(self, @"else".*);
+
+            if (!body_type.check(else_type) and !else_type.check(body_type))
+                return errors.typeMismatchIfExpression(body_type, else_type, @"if".pos);
+
             try self.write("((");
             try compile(self, @"if".condition, .{});
-            try self.write(") ? ");
+            try self.write(")");
+            if (condition_type == .optional)
+                try self.write(".is_some");
+            try self.write(" ? ");
 
-            if (@"if".capture != null)
-                std.debug.print("unimplemented if expression capture\n", .{});
+            if (@"if".capture) |_| {
+                try compile(self, @"if".body, .{});
+                self.popScope();
+            } else try compile(self, @"if".body, .{});
 
-            try compile(self, @"if".body, .{});
-
-            if (@"if".@"else") |@"else"| {
-                try self.write(" : ");
-                try compile(self, @"else", .{});
-                try self.write(")");
-            } else return utils.printErr(
-                error.MissingElseClause,
-                "comperr: If expression must contain an else clause ({f})\n",
-                .{@"if".pos},
-                .red,
-            );
+            try self.write(" : ");
+            try compile(self, @"else", .{});
+            try self.write(")");
         },
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),

@@ -666,22 +666,25 @@ pub const Type = union(enum) {
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => .void,
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
-                const expected: Type = try .infer(compiler, @"if".body.*);
-                const received: Type = try .infer(compiler, @"else".*);
-                if (!received.check(expected)) return utils.printErr(
-                    error.TypeMismatch,
-                    "comperr: Type mismatch in if expression: {f} and {f} are not compatible ({f}).\n",
-                    .{ expected, received, @"if".pos },
-                    .red,
-                );
+                try compiler.pushScope();
+                if (@"if".capture) |capture| {
+                    const capture_type = switch (try infer(compiler, @"if".condition.*)) {
+                        .optional => |optional| optional.*,
+                        else => |other| other,
+                    };
+
+                    try compiler.registerSymbol(capture, .{ .symbol = .{ .type = capture_type } }, .{});
+                }
+
+                const expected: Type = try infer(compiler, @"if".body.*);
+                if (@"if".capture) |_| compiler.popScope();
+
+                const received: Type = try infer(compiler, @"else".*);
+                if (!received.check(expected))
+                    return errors.typeMismatchIfExpression(expected, received, @"if".pos);
 
                 return expected;
-            } else return utils.printErr(
-                error.MissingElseClause,
-                "comperr: If expression must contain an else clause ({f})\n",
-                .{@"if".pos},
-                .red,
-            ),
+            } else return errors.ifExpressionMustContainElseClause(@"if".pos),
             .index => |index| switch (try Type.infer(compiler, index.lhs.*)) {
                 .array => |array| array.inner.*,
                 .slice => |slice| slice.inner.*,
@@ -991,7 +994,7 @@ pub const Type = union(enum) {
                 .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{s}", .{
                     type_decl.name,
                     method.name,
-                }), // TODO mangling
+                }),
                 .generic_params = generic_params,
                 .params = params,
                 .return_type = return_type,

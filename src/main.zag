@@ -2,8 +2,9 @@ import std;
 import c;
 
 fn main() i32 {
-    let mut arraylist = std.ArrayList<i32>.init();
-    arraylist.deinit();
+    let optional: ?i32 = 42;
+
+    let result = if (optional) |number| number else 0;
 
     return 0;
 }

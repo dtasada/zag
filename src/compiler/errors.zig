@@ -92,6 +92,7 @@ pub fn argumentCountMismatch(
 }
 
 pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UnknownSymbol,
         "comperr: Unknown symbol '{s}' at {f}.\n",
@@ -168,6 +169,24 @@ pub fn badAccess(T: utils.CompoundTypeTag, name: []const u8, pos: utils.Position
         error.IllegalExpression,
         "comperr: {s} variable '{s}' must be 'pub' to be accessed from outside its module ({f}).\n",
         .{ @tagName(T), name, pos },
+        .red,
+    );
+}
+
+pub fn typeMismatchIfExpression(body_type: Type, else_type: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.TypeMismatch,
+        "comperr: Type mismatch in if expression: {f} and {f} are not compatible ({f}).\n",
+        .{ body_type, else_type, pos },
+        .red,
+    );
+}
+
+pub fn ifExpressionMustContainElseClause(pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.MissingElseClause,
+        "comperr: If expression must contain an else clause ({f})\n",
+        .{pos},
         .red,
     );
 }

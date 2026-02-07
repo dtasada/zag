@@ -237,7 +237,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
 
             while (true) {
                 const char = self.advance();
-                if (char == '"' and string.getLast() != '\\') break;
+                if (char == '"' and (string.items.len == 0 or string.getLast() != '\\')) break;
                 try string.append(alloc, char);
             }
 
