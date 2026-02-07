@@ -101,7 +101,6 @@ pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError
 }
 
 pub fn illegalMemberExpression(lhs: Type, pos: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.IllegalExpression,
         "comperr: Member expression on '{f}' is illegal ({f})\n",

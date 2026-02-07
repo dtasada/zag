@@ -233,12 +233,15 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
         if (self.currentChar() == '"') {
             _ = self.advance(); // consume '"'
 
-            if (std.mem.indexOfScalar(u8, self.input[self.pos..], '"')) |string_end| {
-                try self.appendToken(alloc, Token{ .string = self.input[self.pos .. self.pos + string_end] });
-                self.advanceN(string_end + 1); // move forward and also consume closing quote
-            } else {
-                try self.appendToken(alloc, .{ .bad_token = error.StringNotClosed });
+            var string: std.ArrayList(u8) = .empty;
+
+            while (true) {
+                const char = self.advance();
+                if (char == '"' and string.getLast() != '\\') break;
+                try string.append(alloc, char);
             }
+
+            try self.appendToken(alloc, .{ .string = string.items });
 
             continue;
         }
