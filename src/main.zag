@@ -1,13 +1,13 @@
 import std;
 import c;
 
-// struct TestStruct {
-//     struct SubType {
-//         inner: i32,
-//     }
-// 
-//     x: SubType,
-// }
+struct TestStruct {
+    struct SubType {
+        inner: TestStruct,
+    }
+
+    x: SubType,
+}
 
 fn main() i32 {
     let mut arraylist = std.ArrayList<i32>.init();

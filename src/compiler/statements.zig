@@ -57,6 +57,10 @@ fn compoundTypeDeclaration(
     if (type_decl.is_pub and self.module_header != null)
         try self.switchWriter(&self.module_header.?);
 
+    for (type_decl.subtypes.items) |subtype| switch (subtype) {
+        inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
+    };
+
     try self.print("typedef {s} {{\n", .{switch (T) {
         .@"struct" => "struct",
         .@"union" => "struct",
@@ -109,6 +113,14 @@ fn compoundTypeDeclaration(
 
     self.indent_level -= 1;
     try self.print("}} {s};\n\n", .{try self.getInnerName(type_decl.name)});
+
+    for (type_decl.variables.items) |variable|
+        try variableDefinition(self, variable, .{
+            .inner_name = compound_type
+                .variables
+                .get(variable.variable_name).?
+                .inner_name,
+        });
 
     try self.switchWriter(&self.output.?);
 
@@ -189,16 +201,6 @@ fn compoundTypeDeclaration(
 
         try self.compileBlock(method.body, .{ .inject_return = inject_return });
     }
-
-    for (type_decl.variables.items) |variable| {
-        try variableDefinition(self, variable, .{
-            .inner_name = compound_type.variables.get(variable.variable_name).?.inner_name,
-        });
-    }
-
-    for (type_decl.subtypes.items) |subtype| switch (subtype) {
-        inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
-    };
 }
 
 pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!void {

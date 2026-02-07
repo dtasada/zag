@@ -1144,9 +1144,10 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         }
     }
 
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UnknownSymbol,
-        "comperr: Unknown symbol: {s}\n",
+        "comperr: Unknown symbol '{s}'.\n",
         .{symbol},
         .red,
     );

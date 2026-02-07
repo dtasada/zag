@@ -43,13 +43,10 @@ pub fn memmove<T>(dst: []mut T, src: []T) !void {
 }
 
 pub struct ArrayList<T> {
-    let N = 3;
-
     items: []mut T,
     capacity: usize,
 
     pub fn init() ArrayList<T> {
-        c.printf("N: %d\n", N);
         return ArrayList<T> {
             items: alloc_slice<T>(0),
             capacity: 0,
