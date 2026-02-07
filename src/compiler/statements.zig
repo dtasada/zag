@@ -36,7 +36,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
 
 fn compoundTypeDeclaration(
     self: *Self,
-    comptime T: enum { @"struct", @"union", @"enum" },
+    comptime T: utils.CompoundTypeTag,
     type_decl: *const switch (T) {
         .@"struct" => ast.Statement.StructDeclaration,
         .@"union" => ast.Statement.UnionDeclaration,
@@ -100,6 +100,7 @@ fn compoundTypeDeclaration(
             }),
         }
     }
+
     if (T == .@"union") {
         self.indent_level -= 1;
         try self.indent();
@@ -194,6 +195,10 @@ fn compoundTypeDeclaration(
             .inner_name = compound_type.variables.get(variable.variable_name).?.inner_name,
         });
     }
+
+    for (type_decl.subtypes.items) |subtype| switch (subtype) {
+        inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
+    };
 }
 
 pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!void {

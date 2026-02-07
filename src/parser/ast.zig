@@ -297,7 +297,11 @@ pub const Statement = union(enum) {
         name: []const u8,
         generic_types: ParameterList,
         variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(Statement),
+        subtypes: std.ArrayList(union(utils.CompoundTypeTag) {
+            @"struct": StructDeclaration,
+            @"enum": EnumDeclaration,
+            @"union": UnionDeclaration,
+        }),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
 
@@ -325,7 +329,11 @@ pub const Statement = union(enum) {
         name: []const u8,
         generic_types: ParameterList,
         variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(Statement),
+        subtypes: std.ArrayList(union(utils.CompoundTypeTag) {
+            @"struct": StructDeclaration,
+            @"enum": EnumDeclaration,
+            @"union": UnionDeclaration,
+        }),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
     };
@@ -338,7 +346,11 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(Statement),
+        subtypes: std.ArrayList(union(utils.CompoundTypeTag) {
+            @"struct": StructDeclaration,
+            @"enum": EnumDeclaration,
+            @"union": UnionDeclaration,
+        }),
         name: []const u8,
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),

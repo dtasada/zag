@@ -1,5 +1,11 @@
 const std = @import("std");
 
+pub const CompoundTypeTag = enum {
+    @"struct",
+    @"enum",
+    @"union",
+};
+
 pub const Position = struct {
     line: usize,
     col: usize,

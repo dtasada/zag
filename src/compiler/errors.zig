@@ -163,7 +163,7 @@ pub fn illegalPrefixExpression(op: @import("Parser").ast.PrefixOperator, t: Type
     );
 }
 
-pub fn badAccess(T: enum { @"struct", @"enum", @"union" }, name: []const u8, pos: utils.Position) CompilerError {
+pub fn badAccess(T: utils.CompoundTypeTag, name: []const u8, pos: utils.Position) CompilerError {
     return utils.printErr(
         error.IllegalExpression,
         "comperr: {s} variable '{s}' must be 'pub' to be accessed from outside its module ({f}).\n",

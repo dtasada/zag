@@ -31,7 +31,7 @@ pub const Type = union(enum) {
         generic_instantiation: ?GenericInstantiation = null,
         is_bind: bool = false,
 
-        pub fn fromMethod(comptime T: CT, method: CompoundType(T).Method, module: Module) Type {
+        pub fn fromMethod(comptime T: utils.CompoundTypeTag, method: CompoundType(T).Method, module: Module) Type {
             return .{
                 .function = .{
                     .name = method.inner_name,
@@ -51,8 +51,19 @@ pub const Type = union(enum) {
         args: []const Value,
     };
 
-    const CT = enum { @"struct", @"enum", @"union" };
-    fn CompoundType(T: CT) type {
+    pub const Subtype = struct {
+        pub const Tag = union(enum) {
+            @"struct": Struct,
+            @"union": Union,
+            @"enum": Enum,
+        };
+
+        is_pub: bool,
+        type: Tag,
+        inner_name: []const u8,
+    };
+
+    fn CompoundType(T: utils.CompoundTypeTag) type {
         return struct {
             pub const MemberType = switch (T) {
                 .@"struct", .@"union" => *const Self,
@@ -83,6 +94,7 @@ pub const Type = union(enum) {
             name: []const u8,
             inner_name: []const u8,
             variables: *std.StringHashMap(Variable),
+            subtypes: *std.StringHashMap(Subtype),
             members: *std.StringArrayHashMap(MemberType),
             methods: *std.StringArrayHashMap(Method),
             generic_params: std.ArrayList(Function.Param),
@@ -134,6 +146,9 @@ pub const Type = union(enum) {
                 const variables = try compiler.alloc.create(std.StringHashMap(Variable));
                 variables.* = .init(compiler.alloc);
 
+                const subtypes = try compiler.alloc.create(std.StringHashMap(Subtype));
+                subtypes.* = .init(compiler.alloc);
+
                 const members = try compiler.alloc.create(std.StringArrayHashMap(MemberType));
                 members.* = .init(compiler.alloc);
 
@@ -150,6 +165,7 @@ pub const Type = union(enum) {
                     .name = name,
                     .inner_name = inner_name,
                     .variables = variables,
+                    .subtypes = subtypes,
                     .members = members,
                     .methods = methods,
                     .generic_params = .empty,
@@ -728,13 +744,13 @@ pub const Type = union(enum) {
     /// Returns a type from an AST compound type declaration statement.
     pub fn fromCompoundTypeDeclaration(
         compiler: *Compiler,
-        comptime T: enum { @"struct", @"union", @"enum" },
+        comptime T: utils.CompoundTypeTag,
         type_decl: *const switch (T) {
             .@"struct" => ast.Statement.StructDeclaration,
             .@"union" => ast.Statement.UnionDeclaration,
             .@"enum" => ast.Statement.EnumDeclaration,
         },
-    ) !switch (T) {
+    ) CompilerError!switch (T) {
         .@"struct" => Type.Struct,
         .@"union" => Type.Union,
         .@"enum" => Type.Enum,
@@ -892,6 +908,17 @@ pub const Type = union(enum) {
                         try fromAst(compiler, variable.type),
                 },
             );
+
+        for (type_decl.subtypes.items) |subtype| switch (subtype) {
+            inline else => |st, tag| try compound_type.subtypes.put(
+                st.name,
+                .{
+                    .is_pub = st.is_pub,
+                    .inner_name = try std.fmt.allocPrint(compiler.alloc, "{s}_{s}", .{ inner_name, st.name }),
+                    .type = @unionInit(Type.Subtype.Tag, @tagName(tag), try fromCompoundTypeDeclaration(compiler, tag, &st)),
+                },
+            ),
+        };
 
         var enum_last_value: usize = 0;
         for (type_decl.members.items) |member| {

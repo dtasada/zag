@@ -71,7 +71,7 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
 /// parses either a struct, enum, or union declaration statement
 pub fn compoundTypeDeclaration(
     self: *Self,
-    comptime T: enum { @"struct", @"enum", @"union" },
+    comptime T: utils.CompoundTypeTag,
 ) ParserError!ast.Statement {
     const context = switch (T) {
         .@"struct" => "struct declaration statement",
@@ -192,9 +192,9 @@ pub fn compoundTypeDeclaration(
             ),
             .let, .@"const" => try compound.variables.append(self.alloc, (try variableDefinition(self)).variable_definition),
 
-            .@"struct" => try compound.subtypes.append(self.alloc, try compoundTypeDeclaration(self, .@"struct")),
-            .@"union" => try compound.subtypes.append(self.alloc, try compoundTypeDeclaration(self, .@"union")),
-            .@"enum" => try compound.subtypes.append(self.alloc, try compoundTypeDeclaration(self, .@"enum")),
+            .@"struct" => try compound.subtypes.append(self.alloc, .{ .@"struct" = (try compoundTypeDeclaration(self, .@"struct")).struct_declaration }),
+            .@"union" => try compound.subtypes.append(self.alloc, .{ .@"union" = (try compoundTypeDeclaration(self, .@"union")).union_declaration }),
+            .@"enum" => try compound.subtypes.append(self.alloc, .{ .@"enum" = (try compoundTypeDeclaration(self, .@"enum")).enum_declaration }),
 
             .@"pub" => _ = self.advance(),
 

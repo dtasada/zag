@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const utils = @import("utils");
 const ast = @import("Parser").ast;
 
 const Type = @import("Type.zig").Type;
@@ -33,7 +34,7 @@ pub const Value = union(enum) {
     // error_union: struct { value: *const Value, type: Type.ErrorUnion },
     // function: struct { value: *const Value, type: Type.Function },
 
-    fn CompoundType(compound_type: enum { @"struct", @"union", @"enum" }) type {
+    fn CompoundType(compound_type: utils.CompoundTypeTag) type {
         return struct {
             type: switch (compound_type) {
                 .@"struct" => Type.Struct,
