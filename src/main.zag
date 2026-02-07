@@ -1,8 +1,16 @@
 import std;
 import c;
 
+struct TestStruct {
+    struct SubType {
+        inner: i32,
+    }
+
+    x: SubType,
+}
+
 fn main() i32 {
-    let arraylist = std.ArrayList<i32>.init();
+    let mut arraylist = std.ArrayList<i32>.init();
     arraylist.deinit();
 
     return 0;

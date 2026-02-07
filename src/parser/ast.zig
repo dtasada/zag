@@ -297,6 +297,7 @@ pub const Statement = union(enum) {
         name: []const u8,
         generic_types: ParameterList,
         variables: std.ArrayList(VariableDefinition),
+        subtypes: std.ArrayList(Statement),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
 
@@ -307,6 +308,7 @@ pub const Statement = union(enum) {
                 .name = self.name, // notice: doesn't clone the name.
                 .generic_types = try self.generic_types.clone(alloc),
                 .variables = try self.variables.clone(alloc),
+                .subtypes = try self.subtypes.clone(alloc),
                 .members = try self.members.clone(alloc),
                 .methods = try self.methods.clone(alloc),
             };
@@ -323,6 +325,21 @@ pub const Statement = union(enum) {
         name: []const u8,
         generic_types: ParameterList,
         variables: std.ArrayList(VariableDefinition),
+        subtypes: std.ArrayList(Statement),
+        members: std.ArrayList(Member),
+        methods: std.ArrayList(FunctionDefinition),
+    };
+
+    pub const EnumDeclaration = struct {
+        const Member = struct {
+            name: []const u8,
+            value: ?ast.Expression = null,
+        };
+        pos: utils.Position,
+        is_pub: bool,
+        variables: std.ArrayList(VariableDefinition),
+        subtypes: std.ArrayList(Statement),
+        name: []const u8,
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
     };
@@ -352,19 +369,6 @@ pub const Statement = union(enum) {
                 },
             };
         }
-    };
-
-    pub const EnumDeclaration = struct {
-        const Member = struct {
-            name: []const u8,
-            value: ?ast.Expression = null,
-        };
-        pos: utils.Position,
-        is_pub: bool,
-        variables: std.ArrayList(VariableDefinition),
-        name: []const u8,
-        members: std.ArrayList(Member) = .empty,
-        methods: std.ArrayList(FunctionDefinition) = .empty,
     };
 
     pub const VariableDefinition = struct {

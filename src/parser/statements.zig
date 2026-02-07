@@ -92,6 +92,7 @@ pub fn compoundTypeDeclaration(
             .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "struct name"),
             .generic_types = .empty,
             .variables = .empty,
+            .subtypes = .empty,
             .members = .empty,
             .methods = .empty,
         },
@@ -101,6 +102,7 @@ pub fn compoundTypeDeclaration(
             .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "union name"),
             .generic_types = .empty,
             .variables = .empty,
+            .subtypes = .empty,
             .members = .empty,
             .methods = .empty,
         },
@@ -109,6 +111,7 @@ pub fn compoundTypeDeclaration(
             .is_pub = is_pub,
             .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "enum name"),
             .variables = .empty,
+            .subtypes = .empty,
             .members = .empty,
             .methods = .empty,
         },
@@ -187,8 +190,13 @@ pub fn compoundTypeDeclaration(
                 self.alloc,
                 (try functionDefinition(self)).function_definition,
             ),
-            .@"pub" => _ = self.advance(),
             .let, .@"const" => try compound.variables.append(self.alloc, (try variableDefinition(self)).variable_definition),
+
+            .@"struct" => try compound.subtypes.append(self.alloc, try compoundTypeDeclaration(self, .@"struct")),
+            .@"union" => try compound.subtypes.append(self.alloc, try compoundTypeDeclaration(self, .@"union")),
+            .@"enum" => try compound.subtypes.append(self.alloc, try compoundTypeDeclaration(self, .@"enum")),
+
+            .@"pub" => _ = self.advance(),
 
             else => return utils.printErr(
                 error.SyntaxError,

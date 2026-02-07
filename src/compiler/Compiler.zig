@@ -861,6 +861,7 @@ fn solveGenerics(self: *Self) !void {
                         .is_pub = true,
                         .pos = s.pos,
                         .variables = s.variables,
+                        .subtypes = s.subtypes,
                         .members = s.members,
                         .methods = s.methods,
                     },

@@ -497,6 +497,24 @@
           }
         ]
       },
+      "subtype": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "enum_declaration",
+            "named": true
+          },
+          {
+            "type": "struct_declaration",
+            "named": true
+          },
+          {
+            "type": "union_declaration",
+            "named": true
+          }
+        ]
+      },
       "type": {
         "multiple": false,
         "required": false,
@@ -1727,6 +1745,24 @@
           }
         ]
       },
+      "subtype": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "enum_declaration",
+            "named": true
+          },
+          {
+            "type": "struct_declaration",
+            "named": true
+          },
+          {
+            "type": "union_declaration",
+            "named": true
+          }
+        ]
+      },
       "variable": {
         "multiple": true,
         "required": false,
@@ -1914,6 +1950,24 @@
         "types": [
           {
             "type": "ident_type",
+            "named": true
+          }
+        ]
+      },
+      "subtype": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "enum_declaration",
+            "named": true
+          },
+          {
+            "type": "struct_declaration",
+            "named": true
+          },
+          {
+            "type": "union_declaration",
             "named": true
           }
         ]

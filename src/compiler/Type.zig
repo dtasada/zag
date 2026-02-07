@@ -775,6 +775,7 @@ pub const Type = union(enum) {
                         .is_pub = false,
                         .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
                         .variables = .empty,
+                        .subtypes = .empty,
                         .members = .empty,
                         .methods = .empty,
                     };
@@ -799,6 +800,7 @@ pub const Type = union(enum) {
                     .is_pub = false,
                     .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
                     .variables = .empty,
+                    .subtypes = .empty,
                     .members = .empty,
                     .methods = .empty,
                 };
@@ -825,6 +827,7 @@ pub const Type = union(enum) {
                 .is_pub = false,
                 .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
                 .variables = .empty,
+                .subtypes = .empty,
                 .members = .empty,
                 .methods = .empty,
             };

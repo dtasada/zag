@@ -735,53 +735,20 @@
           "value": "{"
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "FIELD",
-                    "name": "variable",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "variable_definition"
-                    }
-                  },
-                  {
-                    "type": "STRING",
-                    "value": ","
-                  }
-                ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "variable",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "variable_definition"
-                  }
-                },
-                {
-                  "type": "BLANK"
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "variable",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "variable_definition"
                 }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
+              },
+              {
+                "type": "CHOICE",
                 "members": [
                   {
                     "type": "FIELD",
@@ -792,39 +759,81 @@
                     }
                   },
                   {
-                    "type": "STRING",
-                    "value": ","
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "REPEAT1",
+                        "content": {
+                          "type": "SEQ",
+                          "members": [
+                            {
+                              "type": "FIELD",
+                              "name": "member",
+                              "content": {
+                                "type": "SYMBOL",
+                                "name": "struct_member"
+                              }
+                            },
+                            {
+                              "type": "STRING",
+                              "value": ","
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "FIELD",
+                            "name": "member",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "struct_member"
+                            }
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "member",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "struct_member"
-                  }
-                },
-                {
-                  "type": "BLANK"
+              },
+              {
+                "type": "FIELD",
+                "name": "method",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "function_definition"
                 }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "FIELD",
-            "name": "method",
-            "content": {
-              "type": "SYMBOL",
-              "name": "function_definition"
-            }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "struct_declaration"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "union_declaration"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "enum_declaration"
+                }
+              }
+            ]
           }
         },
         {
@@ -952,53 +961,20 @@
           "value": "{"
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "FIELD",
-                    "name": "variable",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "variable_definition"
-                    }
-                  },
-                  {
-                    "type": "STRING",
-                    "value": ","
-                  }
-                ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "variable",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "variable_definition"
-                  }
-                },
-                {
-                  "type": "BLANK"
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "variable",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "variable_definition"
                 }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
+              },
+              {
+                "type": "CHOICE",
                 "members": [
                   {
                     "type": "FIELD",
@@ -1009,39 +985,81 @@
                     }
                   },
                   {
-                    "type": "STRING",
-                    "value": ","
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "REPEAT1",
+                        "content": {
+                          "type": "SEQ",
+                          "members": [
+                            {
+                              "type": "FIELD",
+                              "name": "member",
+                              "content": {
+                                "type": "SYMBOL",
+                                "name": "enum_member"
+                              }
+                            },
+                            {
+                              "type": "STRING",
+                              "value": ","
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "FIELD",
+                            "name": "member",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "enum_member"
+                            }
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "member",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "enum_member"
-                  }
-                },
-                {
-                  "type": "BLANK"
+              },
+              {
+                "type": "FIELD",
+                "name": "method",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "function_definition"
                 }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "FIELD",
-            "name": "method",
-            "content": {
-              "type": "SYMBOL",
-              "name": "function_definition"
-            }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "struct_declaration"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "union_declaration"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "enum_declaration"
+                }
+              }
+            ]
           }
         },
         {
@@ -1136,53 +1154,20 @@
           "value": "{"
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "FIELD",
-                    "name": "variable",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "variable_definition"
-                    }
-                  },
-                  {
-                    "type": "STRING",
-                    "value": ","
-                  }
-                ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "variable",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "variable_definition"
-                  }
-                },
-                {
-                  "type": "BLANK"
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "variable",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "variable_definition"
                 }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
+              },
+              {
+                "type": "CHOICE",
                 "members": [
                   {
                     "type": "FIELD",
@@ -1193,39 +1178,81 @@
                     }
                   },
                   {
-                    "type": "STRING",
-                    "value": ","
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "REPEAT1",
+                        "content": {
+                          "type": "SEQ",
+                          "members": [
+                            {
+                              "type": "FIELD",
+                              "name": "member",
+                              "content": {
+                                "type": "SYMBOL",
+                                "name": "union_member"
+                              }
+                            },
+                            {
+                              "type": "STRING",
+                              "value": ","
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "FIELD",
+                            "name": "member",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "union_member"
+                            }
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "member",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "union_member"
-                  }
-                },
-                {
-                  "type": "BLANK"
+              },
+              {
+                "type": "FIELD",
+                "name": "method",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "function_definition"
                 }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "FIELD",
-            "name": "method",
-            "content": {
-              "type": "SYMBOL",
-              "name": "function_definition"
-            }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "struct_declaration"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "union_declaration"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "subtype",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "enum_declaration"
+                }
+              }
+            ]
           }
         },
         {
@@ -3663,6 +3690,15 @@
     ],
     [
       "expression"
+    ],
+    [
+      "struct_declaration"
+    ],
+    [
+      "enum_declaration"
+    ],
+    [
+      "union_declaration"
     ]
   ],
   "precedences": [],

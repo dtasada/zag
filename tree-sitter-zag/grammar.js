@@ -34,6 +34,9 @@ export default grammar({
     [$.expression, $.ident_type, $.call_callee],
     [$.expression, $.generic_argument_list],
     [$.expression],
+    [$.struct_declaration],
+    [$.enum_declaration],
+    [$.union_declaration],
   ],
 
   rules: {
@@ -172,9 +175,14 @@ export default grammar({
       field("name", $.ident_type),
       optional(field("generic_parameters", $.generic_parameter_list)),
       "{",
-      commaSep(field("variable", $.variable_definition)),
-      commaSep(field("member", $.struct_member)),
-      repeat(field("method", $.function_definition)),
+      repeat(choice(
+        field("variable", $.variable_definition),
+        commaSep1(field("member", $.struct_member)),
+        field("method", $.function_definition),
+        field("subtype", $.struct_declaration),
+        field("subtype", $.union_declaration),
+        field("subtype", $.enum_declaration),
+      )),
       "}",
     ),
 
@@ -190,9 +198,14 @@ export default grammar({
       optional(field("type", $.parameter_list)),
       field("name", $.ident_type),
       "{",
-      commaSep(field("variable", $.variable_definition)),
-      commaSep(field("member", $.enum_member)),
-      repeat(field("method", $.function_definition)),
+      repeat(choice(
+        field("variable", $.variable_definition),
+        commaSep1(field("member", $.enum_member)),
+        field("method", $.function_definition),
+        field("subtype", $.struct_declaration),
+        field("subtype", $.union_declaration),
+        field("subtype", $.enum_declaration),
+      )),
       "}",
     ),
 
@@ -210,9 +223,14 @@ export default grammar({
       field("name", $.ident_type),
       optional(field("generic_parameters", $.generic_parameter_list)),
       "{",
-      commaSep(field("variable", $.variable_definition)),
-      commaSep(field("member", $.union_member)),
-      repeat(field("method", $.function_definition)),
+      repeat(choice(
+        field("variable", $.variable_definition),
+        commaSep1(field("member", $.union_member)),
+        field("method", $.function_definition),
+        field("subtype", $.struct_declaration),
+        field("subtype", $.union_declaration),
+        field("subtype", $.enum_declaration),
+      )),
       "}",
     ),
     union_member: $ => seq(
