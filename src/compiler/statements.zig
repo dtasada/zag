@@ -57,15 +57,14 @@ fn compoundTypeDeclaration(
     if (type_decl.is_pub and self.module_header != null)
         try self.switchWriter(&self.module_header.?);
 
+    const inner_name = try self.getInnerName(type_decl.name);
+    try self.print("typedef {s} {s} {s};\n", .{ @tagName(T), inner_name, inner_name });
+
     for (type_decl.subtypes.items) |subtype| switch (subtype) {
         inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
     };
 
-    try self.print("typedef {s} {{\n", .{switch (T) {
-        .@"struct" => "struct",
-        .@"union" => "struct",
-        .@"enum" => "enum",
-    }});
+    try self.print("typedef {s} {s} {{\n", .{ @tagName(T), inner_name });
 
     self.indent_level += 1;
 
@@ -112,7 +111,7 @@ fn compoundTypeDeclaration(
     }
 
     self.indent_level -= 1;
-    try self.print("}} {s};\n\n", .{try self.getInnerName(type_decl.name)});
+    try self.print("}} {s};\n\n", .{inner_name});
 
     for (type_decl.variables.items) |variable|
         try variableDefinition(self, variable, .{

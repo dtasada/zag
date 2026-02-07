@@ -929,17 +929,39 @@ pub const Type = union(enum) {
                 .red,
             );
 
-            try compound_type.members.put(member.name, switch (T) {
-                .@"struct" => try fromAstPtr(compiler, member.type),
-                .@"union" => if (member.type) |t| try fromAstPtr(compiler, t) else &.void,
-                .@"enum" => if (member.value) |value|
+            switch (T) {
+                inline .@"struct", .@"union" => {
+                    const member_type: *const Type = switch (T) {
+                        .@"struct" => try fromAstPtr(compiler, member.type),
+                        .@"union" => if (member.type) |t| try fromAstPtr(compiler, t) else &.void,
+                        else => unreachable,
+                    };
+                    switch (member_type.*) {
+                        inline .@"struct", .@"union" => |ct, tag| {
+                            var inner_members = ct.members.iterator();
+                            while (inner_members.next()) |inner_member| {
+                                if (inner_member.value_ptr.*.eql(@unionInit(Type, @tagName(T), compound_type)))
+                                    return utils.printErr(
+                                        error.CircularTypeDefinition,
+                                        "comperr: {s} '{s}' depends on itself. Member '{s}' is of type '{s}' ({f}).\n",
+                                        .{ @tagName(tag), compound_type.name, inner_member.key_ptr.*, compound_type.name, type_decl.pos },
+                                        .red,
+                                    );
+                            }
+                        },
+                        else => {},
+                    }
+
+                    try compound_type.members.put(member.name, member_type);
+                },
+                .@"enum" => try compound_type.members.put(member.name, if (member.value) |value|
                     (try compiler.solveComptimeExpression(value)).u64
                 else b: {
                     const val = enum_last_value;
                     enum_last_value += 1;
                     break :b val;
-                },
-            });
+                }),
+            }
         }
 
         for (type_decl.methods.items, 0..) |method, i| {

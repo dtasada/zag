@@ -7,6 +7,7 @@ pub const CompilerError = error{
     ArgumentCountMismatch,
     AssignmentToImmutableVariable,
     BadMutability,
+    CircularTypeDefinition,
     DuplicateMember,
     ExpressionCannotBeEvaluatedAtCompileTime,
     FailedToCreateParser,
