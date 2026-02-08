@@ -426,17 +426,16 @@ fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {
         };
     }
 
-    try self.write(if (is_slice) "__ZAG_SLICE_SLICE(" else "__ZAG_SLICE_ARRAY(");
+    try self.write("(");
     try self.compileType(t, .{ .binding_mut = binding_mut });
-    try self.write(", ");
-
+    try self.write("){ .ptr = &((");
     try compile(self, slc.lhs, .{});
-    try self.write(", ");
-    if (slc.start) |start|
-        try compile(self, start, .{})
-    else
-        try self.write("0");
-    try self.write(", ");
+    try self.write(")");
+    if (is_slice) try self.write(".ptr");
+    try self.write("[");
+    if (slc.start) |start| try compile(self, start, .{}) else try self.write("0");
+    try self.write("])");
+    try self.write(", .len = ");
     if (slc.inclusive) try self.write("1 + (");
 
     if (slc.end) |end| {
@@ -448,7 +447,8 @@ fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {
     } else try self.print("{}", .{array_length.?});
 
     if (slc.inclusive) try self.write(")");
-    try self.write(")");
+
+    try self.write(" }");
 }
 
 fn index(self: *Self, idx: ast.Expression.Index) !void {

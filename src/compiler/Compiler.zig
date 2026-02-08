@@ -316,7 +316,13 @@ fn writeOutputFiles(self: *Self) !void {
     defer zag_header.close();
     var zag_header_writer = zag_header.writer(&zag_header_buf);
 
-    try zag_header_writer.interface.writeAll(@import("zag.h.zig").CONTENT);
+    try zag_header_writer.interface.writeAll(
+        \\#ifndef ZAG_H
+        \\#define ZAG_H
+        \\#include <stdbool.h>
+        \\#include <stdlib.h>
+        \\
+    );
     try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_types).items);
     try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_macros).items);
     try zag_header_writer.interface.writeAll("\n#endif\n");
