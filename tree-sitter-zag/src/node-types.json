@@ -686,6 +686,10 @@
           "named": true
         },
         {
+          "type": "try_expression",
+          "named": true
+        },
+        {
           "type": "type",
           "named": true
         },
@@ -1864,6 +1868,21 @@
     }
   },
   {
+    "type": "try_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "type",
     "named": true,
     "fields": {},
@@ -2480,6 +2499,10 @@
   {
     "type": "true_literal",
     "named": true
+  },
+  {
+    "type": "try",
+    "named": false
   },
   {
     "type": "type",

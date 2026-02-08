@@ -190,3 +190,25 @@ pub fn ifExpressionMustContainElseClause(pos: utils.Position) CompilerError {
         .red,
     );
 }
+
+pub fn tryExpressionOnNonErrorUnion(t: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Illegal 'try' expression on type '{f}'. 'try' requires an error union ({f}).\n",
+        .{ t, pos },
+        .red,
+    );
+}
+
+pub fn tryExpressionBadReturnType(
+    expr: Type,
+    function_return: Type,
+    pos: utils.Position,
+) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Try expression of type '{f}' not compatible with function of return type '{f}' ({f}).\n",
+        .{ expr, function_return, pos },
+        .red,
+    );
+}

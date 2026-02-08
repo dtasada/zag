@@ -17,6 +17,7 @@
  "mut"
  "pub"
  "struct"
+ "try"
  "union"
  "while"
 ] @keyword

@@ -132,6 +132,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "try_expression"
+        },
+        {
+          "type": "SYMBOL",
           "name": "call_expression"
         },
         {
@@ -215,6 +219,19 @@
         {
           "type": "STRING",
           "value": ";"
+        }
+      ]
+    },
+    "try_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "try"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
         }
       ]
     },
@@ -3699,6 +3716,14 @@
     ],
     [
       "union_declaration"
+    ],
+    [
+      "try_expression",
+      "index_expression"
+    ],
+    [
+      "try_expression",
+      "generic_expression"
     ]
   ],
   "precedences": [],

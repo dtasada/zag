@@ -614,6 +614,17 @@ pub const Type = union(enum) {
 
             .call => |call| try inferCallExpression(compiler, call),
             .member => |member| try inferMemberExpression(compiler, member),
+            .@"try" => |t| {
+                const inner_type = try infer(compiler, t.@"try".*);
+
+                if (compiler.current_return_type.? != .error_union)
+                    return errors.tryExpressionBadReturnType(inner_type, compiler.current_return_type.?, t.pos);
+
+                return switch (inner_type) {
+                    .error_union => |eu| eu.success.*,
+                    else => |other| errors.tryExpressionOnNonErrorUnion(other, t.pos),
+                };
+            },
             .binary => |binary| {
                 const lhs: Type = try .infer(compiler, binary.lhs.*);
                 const rhs: Type = try .infer(compiler, binary.rhs.*);

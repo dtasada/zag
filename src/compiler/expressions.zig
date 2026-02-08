@@ -183,6 +183,28 @@ pub fn compile(
         .match => |m| try match(self, m),
         .type => |t| try self.compileType(try .fromAst(self, t), .{}),
         .slice => |slc| try slice(self, slc, opts.binding_mut),
+        .@"try" => |t| {
+            const inner_type: Type = try .infer(self, t.@"try".*);
+            if (inner_type != .error_union)
+                return errors.tryExpressionOnNonErrorUnion(inner_type, t.pos);
+
+            if (self.current_return_type.? != .error_union or !inner_type.check(self.current_return_type.?))
+                return errors.tryExpressionBadReturnType(inner_type, self.current_return_type.?, t.pos);
+
+            self.currentSection().pos = self.currentSection().current_statement;
+
+            try self.compileType(try .infer(self, t.@"try".*), .{});
+            const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(t.@"try"))});
+            try self.print(" {s} = ", .{temp_name});
+            try compile(self, t.@"try", .{});
+            try self.print(";\nif (!{s}.is_success) return (", .{temp_name});
+            try self.compileType(self.current_return_type.?, .{});
+            try self.print("){{ .is_success = false, .payload = {{ .failure = {s}.payload.failure }} }};\n", .{temp_name});
+
+            self.currentSection().pos = self.currentWriter().items.len;
+
+            try self.print("{s}.payload.success", .{temp_name});
+        },
         .bad_node => unreachable,
     }
 }
@@ -324,6 +346,7 @@ fn collectReferencedVariables(alloc: std.mem.Allocator, statement: ast.Statement
 fn collectReferencedVariablesInExpr(alloc: std.mem.Allocator, expr: ast.Expression, referenced: *std.ArrayList([]const u8)) error{OutOfMemory}!void {
     switch (expr) {
         .ident => |ident| try referenced.append(alloc, ident.ident),
+        .@"try" => |t| try collectReferencedVariablesInExpr(alloc, t.@"try".*, referenced),
         .binary => |bin| {
             try collectReferencedVariablesInExpr(alloc, bin.lhs.*, referenced);
             try collectReferencedVariablesInExpr(alloc, bin.rhs.*, referenced);
@@ -544,7 +567,7 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
                 try self.indent();
                 try statements.compile(self, &case.result);
                 try self.indent();
-                try self.write(";break;\n");
+                try self.write("break;\n");
 
                 self.indent_level -= 1;
             }
@@ -586,7 +609,12 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
             try self.indent();
             try self.write("}");
         },
-        else => @panic("unimplemented!"),
+        else => |other| return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Illegal match on expression of type '{f}' ({f}).\n",
+            .{ other, m.pos },
+            .red,
+        ),
     }
 }
 

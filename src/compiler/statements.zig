@@ -13,6 +13,8 @@ const Self = @import("Compiler.zig");
 const CompilerError = errors.CompilerError;
 
 pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void {
+    self.currentSection().current_statement = self.currentWriter().items.len;
+
     switch (statement.*) {
         .function_definition => |*fn_def| try functionDefinition(self, false, fn_def),
         .import => |import_statement| try import(self, import_statement),
@@ -267,11 +269,7 @@ fn variableDefinition(
     else |_| {}
 
     if (expected_type) |et| if (!received_type.check(et))
-        return errors.typeMismatch(
-            expected_type.?,
-            received_type,
-            v.assigned_value.getPosition(),
-        );
+        return errors.typeMismatch(et, received_type, v.assigned_value.getPosition());
 
     const mangled_name = opts.inner_name orelse try self.mangle(v.variable_name);
 

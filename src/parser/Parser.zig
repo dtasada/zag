@@ -122,7 +122,6 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"-", .additive, expressions.binary);
     try self.led(.@"*", .multiplicative, expressions.binary);
     try self.led(.@"/", .multiplicative, expressions.binary);
-    try self.led(.@"*", .multiplicative, expressions.binary);
     try self.led(.@"&", .multiplicative, expressions.binary);
     try self.led(.@"|", .additive, expressions.binary);
     try self.led(.@"^", .power, expressions.binary);
@@ -148,6 +147,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(.@"{", expressions.block);
     try self.nud(.@"if", expressions.@"if");
     try self.nud(.match, expressions.match);
+    try self.nud(.@"try", expressions.@"try");
     try self.nud(.@"&", expressions.reference);
     try self.led(.@"..", .relational, expressions.range);
     try self.led(.@"..=", .relational, expressions.range);
@@ -311,13 +311,15 @@ pub inline fn getHandler(
         .bp => self.bp_lookup,
     }.get(token)) |handler| handler else return if (opts.silent_error)
         error.HandlerDoesNotExist
-    else
-        utils.printErr(
+    else {
+        std.debug.dumpCurrentStackTrace(null);
+        return utils.printErr(
             error.HandlerDoesNotExist,
             "Parser error: Syntax error at {f}.\n",
             .{self.currentPosition()},
             .red,
         );
+    };
 }
 
 /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.

@@ -1,9 +1,10 @@
 import std;
 import c;
 
-fn main() i32 {
-    let result = std.Result<i32> { ok: 4 };
+fn main() !&void {
+    let result: !i32 = 4;
+    let inner = try result;
 
-    return 0;
+    return c_null;
 }
 

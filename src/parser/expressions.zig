@@ -457,3 +457,13 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
         },
     };
 }
+
+pub fn @"try"(self: *Self) ParserError!ast.Expression {
+    const pos = self.currentPosition();
+    _ = self.advance();
+
+    const expr = try self.alloc.create(ast.Expression);
+    expr.* = try parse(self, .default, .{});
+
+    return .{ .@"try" = .{ .@"try" = expr, .pos = pos } };
+}

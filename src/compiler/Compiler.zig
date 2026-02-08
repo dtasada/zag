@@ -20,23 +20,29 @@ pub const Mode = enum { emit, analysis };
 
 const CompilerError = errors.CompilerError;
 
-const Section = enum {
-    // Header sections (for .h files)
-    header_guard_start,
-    header_includes,
-    header_forward_decls,
-    header_type_defs,
-    header_function_decls,
-    header_guard_end,
+const Section = struct {
+    const Type = enum {
+        // Header sections (for .h files)
+        header_guard_start,
+        header_includes,
+        header_forward_decls,
+        header_type_defs,
+        header_function_decls,
+        header_guard_end,
 
-    // Source sections (for .c files)
-    source_includes,
-    source_helper_functions,
-    source_type_impls,
-    source_function_impls,
+        // Source sections (for .c files)
+        source_includes,
+        source_helper_functions,
+        source_type_impls,
+        source_function_impls,
 
-    zag_header_types,
-    zag_header_macros,
+        zag_header_types,
+        zag_header_macros,
+    };
+
+    pos: usize = 0,
+    current_statement: usize = 0,
+    buffer: std.ArrayList(u8) = .empty,
 };
 
 const Buffer = struct {
@@ -59,8 +65,8 @@ module: Module,
 module_registry: *std.StringHashMap(Module),
 exported_symbols: std.StringHashMap(Module.Symbol),
 
-sections: std.EnumArray(Section, std.ArrayList(u8)),
-current_section: Section,
+sections: std.EnumArray(Section.Type, Section),
+current_section: Section.Type,
 output_path: []const u8,
 module_header_path: []const u8,
 zag_header_path: []const u8,
@@ -157,23 +163,31 @@ pub fn getAST(
 }
 
 /// Switch to a different output section
-pub fn switchSection(self: *Self, section: Section) void {
+pub fn switchSection(self: *Self, section: Section.Type) void {
     self.current_section = section;
 }
 
-/// Get writer for current section
-fn currentWriter(self: *Self) *std.ArrayList(u8) {
+/// Get current section
+pub fn currentSection(self: *Self) *Section {
     return self.sections.getPtr(self.current_section);
+}
+
+/// Get writer for current section
+pub fn currentWriter(self: *Self) *std.ArrayList(u8) {
+    return &self.sections.getPtr(self.current_section).buffer;
 }
 
 /// Write to current section
 pub fn write(self: *Self, bytes: []const u8) CompilerError!void {
-    try self.currentWriter().appendSlice(self.alloc, bytes);
+    try self.currentWriter().insertSlice(self.alloc, self.currentSection().pos, bytes);
+    self.currentSection().pos += bytes.len;
 }
 
 /// Print to current section
 pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) CompilerError!void {
-    try self.currentWriter().print(self.alloc, fmt, args);
+    const bytes = try std.fmt.allocPrint(self.alloc, fmt, args);
+    defer self.alloc.free(bytes);
+    try self.write(bytes);
 }
 
 /// initializes a new `Compiler`.
@@ -203,7 +217,7 @@ pub fn init(
         }),
         .module_registry = registry,
         .exported_symbols = .init(alloc),
-        .sections = .initFill(.empty),
+        .sections = .initFill(.{}),
         .current_section = .source_includes,
         .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
         .pending_instantiations = .empty,
@@ -219,9 +233,9 @@ pub fn init(
 pub fn deinit(self: *Self) void {
     self.alloc.free(self.source_path);
 
-    inline for (@typeInfo(Section).@"enum".fields) |field| {
-        const section = @field(Section, field.name);
-        self.sections.getPtr(section).deinit(self.alloc);
+    inline for (@typeInfo(Section.Type).@"enum".fields) |field| {
+        const section = @field(Section.Type, field.name);
+        self.sections.getPtr(section).buffer.deinit(self.alloc);
     }
 
     self.scopes.deinit(self.alloc);
@@ -283,10 +297,10 @@ fn writeOutputFiles(self: *Self) !void {
     defer output_file.close();
     var output_file_writer = output_file.writer(&output_file_buf);
 
-    try output_file_writer.interface.writeAll(self.sections.get(.source_includes).items);
-    try output_file_writer.interface.writeAll(self.sections.get(.source_helper_functions).items);
-    try output_file_writer.interface.writeAll(self.sections.get(.source_type_impls).items);
-    try output_file_writer.interface.writeAll(self.sections.get(.source_function_impls).items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_includes).buffer.items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_helper_functions).buffer.items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_type_impls).buffer.items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_function_impls).buffer.items);
 
     if (std.mem.eql(u8, self.source_path, "src/main.zag"))
         try output_file_writer.interface.writeAll("int main() { main_main(); }\n");
@@ -304,10 +318,10 @@ fn writeOutputFiles(self: *Self) !void {
 
     try header_file_writer.interface.print("#ifndef {s}\n#define {s}\n\n", .{ guard_name, guard_name });
     try header_file_writer.interface.writeAll("#include <zag.h>\n\n");
-    try header_file_writer.interface.writeAll(self.sections.get(.header_includes).items);
-    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).items);
-    try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).items);
-    try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_includes).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).buffer.items);
     try header_file_writer.interface.writeAll("\n#endif\n");
     try header_file_writer.interface.flush();
 
@@ -323,8 +337,8 @@ fn writeOutputFiles(self: *Self) !void {
         \\#include <stdlib.h>
         \\
     );
-    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_types).items);
-    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_macros).items);
+    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_types).buffer.items);
+    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_macros).buffer.items);
     try zag_header_writer.interface.writeAll("\n#endif\n");
     try zag_header_writer.interface.flush();
 }

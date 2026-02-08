@@ -60,6 +60,7 @@ pub const Token = union(enum) {
     // keywords
     @"and",
     @"break",
+    @"catch",
     @"const",
     @"continue",
     @"else",
@@ -71,6 +72,7 @@ pub const Token = union(enum) {
     @"pub",
     @"return",
     @"struct",
+    @"try",
     @"union",
     @"while",
     as,
@@ -222,6 +224,7 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
         .{ "pub", .@"pub" },
         .{ "return", .@"return" },
         .{ "struct", .@"struct" },
+        .{ "try", .@"try" },
         .{ "union", .@"union" },
         .{ "while", .@"while" },
     });

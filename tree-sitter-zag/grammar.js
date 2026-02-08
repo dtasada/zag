@@ -37,6 +37,8 @@ export default grammar({
     [$.struct_declaration],
     [$.enum_declaration],
     [$.union_declaration],
+    [$.try_expression, $.index_expression],
+    [$.try_expression, $.generic_expression],
   ],
 
   rules: {
@@ -75,6 +77,7 @@ export default grammar({
       $.c_null_literal,
       $.undefined_literal,
 
+      $.try_expression,
       $.call_expression,
       $.member_expression,
       $.binary_expression,
@@ -94,6 +97,8 @@ export default grammar({
 
     break_statement: $ => seq("break", ";"),
     continue_statement: $ => seq("continue", ";"),
+
+    try_expression: $ => seq("try", $.expression),
 
     generic_expression: $ => seq(
       $.expression,
