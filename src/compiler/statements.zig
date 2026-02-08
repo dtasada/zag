@@ -64,20 +64,45 @@ fn compoundTypeDeclaration(
     defer self.switchSection(saved_section);
 
     const inner_name = try self.getInnerName(type_decl.name);
-    try self.print("typedef {s} {s} {s};\n", .{ @tagName(T), inner_name, inner_name });
+    const structure_type = switch (T) {
+        .@"struct", .@"union" => "struct",
+        .@"enum" => "enum",
+    };
+    try self.print("typedef {s} {s} {s};\n", .{ structure_type, inner_name, inner_name });
 
     for (type_decl.subtypes.items) |subtype| switch (subtype) {
         inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
     };
 
-    try self.print("typedef {s} {s} {{\n", .{ @tagName(T), inner_name });
+    // Emit the tag type enum for unions
+    if (T == .@"union") {
+        const tag_enum = compound_type.tag_type.?.@"enum";
+
+        try self.print("typedef enum {s} {{\n", .{tag_enum.inner_name});
+        self.indent_level += 1;
+
+        var members = tag_enum.members.iterator();
+        while (members.next()) |member| {
+            try self.indent();
+            try self.print("__zag_{s}_{s} = {},\n", .{
+                tag_enum.inner_name,
+                member.key_ptr.*,
+                member.value_ptr.*,
+            });
+        }
+
+        self.indent_level -= 1;
+        try self.print("}} {s};\n\n", .{tag_enum.inner_name});
+    }
+
+    try self.print("typedef {s} {s} {{\n", .{ structure_type, inner_name });
 
     self.indent_level += 1;
 
     var members = compound_type.members.iterator();
     if (T == .@"union") {
         try self.indent();
-        try self.print("{f} tag;\n", .{compound_type.tag_type.?});
+        try self.print("{s} tag;\n", .{compound_type.tag_type.?.@"enum".inner_name});
         try self.indent();
         try self.write("union {\n");
         self.indent_level += 1;
@@ -95,11 +120,9 @@ fn compoundTypeDeclaration(
                 try self.write(";\n");
             },
             .@"union" => {
-                try self.compileVariableSignature(
-                    member.key_ptr.*,
-                    member.value_ptr.*.*,
-                    .{ .binding_mut = true }, // struct members shouldn't be const.
-                );
+                var t = member.value_ptr.*.*;
+                if (t == .void) t = .u8;
+                try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
                 try self.write(";\n");
             },
             .@"enum" => try self.print("__zag_{s}_{s} = {},\n", .{

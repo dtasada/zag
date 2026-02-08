@@ -523,7 +523,7 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
                                     .{ @"union".name, ident.ident, c.getPosition() },
                                     .red,
                                 );
-                                try self.print("__zag_{s}_tag_type_{s}", .{ @"union".name, mem.member_name });
+                                try self.print("__zag_{s}_{s}", .{ @"union".tag_type.?.@"enum".inner_name, mem.member_name });
                             },
                             else => return utils.printErr(
                                 error.IllegalExpression,
@@ -629,7 +629,7 @@ fn unionInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiati
 
     const m = try u.getMember(tag_name);
 
-    try self.print(".tag = __zag_{s}_tag_type_{s}, ", .{ u.name, tag_name });
+    try self.print(".tag = __zag_{s}_{s}, ", .{ u.tag_type.?.@"enum".inner_name, tag_name });
 
     try self.print(".payload = {{ .{s} = ", .{m.member_name});
     try compile(self, &payload_val, .{ .expected_type = m.member_type.* });

@@ -386,8 +386,7 @@ pub const Type = union(enum) {
 
         _ = try mangled_name.writer(compiler.alloc).write(base_name);
 
-        for (args.items) |arg|
-            try mangled_name.writer(compiler.alloc).print("_{}", .{arg.hash()});
+        for (args.items) |arg| try mangled_name.writer(compiler.alloc).print("_{}", .{arg.hash()});
 
         const name = try compiler.alloc.dupe(u8, mangled_name.items);
 
@@ -774,6 +773,7 @@ pub const Type = union(enum) {
         .@"enum" => Type.Enum,
     } {
         const inner_name = try compiler.mangle(type_decl.name);
+        const tag_type_inner_name: []const u8 = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name});
 
         const should_define = if (compiler.getSymbolDefined(type_decl.name)) |sd| b: {
             if (sd)
@@ -807,7 +807,7 @@ pub const Type = union(enum) {
                     enum_decl.* = .{
                         .pos = type_decl.pos,
                         .is_pub = false,
-                        .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                        .name = tag_type_inner_name,
                         .variables = .empty,
                         .subtypes = .empty,
                         .members = .empty,
@@ -817,11 +817,9 @@ pub const Type = union(enum) {
                     for (type_decl.members.items) |member|
                         try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
 
-                    try statements.compile(compiler, &.{ .enum_declaration = enum_decl.* });
-
-                    break :b2 .{
-                        .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl),
-                    };
+                    // Create the tag type but DON'T compile/emit it yet
+                    // It will be emitted when the union itself is compiled in statements.zig
+                    break :b2 .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
                 },
             });
         } else |_| try .init(compiler, type_decl.name, inner_name, switch (T) {
@@ -832,7 +830,7 @@ pub const Type = union(enum) {
                 enum_decl.* = .{
                     .pos = type_decl.pos,
                     .is_pub = false,
-                    .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
+                    .name = tag_type_inner_name,
                     .variables = .empty,
                     .subtypes = .empty,
                     .members = .empty,
@@ -842,39 +840,13 @@ pub const Type = union(enum) {
                 for (type_decl.members.items) |member|
                     try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
 
-                try statements.compile(compiler, &.{ .enum_declaration = enum_decl.* });
-
-                break :b .{
-                    .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl),
-                };
+                // Create the tag type but DON'T compile/emit it yet
+                break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
             },
         });
 
         // If definition is set, it means we already populated this type.
         if (compound_type.definition != null) return compound_type;
-
-        // If union tag type is missing (forward declaration), create it now.
-        if (T == .@"union" and compound_type.tag_type == null) {
-            const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
-            enum_decl.* = .{
-                .pos = type_decl.pos,
-                .is_pub = false,
-                .name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name}),
-                .variables = .empty,
-                .subtypes = .empty,
-                .members = .empty,
-                .methods = .empty,
-            };
-
-            for (type_decl.members.items) |member|
-                try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
-
-            try statements.compile(compiler, &.{ .enum_declaration = enum_decl.* });
-
-            const tag_t = try compiler.alloc.create(Type);
-            tag_t.* = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
-            compound_type.tag_type = tag_t;
-        }
 
         switch (T) {
             .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
