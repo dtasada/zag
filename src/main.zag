@@ -9,6 +9,9 @@ fn main() i32 {
         a + b + outside
     };
 
+    let mut arraylist = std.ArrayList<i32>.init();
+    arraylist.deinit();
+
     return 0;
 }
 

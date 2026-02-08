@@ -245,6 +245,7 @@ pub fn emit(self: *Self) CompilerError!void {
 
     self.switchSection(.source_includes);
     try self.write("#include <zag.h>\n");
+    try self.print("#include \"{s}\"\n", .{std.fs.path.basename(self.module_header_path)});
 
     // Pass 1: Imports
     for (self.input.items) |*statement| if (statement.* == .import)
@@ -610,9 +611,11 @@ pub fn compileType(
                 self.switchSection(.zag_header_types);
                 defer self.switchSection(saved_section);
 
-                try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
+                try self.write("typedef struct {\n");
+                try self.write("bool is_some;\n");
                 try self.compileType(optional.*, new_opts);
-                try self.write(")\n");
+                try self.write(" payload;\n");
+                try self.print("}} {s};\n", .{type_name});
 
                 try self.zag_header_contents.put(t, type_name);
             }
@@ -626,17 +629,19 @@ pub fn compileType(
                 self.switchSection(.zag_header_types);
                 defer self.switchSection(saved_section);
 
-                try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
-                try self.compileType(error_union.failure.*, new_opts);
-                try self.write(", ");
-
+                try self.write("typedef struct {\n");
+                try self.write("bool is_success;\n");
+                try self.write("union {\n");
                 // if the success type is void, use u8 as a small dummy type since C union members can't be void
                 try self.compileType(switch (error_union.success.*) {
                     .void => .u8,
                     else => |other| other,
                 }, new_opts);
-
-                try self.write(")\n");
+                try self.write(" success;\n");
+                try self.compileType(error_union.failure.*, new_opts);
+                try self.write(" failure;\n");
+                try self.write("} payload;\n");
+                try self.print("}} {s};\n", .{type_name});
 
                 try self.zag_header_contents.put(t, type_name);
             }
@@ -650,12 +655,14 @@ pub fn compileType(
                 self.switchSection(.zag_header_types);
                 defer self.switchSection(saved_section);
 
-                try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
+                try self.write("typedef struct {\n");
                 try self.compileType(slice.inner.*, .{
                     .binding_mut = slice.is_mut,
                     .is_top_level = new_opts.is_top_level,
                 });
-                try self.write(")\n");
+                try self.write(" *ptr;\n");
+                try self.write("size_t len;\n");
+                try self.print("}} {s};\n", .{type_name});
 
                 try self.zag_header_contents.put(t, type_name);
             }
@@ -666,10 +673,11 @@ pub fn compileType(
             try self.compileType(array.inner.*, new_opts);
             try self.print("[{}]", .{array.size});
         },
-        // should be unreachable, array and function types are handled in `compileVariableSignature`
+
+        // should be unreachable, variadic and function types are handled in `compileVariableSignature`
         .function, .variadic => unreachable,
         .any => try self.write("void*"),
-        else => |primitive| try self.write(@tagName(primitive)),
+        else => |primitive| try self.write(try self.getInnerName(@tagName(primitive))),
     };
 }
 
@@ -902,20 +910,20 @@ fn registerConstants(self: *Self) !void {
     try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } }, .{});
     try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } }, .{});
 
-    try self.registerSymbol("i8", .{ .type = .i8 }, .{});
-    try self.registerSymbol("i16", .{ .type = .i16 }, .{});
-    try self.registerSymbol("i32", .{ .type = .i32 }, .{});
-    try self.registerSymbol("i64", .{ .type = .i64 }, .{});
+    try self.registerSymbol("i8", .{ .type = .i8 }, .{ .inner_name = "int8_t" });
+    try self.registerSymbol("i16", .{ .type = .i16 }, .{ .inner_name = "int16_t" });
+    try self.registerSymbol("i32", .{ .type = .i32 }, .{ .inner_name = "int32_t" });
+    try self.registerSymbol("i64", .{ .type = .i64 }, .{ .inner_name = "int64_t" });
 
-    try self.registerSymbol("u8", .{ .type = .u8 }, .{});
-    try self.registerSymbol("u16", .{ .type = .u16 }, .{});
-    try self.registerSymbol("u32", .{ .type = .u32 }, .{});
-    try self.registerSymbol("u64", .{ .type = .u64 }, .{});
+    try self.registerSymbol("u8", .{ .type = .u8 }, .{ .inner_name = "uint8_t" });
+    try self.registerSymbol("u16", .{ .type = .u16 }, .{ .inner_name = "uint16_t" });
+    try self.registerSymbol("u32", .{ .type = .u32 }, .{ .inner_name = "uint32_t" });
+    try self.registerSymbol("u64", .{ .type = .u64 }, .{ .inner_name = "uint64_t" });
 
-    try self.registerSymbol("usize", .{ .type = .usize }, .{});
+    try self.registerSymbol("usize", .{ .type = .usize }, .{ .inner_name = "size_t" });
 
-    try self.registerSymbol("f32", .{ .type = .f32 }, .{});
-    try self.registerSymbol("f64", .{ .type = .f64 }, .{});
+    try self.registerSymbol("f32", .{ .type = .f32 }, .{ .inner_name = "float" });
+    try self.registerSymbol("f64", .{ .type = .f64 }, .{ .inner_name = "double" });
 
     try self.registerSymbol("void", .{ .type = .void }, .{});
     try self.registerSymbol("bool", .{ .type = .bool }, .{});
@@ -923,9 +931,9 @@ fn registerConstants(self: *Self) !void {
 
     try self.registerSymbol("type", .{ .type = .{ .type = null } }, .{});
 
-    try self.registerSymbol("c_int", .{ .type = .c_int }, .{});
-    try self.registerSymbol("c_char", .{ .type = .c_char }, .{});
-    try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } }, .{});
+    try self.registerSymbol("c_int", .{ .type = .c_int }, .{ .inner_name = "int" });
+    try self.registerSymbol("c_char", .{ .type = .c_char }, .{ .inner_name = "char" });
+    try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } }, .{ .inner_name = "NULL" });
 
     const builtins: Module = try .init(self.alloc, "builtins");
 
