@@ -2,10 +2,11 @@ import std;
 import c;
 
 fn main() i32 {
+    let outside = 5;
     let myvar = {
         let a = 3;
         let b = 4;
-        a + b
+        a + b + outside
     };
 
     return 0;

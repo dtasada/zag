@@ -52,7 +52,7 @@ fn transpileModule(
 }
 
 pub fn build() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     const alloc = gpa.allocator();
 
     var arena_back: std.heap.ArenaAllocator = .init(alloc);

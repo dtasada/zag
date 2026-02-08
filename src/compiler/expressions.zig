@@ -190,8 +190,15 @@ pub fn compile(
 fn block(self: *Self, blk: ast.Expression.Block) !void {
     const helper_name = try std.fmt.allocPrint(self.alloc, "__zag_block_expr_{}", .{utils.randInt(u64)});
 
-    // First pass: Infer return type by simulating compilation
+    // First pass: Infer return type and collect captured variables
     const return_type: Type = try .inferBlock(self, blk);
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    var captured_vars = try collectCapturedVariables(alloc, self, blk);
+    defer captured_vars.deinit(alloc);
 
     const saved_section = self.current_section;
 
@@ -199,7 +206,15 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
     self.switchSection(.source_helper_functions);
     try self.write("static inline ");
     try self.compileType(return_type, .{ .binding_mut = true });
-    try self.print(" {s}() {{\n", .{helper_name});
+    try self.print(" {s}(", .{helper_name});
+
+    // Add captured variables as parameters
+    for (captured_vars.items, 0..) |captured, i| {
+        try self.compileVariableSignature(try self.getInnerName(captured.name), captured.type, .{ .binding_mut = false });
+        if (i < captured_vars.items.len - 1) try self.write(", ");
+    }
+
+    try self.write(") {\n");
     self.indent_level += 1;
 
     // Second pass: Actually compile and emit
@@ -212,9 +227,9 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
         try self.indent();
 
         // If it's the last statement and it's an expression, return it
-        if (is_last and statement.* == .expression and return_type != .void) {
+        if (is_last and statement.* == .block_eval and return_type != .void) {
             try self.write("return ");
-            try compile(self, &statement.expression, .{});
+            try compile(self, &statement.block_eval, .{});
             try self.write(";\n");
         } else {
             try statements.compile(self, statement);
@@ -224,9 +239,167 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
     self.indent_level -= 1;
     try self.write("}\n\n");
 
-    // Back to original section, emit the call
+    // Back to original section, emit the call with captured variables
     self.switchSection(saved_section);
-    try self.print("{s}()", .{helper_name});
+    try self.print("{s}(", .{helper_name});
+    for (captured_vars.items, 0..) |captured, i| {
+        try self.write(try self.getInnerName(captured.name));
+        if (i < captured_vars.items.len - 1) try self.write(", ");
+    }
+    try self.write(")");
+}
+
+const CapturedVariable = struct {
+    name: []const u8,
+    type: Type,
+};
+
+fn collectCapturedVariables(alloc: std.mem.Allocator, self: *Self, blk: ast.Expression.Block) !std.ArrayList(CapturedVariable) {
+    var captured: std.ArrayList(CapturedVariable) = .empty;
+
+    var referenced: std.ArrayList([]const u8) = .empty;
+    defer referenced.deinit(alloc);
+
+    var defined_in_block: std.ArrayList([]const u8) = .empty;
+    defer defined_in_block.deinit(alloc);
+
+    // First, collect all variables defined inside the block
+    for (blk.block.items) |statement| switch (statement) {
+        .variable_definition => |vd| try defined_in_block.append(alloc, vd.variable_name),
+        else => {},
+    };
+
+    // Then, collect all variables referenced in the block
+    for (blk.block.items) |statement| {
+        try collectReferencedVariables(alloc, statement, &referenced);
+    }
+
+    // Captured variables are those that are referenced but not defined in the block
+    for (referenced.items) |var_name| {
+        // Skip if defined in block
+        for (defined_in_block.items) |i| if (std.mem.eql(u8, i, var_name)) continue;
+
+        // Skip if it's a constant/builtin
+        if (std.mem.eql(u8, var_name, "true") or
+            std.mem.eql(u8, var_name, "false") or
+            std.mem.eql(u8, var_name, "null") or
+            std.mem.eql(u8, var_name, "undefined")) continue;
+
+        // Look up the variable in outer scopes
+        const var_type = self.getSymbolType(var_name) catch continue;
+
+        try captured.append(alloc, .{
+            .name = var_name,
+            .type = var_type,
+        });
+    }
+
+    return captured;
+}
+
+fn collectReferencedVariables(alloc: std.mem.Allocator, statement: ast.Statement, referenced: *std.ArrayList([]const u8)) !void {
+    switch (statement) {
+        .expression, .block_eval => |expr| try collectReferencedVariablesInExpr(alloc, expr, referenced),
+        .variable_definition => |vd| try collectReferencedVariablesInExpr(alloc, vd.assigned_value, referenced),
+        .@"return" => |ret| if (ret.@"return") |expr| try collectReferencedVariablesInExpr(alloc, expr, referenced),
+        .@"if" => |if_stmt| {
+            try collectReferencedVariablesInExpr(alloc, if_stmt.condition, referenced);
+            try collectReferencedVariables(alloc, if_stmt.body.*, referenced);
+            if (if_stmt.@"else") |else_stmt| try collectReferencedVariables(alloc, else_stmt.*, referenced);
+        },
+        .@"while" => |while_stmt| {
+            try collectReferencedVariablesInExpr(alloc, while_stmt.condition, referenced);
+            try collectReferencedVariables(alloc, while_stmt.body.*, referenced);
+        },
+        .@"for" => |for_stmt| {
+            try collectReferencedVariablesInExpr(alloc, for_stmt.iterator, referenced);
+            try collectReferencedVariables(alloc, for_stmt.body.*, referenced);
+        },
+        .block => |blk| for (blk.block.items) |stmt|
+            try collectReferencedVariables(alloc, stmt, referenced),
+        else => {},
+    }
+}
+
+fn collectReferencedVariablesInExpr(alloc: std.mem.Allocator, expr: ast.Expression, referenced: *std.ArrayList([]const u8)) error{OutOfMemory}!void {
+    switch (expr) {
+        .ident => |ident| try referenced.append(alloc, ident.ident),
+        .binary => |bin| {
+            try collectReferencedVariablesInExpr(alloc, bin.lhs.*, referenced);
+            try collectReferencedVariablesInExpr(alloc, bin.rhs.*, referenced);
+        },
+        .comparison => |comp| {
+            try collectReferencedVariablesInExpr(alloc, comp.left.*, referenced);
+            for (comp.comparisons.items) |item| {
+                try collectReferencedVariablesInExpr(alloc, item.right.*, referenced);
+            }
+        },
+        .call => |c| {
+            try collectReferencedVariablesInExpr(alloc, c.callee.*, referenced);
+            for (c.args.items) |arg| try collectReferencedVariablesInExpr(alloc, arg, referenced);
+        },
+        .member => |m| try collectReferencedVariablesInExpr(alloc, m.parent.*, referenced),
+        .index => |i| {
+            try collectReferencedVariablesInExpr(alloc, i.lhs.*, referenced);
+            try collectReferencedVariablesInExpr(alloc, i.index.*, referenced);
+        },
+        .slice => |slc| {
+            try collectReferencedVariablesInExpr(alloc, slc.lhs.*, referenced);
+            if (slc.start) |start| try collectReferencedVariablesInExpr(alloc, start.*, referenced);
+            if (slc.end) |end| try collectReferencedVariablesInExpr(alloc, end.*, referenced);
+        },
+        .prefix => |prefix| try collectReferencedVariablesInExpr(alloc, prefix.rhs.*, referenced),
+        .reference => |ref| try collectReferencedVariablesInExpr(alloc, ref.inner.*, referenced),
+        .assignment => |assign| {
+            try collectReferencedVariablesInExpr(alloc, assign.assignee.*, referenced);
+            try collectReferencedVariablesInExpr(alloc, assign.value.*, referenced);
+        },
+        .struct_instantiation => |si| {
+            try collectReferencedVariablesInExpr(alloc, si.type_expr.*, referenced);
+            var it = si.members.iterator();
+            while (it.next()) |entry| {
+                try collectReferencedVariablesInExpr(alloc, entry.value_ptr.*, referenced);
+            }
+        },
+        .array_instantiation => |ai| {
+            try collectReferencedVariablesInExpr(alloc, ai.length.*, referenced);
+            for (ai.contents.items) |item| {
+                try collectReferencedVariablesInExpr(alloc, item, referenced);
+            }
+        },
+        .@"if" => |if_expr| {
+            try collectReferencedVariablesInExpr(alloc, if_expr.condition.*, referenced);
+            try collectReferencedVariablesInExpr(alloc, if_expr.body.*, referenced);
+            if (if_expr.@"else") |else_expr| try collectReferencedVariablesInExpr(alloc, else_expr.*, referenced);
+        },
+        .block => |blk| {
+            for (blk.block.items) |stmt| try collectReferencedVariables(alloc, stmt, referenced);
+        },
+        .range => |range| {
+            try collectReferencedVariablesInExpr(alloc, range.start.*, referenced);
+            if (range.end) |end| try collectReferencedVariablesInExpr(alloc, end.*, referenced);
+        },
+        .generic => |gen| {
+            try collectReferencedVariablesInExpr(alloc, gen.lhs.*, referenced);
+            for (gen.arguments.items) |arg| {
+                try collectReferencedVariablesInExpr(alloc, arg, referenced);
+            }
+        },
+        .match => |m| {
+            try collectReferencedVariablesInExpr(alloc, m.condition.*, referenced);
+            for (m.cases.items) |case| {
+                switch (case.condition) {
+                    .opts => |opts| for (opts.items) |opt|
+                        try collectReferencedVariablesInExpr(alloc, opt, referenced),
+                    .@"else" => {},
+                }
+                try collectReferencedVariables(alloc, case.result, referenced);
+            }
+        },
+        // Literals don't reference variables
+        .int, .uint, .float, .string, .char, .type => {},
+        .bad_node => {},
+    }
 }
 
 fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {
