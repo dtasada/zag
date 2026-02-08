@@ -31,6 +31,10 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         .enum_declaration => |*enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl),
         .union_declaration => |*union_decl| try compoundTypeDeclaration(self, .@"union", union_decl),
         .@"break", .@"continue" => try self.print("{s};\n", .{@tagName(statement.*)}),
+        .block_eval => |block_eval| try @"return"(self, .{
+            .pos = block_eval.getPosition(),
+            .@"return" = block_eval,
+        }),
     }
 }
 

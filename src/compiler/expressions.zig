@@ -65,7 +65,7 @@ pub fn compile(
         } else try compile(self, expression, .{ .binding_mut = opts.binding_mut });
     } else switch (expression.*) {
         .assignment => |a| try assignment(self, a),
-        .block => |block| try self.compileBlock(block.block, .{}),
+        .block => |blk| try block(self, blk),
         .binary => |b| try binary(self, b),
         .comparison => |comp| try comparison(self, comp),
         .float => |float| try self.print("{}", .{float.float}),
@@ -185,6 +185,11 @@ pub fn compile(
         .slice => |slc| try slice(self, slc, opts.binding_mut),
         .bad_node => unreachable,
     }
+}
+
+fn block(self: *Self, blk: ast.Expression.Block) !void {
+    // TODO: replace with sections
+    try self.compileBlock(blk.block, .{});
 }
 
 fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {

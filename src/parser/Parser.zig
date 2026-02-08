@@ -277,8 +277,12 @@ pub fn expect(
 ) !@FieldType(Lexer.Token, @tagName(expected)) {
     return if (std.meta.activeTag(actual) == expected)
         @field(actual, @tagName(expected))
-    else
-        self.unexpectedToken(context, expected_token, actual);
+    else if (expected == .@";") utils.printErr(
+        error.SyntaxError,
+        "Parser error: expected semicolon after {s}, received '{f}' ({f}).\n",
+        .{ context, actual, self.currentPosition() },
+        .red,
+    ) else self.unexpectedToken(context, expected_token, actual);
 }
 
 /// Identical to `expect` but doesn't print error message.
@@ -472,4 +476,8 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
     }
 
     return params;
+}
+
+pub inline fn expectSemicolon(self: *Self, context: []const u8) !void {
+    if (self.expect_semicolon) try self.expect(self.advance(), .@";", context, ";");
 }

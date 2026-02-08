@@ -238,6 +238,7 @@ pub const Statement = union(enum) {
     struct_declaration: StructDeclaration,
     union_declaration: UnionDeclaration,
     variable_definition: VariableDefinition,
+    block_eval: Expression,
 
     pub const For = struct {
         pos: utils.Position,
