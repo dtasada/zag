@@ -2,15 +2,7 @@ import std;
 import c;
 
 fn main() i32 {
-    let outside = 5;
-    let myvar = {
-        let a = 3;
-        let b = 4;
-        a + b + outside
-    };
-
-    let mut arraylist = std.ArrayList<i32>.init();
-    arraylist.deinit();
+    let result = std.Result<i32> { ok: 4 };
 
     return 0;
 }

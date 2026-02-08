@@ -213,11 +213,6 @@ pub inline fn previousToken(self: *const Self) Lexer.Token {
     return self.lexer.tokens.items[self.pos - 1];
 }
 
-/// Returns the tag of the token at the current position.
-pub inline fn currentTokenKind(self: *const Self) Lexer.TokenKind {
-    return std.meta.activeTag(self.currentToken());
-}
-
 /// A token which has a NUD handler means it expects nothing to its left
 /// Common examples of this type of token are prefix & unary expressions.
 fn nud(self: *Self, kind: Lexer.TokenKind, nud_fn: NudHandler) !void {
@@ -352,7 +347,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
-    while (self.currentTokenKind() != closing_token) {
+    while (std.meta.activeTag(self.currentToken()) != closing_token) {
         try args.append(self.alloc, if (is_generic) b: {
             const backup_pos = self.pos;
             if (self.type_parser.parseType(self.alloc, .primary)) |t|
@@ -363,7 +358,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
             }
         } else try expressions.parse(self, .default, .{}));
 
-        if (self.currentTokenKind() == .@",") _ = self.advance() else break;
+        if (self.currentToken() == .@",") _ = self.advance() else break;
     }
 
     try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
@@ -376,7 +371,7 @@ pub fn parseBlock(self: *Self) !ast.Block {
 
     try self.expect(self.advance(), .@"{", "block", "{");
 
-    while (self.currentTokenKind() != .eof and self.currentTokenKind() != .@"}")
+    while (self.currentToken() != .eof and self.currentToken() != .@"}")
         try block.append(self.alloc, try statements.parse(self));
 
     try self.expect(self.advance(), .@"}", "block", "}");
@@ -397,7 +392,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
         @tagName(opening_token),
     );
 
-    if (self.currentTokenKind() == closing_token) {
+    if (self.currentToken() == closing_token) {
         if (is_generic) return utils.printErr(
             error.UnexpectedToken,
             "Parser error: empty generic parameter list at {f}.\n",
@@ -431,7 +426,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
 
             var param_type: ast.Type = .{ .inferred = .{ .pos = first_pos } };
             if (is_generic) {
-                param_type = if (self.currentTokenKind() == .@":") b: {
+                param_type = if (self.currentToken() == .@":") b: {
                     _ = self.advance();
                     break :b try self.type_parser.parseType(self.alloc, .default);
                 } else .{ .inferred = .{ .pos = first_pos } };
@@ -461,17 +456,10 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 .type = param_type,
             });
 
-            self.expectSilent(self.currentToken(), .@",") catch {
-                try self.expect(
-                    self.advance(),
-                    if (is_generic) .@">" else .@")",
-                    context,
-                    if (is_generic) ">" else ")",
-                );
+            if (self.currentToken() == .@",") _ = self.advance() else {
+                try self.expect(self.advance(), closing_token, context, @tagName(closing_token));
                 break;
-            };
-
-            _ = self.advance();
+            }
         }
     }
 

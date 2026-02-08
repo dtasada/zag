@@ -73,7 +73,7 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower
         );
     };
 
-    while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentTokenKind()))) {
+    while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentToken()))) {
         token = self.parent_parser.advance(); // consume operator
         if (self.led_lookup.get(std.meta.activeTag(token))) |led_handler| {
             left = try led_handler(self, alloc, left, self.getBindingPower(std.meta.activeTag(token)));
@@ -89,14 +89,14 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
     // < is already consumed by parseType loop
     var args = try std.ArrayList(ast.Expression).initCapacity(alloc, 0);
 
-    if (self.parent_parser.currentTokenKind() != .@">") {
+    if (self.parent_parser.currentToken() != .@">") {
         while (true) {
             const arg = try expressions.parse(self.parent_parser, .relational, .{});
             try args.append(alloc, arg);
 
-            if (self.parent_parser.currentTokenKind() == .@">") break;
+            if (self.parent_parser.currentToken() == .@">") break;
             try self.parent_parser.expect(self.parent_parser.advance(), .@",", "generic arguments", ",");
-            if (self.parent_parser.currentTokenKind() == .@">") break;
+            if (self.parent_parser.currentToken() == .@">") break;
         }
     }
     _ = self.parent_parser.advance(); // consume >
@@ -131,7 +131,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
     const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '&'
 
-    const is_mut = self.parent_parser.currentTokenKind() == .mut;
+    const is_mut = self.parent_parser.currentToken() == .mut;
     if (is_mut) _ = self.parent_parser.advance(); // consume `mut`
 
     const inner = try alloc.create(ast.Type);
@@ -191,7 +191,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     var size: ?*ast.Expression = null;
 
-    if (self.parent_parser.currentTokenKind() != .@"]") {
+    if (self.parent_parser.currentToken() != .@"]") {
         size = try alloc.create(ast.Expression);
         size.?.* = try expressions.parse(self.parent_parser, .default, .{});
     }

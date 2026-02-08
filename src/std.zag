@@ -150,3 +150,8 @@ pub struct ArrayList<T> {
         self.items = self.items[0..self.items.len - 1];
     }
 }
+
+pub union Result<T> {
+    ok: T,
+    err,
+}

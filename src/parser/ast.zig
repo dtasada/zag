@@ -298,11 +298,7 @@ pub const Statement = union(enum) {
         name: []const u8,
         generic_types: ParameterList,
         variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(union(utils.CompoundTypeTag) {
-            @"struct": StructDeclaration,
-            @"enum": EnumDeclaration,
-            @"union": UnionDeclaration,
-        }),
+        subtypes: std.ArrayList(Subtype),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
 
@@ -330,11 +326,7 @@ pub const Statement = union(enum) {
         name: []const u8,
         generic_types: ParameterList,
         variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(union(utils.CompoundTypeTag) {
-            @"struct": StructDeclaration,
-            @"enum": EnumDeclaration,
-            @"union": UnionDeclaration,
-        }),
+        subtypes: std.ArrayList(Subtype),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
     };
@@ -347,11 +339,7 @@ pub const Statement = union(enum) {
         pos: utils.Position,
         is_pub: bool,
         variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(union(utils.CompoundTypeTag) {
-            @"struct": StructDeclaration,
-            @"enum": EnumDeclaration,
-            @"union": UnionDeclaration,
-        }),
+        subtypes: std.ArrayList(Subtype),
         name: []const u8,
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
@@ -453,4 +441,10 @@ pub const Type = union(enum) {
             inline else => |some| some.pos,
         };
     }
+};
+
+pub const Subtype = union(utils.CompoundTypeTag) {
+    @"struct": Statement.StructDeclaration,
+    @"enum": Statement.EnumDeclaration,
+    @"union": Statement.UnionDeclaration,
 };

@@ -22,7 +22,7 @@ pub fn primary(self: *Self) !ast.Expression {
         else => |other| return self.unexpectedToken("primary expression", "(int | float | ident | string | char)", other),
     };
 
-    if (expr == .ident and self.currentTokenKind() == .@"<") {
+    if (expr == .ident and self.currentToken() == .@"<") {
         if (isGenericLookahead(self)) {
             const old_expr = try self.alloc.create(ast.Expression);
             old_expr.* = expr;
@@ -78,21 +78,21 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
 
 pub fn parse(self: *Self, bp: BindingPower, opts: struct { silent_error: bool = false }) ParserError!ast.Expression {
     // first parse the NUD
-    const nud_fn = try self.getHandler(.nud, self.currentTokenKind(), .{ .silent_error = opts.silent_error });
+    const nud_fn = try self.getHandler(.nud, self.currentToken(), .{ .silent_error = opts.silent_error });
     var lhs = try nud_fn(self);
 
     // while we have a led and (current bp < bp of current token)
     // continue parsing lhs
-    while (self.bp_lookup.get(self.currentTokenKind())) |current_bp| {
+    while (self.bp_lookup.get(self.currentToken())) |current_bp| {
         if (@intFromEnum(current_bp) <= @intFromEnum(bp)) break;
 
         // This should be an assertion, since we found a bp
-        const led_fn = try self.getHandler(.led, self.currentTokenKind(), .{ .silent_error = opts.silent_error });
+        const led_fn = try self.getHandler(.led, self.currentToken(), .{ .silent_error = opts.silent_error });
 
         const old_lhs = try self.alloc.create(ast.Expression);
         old_lhs.* = lhs;
 
-        lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentTokenKind(), .{ .silent_error = opts.silent_error }));
+        lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentToken(), .{ .silent_error = opts.silent_error }));
     }
 
     return lhs;
@@ -162,14 +162,14 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
         .members = .init(self.alloc),
     };
 
-    while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
+    while (self.currentToken() != .eof and self.currentToken() != .@"}") {
         const member_name = try self.expect(self.advance(), .ident, "struct instantiation", "struct member name");
         try self.expect(self.advance(), .@":", "struct instantiation", ":");
         const member_value = try parse(self, .default, .{});
 
         try @"struct".members.put(member_name, member_value);
 
-        if (self.currentTokenKind() != .@"}") {
+        if (self.currentToken() != .@"}") {
             try self.expect(self.advance(), .@",", "struct instantiation", ",");
         }
     }
@@ -194,10 +194,10 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
     };
 
     try self.expect(self.advance(), .@"{", "array instantiation", "{");
-    while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
+    while (self.currentToken() != .eof and self.currentToken() != .@"}") {
         try array.contents.append(self.alloc, try parse(self, .logical, .{}));
 
-        if (self.currentTokenKind() != .@"}")
+        if (self.currentToken() != .@"}")
             try self.expect(self.advance(), .@",", "array literal", ",");
     }
     try self.expect(self.advance(), .@"}", "array instantiation", "}");
@@ -268,19 +268,19 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
     };
 
     const body = try self.alloc.create(ast.Expression);
-    body.* = if (self.currentTokenKind() == .@"{")
+    body.* = if (self.currentToken() == .@"{")
         try block(self)
     else
         try parse(self, .default, .{});
 
     var @"else": ?*ast.Expression = null;
-    if (self.currentTokenKind() == .@"{") {
+    if (self.currentToken() == .@"{") {
         // block
-    } else if (self.currentTokenKind() == .@"else") {
+    } else if (self.currentToken() == .@"else") {
         _ = self.advance(); // consume `else`
 
         @"else" = try self.alloc.create(ast.Expression);
-        @"else".?.* = if (self.currentTokenKind() == .@"{")
+        @"else".?.* = if (self.currentToken() == .@"{")
             try block(self)
         else
             try parse(self, .default, .{});
@@ -331,7 +331,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
         try self.expect(self.advance(), .@"->", "match statement case", "->");
 
         const result: ast.Statement = b: {
-            if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
+            if (self.statement_lookup.get(self.currentToken())) |statement_fn| {
                 self.expect_semicolon = false;
                 defer self.expect_semicolon = true;
 
@@ -443,7 +443,7 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
     _ = self.advance(); // consume `&`
 
-    const is_mut = self.currentTokenKind() == .mut;
+    const is_mut = self.currentToken() == .mut;
     if (is_mut) _ = self.advance(); // consume `mut`
 
     const inner = try self.alloc.create(ast.Expression);

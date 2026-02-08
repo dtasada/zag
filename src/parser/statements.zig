@@ -10,7 +10,7 @@ const Self = @import("Parser.zig");
 const ParserError = Self.ParserError;
 
 pub fn parse(self: *Self) ParserError!ast.Statement {
-    if (self.statement_lookup.get(self.currentTokenKind())) |statement_fn| {
+    if (self.statement_lookup.get(self.currentToken())) |statement_fn| {
         return statement_fn(self);
     }
 
@@ -39,14 +39,14 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
     const pos = self.currentPosition();
     _ = self.advance(); // consume `let`
 
-    const is_mut = self.currentTokenKind() == .mut;
+    const is_mut = self.currentToken() == .mut;
     if (!is_const and is_mut) _ = self.advance(); // consume `mut`
 
     const var_name = try self.expect(self.advance(), .ident, environment, env_small);
 
     // optionally parse type
     var @"type": ast.Type = .{ .inferred = .{ .pos = self.currentPosition() } };
-    if (self.currentTokenKind() == .@":") {
+    if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);
     }
@@ -74,11 +74,8 @@ pub fn compoundTypeDeclaration(
     self: *Self,
     comptime T: utils.CompoundTypeTag,
 ) ParserError!ast.Statement {
-    const context = switch (T) {
-        .@"struct" => "struct declaration statement",
-        .@"enum" => "enum declaration statement",
-        .@"union" => "union declaration statement",
-    };
+    const context = @tagName(T) ++ " declaration statement";
+    const tag_name = @tagName(T) ++ "_declaration";
 
     const pos = self.currentPosition();
 
@@ -118,74 +115,72 @@ pub fn compoundTypeDeclaration(
         },
     };
 
-    if (self.currentTokenKind() == .@"<") {
-        switch (T) {
-            inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
-            .@"enum" => return utils.printErr(
-                error.UnexpectedToken,
-                "Parser error: enum declaration can't have generic parameters ({f}).\n",
-                .{self.lexer.source_map.items[self.pos]},
-                .red,
-            ),
-        }
-    }
+    if (self.currentToken() == .@"<") switch (T) {
+        inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
+        .@"enum" => return utils.printErr(
+            error.UnexpectedToken,
+            "Parser error: enum declaration can't have generic parameters ({f}).\n",
+            .{self.lexer.source_map.items[self.pos]},
+            .red,
+        ),
+    };
 
     try self.expect(self.advance(), .@"{", context, "{' or '<");
 
-    while (self.currentToken() != .eof and self.currentTokenKind() != .@"}") {
-        // parse member
+    while (self.currentToken() != .eof and self.currentToken() != .@"}") {
         switch (self.currentToken()) {
             .ident => {
                 var member_names: std.ArrayList([]const u8) = .empty;
                 defer member_names.deinit(self.alloc);
 
-                try member_names.append(self.alloc, try self.expect(
+                const first_name = try self.expect(
                     self.advance(),
                     .ident,
                     context,
                     "member name",
-                ));
+                );
+                try member_names.append(self.alloc, first_name);
 
-                if (T != .@"enum") {
-                    while (self.currentTokenKind() == .@",") {
-                        _ = self.advance(); // consume @","
-                        try member_names.append(self.alloc, try self.expect(
-                            self.advance(),
-                            .ident,
-                            context,
-                            "member name",
-                        ));
-                    }
+                if (T != .@"enum") while (self.currentToken() == .@",") {
+                    _ = self.advance();
+                    try member_names.append(self.alloc, try self.expect(
+                        self.advance(),
+                        .ident,
+                        @tagName(T) ++ " member",
+                        "member name",
+                    ));
+                };
+
+                const member_type: ?ast.Type = switch (T) {
+                    .@"struct" => b: {
+                        try self.expect(self.advance(), .@":", context, ":");
+                        break :b try self.type_parser.parseType(self.alloc, .default);
+                    },
+                    .@"union" => if (self.currentToken() == .@":") b: {
+                        _ = self.advance();
+                        break :b try self.type_parser.parseType(self.alloc, .default);
+                    } else null,
+                    .@"enum" => null,
+                };
+
+                const value: ?ast.Expression = switch (T) {
+                    .@"enum" => if (self.currentToken() == .@"=") b: {
+                        _ = self.advance();
+                        break :b try expressions.parse(self, .default, .{});
+                    } else null,
+                    else => null,
+                };
+
+                for (member_names.items) |name| try compound.members.append(self.alloc, switch (T) {
+                    .@"struct" => .{ .name = name, .type = member_type.? },
+                    .@"enum" => .{ .name = name, .value = value },
+                    .@"union" => .{ .name = name, .type = member_type },
+                });
+
+                if (self.currentToken() == .@",") _ = self.advance() else {
+                    try self.expect(self.advance(), .@"}", context, "}");
+                    break;
                 }
-
-                const member_type: ?ast.Type =
-                    switch (T) {
-                        .@"struct", .@"union" => blk: {
-                            try self.expect(self.advance(), .@":", context, ":");
-                            break :blk try self.type_parser.parseType(self.alloc, .default);
-                        },
-                        .@"enum" => null,
-                    };
-
-                const value: ?ast.Expression =
-                    switch (T) {
-                        .@"enum" => if (self.currentTokenKind() == .@"=") blk: {
-                            _ = self.advance();
-                            break :blk try expressions.parse(self, .default, .{});
-                        } else null,
-                        else => null,
-                    };
-
-                for (member_names.items) |name| {
-                    try compound.members.append(self.alloc, switch (T) {
-                        .@"struct" => .{ .name = name, .type = member_type.? },
-                        .@"enum" => .{ .name = name, .value = value },
-                        .@"union" => .{ .name = name, .type = member_type },
-                    });
-                }
-
-                self.expectSilent(self.currentToken(), .@",") catch break;
-                _ = self.advance(); // if there was a @",", consume it
             },
             .@"fn" => try compound.methods.append(
                 self.alloc,
@@ -193,9 +188,14 @@ pub fn compoundTypeDeclaration(
             ),
             .let, .@"const" => try compound.variables.append(self.alloc, (try variableDefinition(self)).variable_definition),
 
-            .@"struct" => try compound.subtypes.append(self.alloc, .{ .@"struct" = (try compoundTypeDeclaration(self, .@"struct")).struct_declaration }),
-            .@"union" => try compound.subtypes.append(self.alloc, .{ .@"union" = (try compoundTypeDeclaration(self, .@"union")).union_declaration }),
-            .@"enum" => try compound.subtypes.append(self.alloc, .{ .@"enum" = (try compoundTypeDeclaration(self, .@"enum")).enum_declaration }),
+            inline .@"struct", .@"union", .@"enum" => try compound.subtypes.append(
+                self.alloc,
+                @unionInit(
+                    ast.Subtype,
+                    @tagName(T),
+                    @field(try compoundTypeDeclaration(self, .@"struct"), tag_name),
+                ),
+            ),
 
             .@"pub" => _ = self.advance(),
 
@@ -210,11 +210,7 @@ pub fn compoundTypeDeclaration(
 
     try self.expect(self.advance(), .@"}", context, "}");
 
-    return switch (T) {
-        .@"struct" => .{ .struct_declaration = compound },
-        .@"enum" => .{ .enum_declaration = compound },
-        .@"union" => .{ .union_declaration = compound },
-    };
+    return @unionInit(ast.Statement, tag_name, compound);
 }
 
 pub fn structDeclaration(self: *Self) ParserError!ast.Statement {
@@ -315,7 +311,7 @@ pub fn @"return"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "return" keyword and parse from there.
 
     var expression: ?ast.Expression = null;
-    if (self.currentTokenKind() != .@";")
+    if (self.currentToken() != .@";")
         expression = try expressions.parse(self, .default, .{});
 
     try self.expectSemicolon("return statement");
@@ -337,7 +333,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     } else |_| null;
 
     const body = try self.alloc.create(ast.Statement);
-    body.* = if (self.currentTokenKind() == .@"{")
+    body.* = if (self.currentToken() == .@"{")
         .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } }
     else
         try parse(self);
@@ -386,7 +382,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
     };
 
     const body = try self.alloc.create(ast.Statement);
-    body.* = if (self.currentTokenKind() == .@"{")
+    body.* = if (self.currentToken() == .@"{")
         .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } }
     else
         try parse(self);
@@ -395,11 +391,11 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
     return switch (@"type") {
         .@"if" => {
             var @"else": ?*ast.Statement = null;
-            if (self.currentTokenKind() == .@"else") {
+            if (self.currentToken() == .@"else") {
                 _ = self.advance(); // consume `else`
 
                 @"else" = try self.alloc.create(ast.Statement);
-                @"else".?.* = if (self.currentTokenKind() == .@"{")
+                @"else".?.* = if (self.currentToken() == .@"{")
                     .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } }
                 else
                     try parse(self);
