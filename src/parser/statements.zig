@@ -143,6 +143,7 @@ pub fn compoundTypeDeclaration(
 
                 if (T != .@"enum") while (self.currentToken() == .@",") {
                     _ = self.advance();
+                    if (self.currentToken() == .@"}") break;
                     try member_names.append(self.alloc, try self.expect(
                         self.advance(),
                         .ident,
@@ -178,7 +179,6 @@ pub fn compoundTypeDeclaration(
                 });
 
                 if (self.currentToken() == .@",") _ = self.advance() else {
-                    try self.expect(self.advance(), .@"}", context, "}");
                     break;
                 }
             },
