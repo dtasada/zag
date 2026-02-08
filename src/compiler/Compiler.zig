@@ -16,10 +16,38 @@ const Value = @import("Value.zig").Value;
 const Self = @This();
 
 pub const Module = @import("Module.zig");
-
 pub const Mode = enum { emit, analysis };
 
 const CompilerError = errors.CompilerError;
+
+const Section = enum {
+    // Header sections (for .h files)
+    header_guard_start,
+    header_includes,
+    header_forward_decls,
+    header_type_defs,
+    header_function_decls,
+    header_guard_end,
+
+    // Source sections (for .c files)
+    source_includes,
+    source_helper_functions,
+    source_type_impls,
+    source_function_impls,
+
+    zag_header_types,
+    zag_header_macros,
+};
+
+const Buffer = struct {
+    writer: std.Io.Writer,
+
+    fn init(alloc: std.mem.Allocator) !Buffer {
+        return .{
+            .writer = std.Io.Writer.Allocating.init(alloc),
+        };
+    }
+};
 
 alloc: std.mem.Allocator,
 
@@ -31,20 +59,11 @@ module: Module,
 module_registry: *std.StringHashMap(Module),
 exported_symbols: std.StringHashMap(Module.Symbol),
 
-/// Points to whichever file should be written to.
-writer: ?*File,
-
-/// Saves the last file that was being written to. Used in `switchFileBack`.
-previous_writer: ?*File,
-
-/// The C source file being written to.
-output: ?File,
-
-/// The helper `zag.h` header file that contains zag language level dependencies like auto-generated types.
-zag_header: ?File,
-
-/// The header file for the module being compiled (e.g. `lib.zag.h`).
-module_header: ?File,
+sections: std.EnumArray(Section, std.ArrayList(u8)),
+current_section: Section,
+output_path: []const u8,
+module_header_path: []const u8,
+zag_header_path: []const u8,
 
 /// Maps a type to its inner name.
 zag_header_contents: std.HashMap(
@@ -115,22 +134,20 @@ pub fn getAST(
             .red,
         );
 
-    var lexer = Lexer.init(file, alloc, file_path) catch |err|
-        return utils.printErr(
-            error.FailedToTokenizeSource,
-            "Failed to tokenize source code: {}\n",
-            .{err},
-            .red,
-        );
+    var lexer = Lexer.init(file, alloc, file_path) catch |err| return utils.printErr(
+        error.FailedToTokenizeSource,
+        "Failed to tokenize source code: {}\n",
+        .{err},
+        .red,
+    );
     defer lexer.deinit(alloc);
 
-    var parser = Parser.init(lexer, alloc) catch |err|
-        return utils.printErr(
-            error.FailedToCreateParser,
-            "Failed to create parser: {}\n",
-            .{err},
-            .red,
-        );
+    var parser = Parser.init(lexer, alloc) catch |err| return utils.printErr(
+        error.FailedToCreateParser,
+        "Failed to create parser: {}\n",
+        .{err},
+        .red,
+    );
     defer parser.deinit();
 
     return .{
@@ -139,63 +156,24 @@ pub fn getAST(
     };
 }
 
-/// Helper file handling structure. Used for commodity when writing to a file.
-pub const File = struct {
-    handler: std.fs.File,
-    writer: std.fs.File.Writer,
-    buf: []u8,
-    path: []const u8,
-
-    /// creates a new file handler.
-    fn init(alloc: std.mem.Allocator, path: []const u8, file: std.fs.File) !File {
-        var self: File = .{
-            .handler = file,
-            .path = path,
-            .buf = try alloc.alloc(u8, 1024),
-            .writer = undefined,
-        };
-        self.writer = self.handler.writer(self.buf);
-        return self;
-    }
-
-    /// flushes the file writer and closes the file handle
-    fn deinit(self: *File, alloc: std.mem.Allocator) void {
-        self.flush() catch |err| utils.print(
-            "Compiler error: failed to write to file: {}\n",
-            .{err},
-            .red,
-        );
-        self.handler.close();
-        alloc.free(self.buf);
-    }
-
-    /// writes `bytes` to the file writer
-    fn write(self: *File, bytes: []const u8) !void {
-        _ = try self.writer.interface.write(bytes);
-    }
-
-    /// prints a formatted string to the file writer.
-    fn print(self: *File, comptime fmt: []const u8, args: anytype) CompilerError!void {
-        try self.writer.interface.print(fmt, args);
-    }
-
-    /// flushes the filewriter
-    fn flush(self: *File) !void {
-        try self.writer.interface.flush();
-    }
-};
-
-/// Flushes the writer and then points it to `target`.
-pub fn switchWriter(self: *Self, target: ?*File) !void {
-    self.previous_writer = self.writer;
-    try self.flush();
-    self.writer = target.?;
+/// Switch to a different output section
+pub fn switchSection(self: *Self, section: Section) void {
+    self.current_section = section;
 }
 
-/// Flushes the writer and then points it to `self.previous_writer` (set by `switchWriter`).
-pub fn switchWriterBack(self: *Self) void {
-    self.flush() catch utils.print("Error flushing to '{s}'!", .{self.writer.?.path}, .red);
-    self.writer = self.previous_writer;
+/// Get writer for current section
+fn currentWriter(self: *Self) *std.ArrayList(u8) {
+    return self.sections.getPtr(self.current_section);
+}
+
+/// Write to current section
+pub fn write(self: *Self, bytes: []const u8) CompilerError!void {
+    try self.currentWriter().appendSlice(self.alloc, bytes);
+}
+
+/// Print to current section
+pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) CompilerError!void {
+    try self.currentWriter().print(self.alloc, fmt, args);
 }
 
 /// initializes a new `Compiler`.
@@ -208,6 +186,7 @@ pub fn init(
     registry: *std.StringHashMap(Module),
     mode: Mode,
 ) CompilerError!*Self {
+    _ = mode;
     const self = try alloc.create(Self);
 
     const visited = try alloc.create(std.ArrayList(Type.Context.Visited));
@@ -217,66 +196,21 @@ pub fn init(
         .alloc = alloc,
         .input = input,
         .source_path = try alloc.dupe(u8, file_path),
-        .module = undefined,
+        .module = try .init(alloc, b: {
+            var module_name_it = std.mem.splitBackwardsAny(u8, self.source_path, "/.");
+            _ = module_name_it.next().?;
+            break :b module_name_it.next().?;
+        }),
         .module_registry = registry,
         .exported_symbols = .init(alloc),
-        .output = null,
-        .module_header = null,
-        .zag_header = null,
+        .sections = .initFill(.empty),
+        .current_section = .source_includes,
         .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
-        .writer = null,
         .pending_instantiations = .empty,
-        .previous_writer = null,
+        .output_path = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}),
+        .module_header_path = try std.fmt.allocPrint(alloc, "{s}.h", .{file_path}),
+        .zag_header_path = try alloc.dupe(u8, "zag/zag.h"),
     };
-
-    const module_name = b: {
-        var module_name_it = std.mem.splitBackwardsAny(u8, self.source_path, "/.");
-        _ = module_name_it.next().?;
-        break :b module_name_it.next().?;
-    };
-
-    switch (mode) {
-        .emit => {
-            // mkdir .zag-out/
-            var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
-            defer @".zag-out".close();
-            // mkdir .zag-out/src
-            try @".zag-out".makePath(std.fs.path.dirname(file_path) orelse "");
-
-            // mkdir .zag-out/zag
-            var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
-            defer @".zag-out/zag".close();
-
-            const @".c" = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}); // src/main.zag -> src/main.zag.c
-            const output_file = try @".zag-out".createFile(@".c", .{}); // mkdir .zag-out/src/main.zag.c
-
-            const @".h" = try std.fmt.allocPrint(alloc, "{s}.h", .{file_path});
-            const module_header_file = try @".zag-out".createFile(@".h", .{});
-
-            const zag_header_path = try std.fs.path.join(alloc, &.{ ".zag-out", "zag", "zag.h" });
-            const zag_header_file = try @".zag-out/zag".createFile("zag.h", .{});
-
-            self.output = try .init(alloc, @".c", output_file);
-            self.module_header = try .init(alloc, @".h", module_header_file);
-            self.zag_header = try .init(alloc, zag_header_path, zag_header_file);
-
-            self.writer = &self.output.?; // don't change to switchWriter, because it'll flush which will panic in analysis mode
-
-            try self.zag_header.?.write(@import("zag.h.zig").CONTENT);
-
-            // Header Guard
-            const guard_name = try std.fmt.allocPrint(alloc, "__ZAG_MODULE_{}_H", .{std.hash.Wyhash.hash(0, file_path)});
-            try self.module_header.?.print("#ifndef {s}\n#define {s}\n\n#include <zag.h>\n\n", .{ guard_name, guard_name });
-
-            // Include module header in module source
-            try self.output.?.print("#include \"{s}.h\"\n\n", .{std.fs.path.basename(file_path)});
-
-            try @".zag-out".makePath("bin");
-
-            self.module = try .init(alloc, module_name, &self.output.?);
-        },
-        .analysis => self.module = try .init(alloc, module_name, null),
-    }
 
     return self;
 }
@@ -284,41 +218,20 @@ pub fn init(
 /// Frees resources
 pub fn deinit(self: *Self) void {
     self.alloc.free(self.source_path);
-    if (self.output) |*o| o.deinit(self.alloc);
-    if (self.module_header) |*h| h.deinit(self.alloc);
-    if (self.zag_header) |*z| z.deinit(self.alloc);
+
+    inline for (@typeInfo(Section).@"enum".fields) |field| {
+        const section = @field(Section, field.name);
+        self.sections.getPtr(section).deinit(self.alloc);
+    }
+
     self.scopes.deinit(self.alloc);
     self.pending_instantiations.deinit(self.alloc);
-}
-
-/// Prints formatted content to whichever file handle `self.writer` is pointing to at the moment.
-pub fn print(
-    self: *Self,
-    comptime fmt: []const u8,
-    args: anytype,
-) CompilerError!void {
-    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
-    try w.print(fmt, args);
-}
-
-/// Writes bytes to whichever file handle `self.writer` is pointing to at the moment.
-pub fn write(self: *Self, bytes: []const u8) CompilerError!void {
-    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
-    try w.write(bytes);
-}
-
-/// Flushes whichever file handle `self.writer` is pointing to at the moment
-pub fn flush(self: *Self) CompilerError!void {
-    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
-    try w.flush();
 }
 
 /// Prints 4 spaces for each indent level into whichever file handle `self.writer` is pointing to
 /// at the moment.
 pub inline fn indent(self: *Self) CompilerError!void {
-    const w = self.writer orelse @panic("Compiler attempted to write in analysis mode");
-    for (0..self.indent_level) |_|
-        try w.write("    ");
+    for (0..self.indent_level) |_| try self.write("    ");
 }
 
 /// Entry point for the compiler. Compiles AST into C code.
@@ -328,9 +241,9 @@ pub fn emit(self: *Self) CompilerError!void {
 
     // register constants
     try self.registerConstants();
-
     try self.scan();
 
+    self.switchSection(.source_includes);
     try self.write("#include <zag.h>\n");
 
     // Pass 1: Imports
@@ -343,6 +256,7 @@ pub fn emit(self: *Self) CompilerError!void {
     };
 
     // Pass 3: Code (Functions, Variables, etc.)
+    self.switchSection(.source_function_impls);
     for (self.input.items) |*statement| switch (statement.*) {
         .import, .struct_declaration, .union_declaration, .enum_declaration => {},
         else => try statements.compile(self, statement),
@@ -350,17 +264,62 @@ pub fn emit(self: *Self) CompilerError!void {
 
     try self.solveGenerics();
 
-    if (std.mem.eql(u8, self.source_path, "src/main.zag")) {
-        try self.write("int main() { main_main(); }\n");
-    }
+    try self.writeOutputFiles();
+}
 
-    try self.output.?.flush();
+fn writeOutputFiles(self: *Self) !void {
+    // Create output directories
+    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+    defer @".zag-out".close();
 
-    try self.zag_header.?.write("\n#endif");
-    try self.zag_header.?.flush();
+    try @".zag-out".makePath(std.fs.path.dirname(self.output_path).?);
+    try @".zag-out".makePath(std.fs.path.dirname(self.module_header_path).?);
+    try @".zag-out".makePath(std.fs.path.dirname(self.zag_header_path).?);
 
-    try self.module_header.?.write("\n#endif");
-    try self.module_header.?.flush();
+    // Write main source file
+    var output_file_buf: [1024]u8 = undefined;
+    const output_file = try @".zag-out".createFile(self.output_path, .{});
+    defer output_file.close();
+    var output_file_writer = output_file.writer(&output_file_buf);
+
+    try output_file_writer.interface.writeAll(self.sections.get(.source_includes).items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_helper_functions).items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_type_impls).items);
+    try output_file_writer.interface.writeAll(self.sections.get(.source_function_impls).items);
+
+    if (std.mem.eql(u8, self.source_path, "src/main.zag"))
+        try output_file_writer.interface.writeAll("int main() { main_main(); }\n");
+
+    try output_file_writer.interface.flush();
+
+    // Write header file
+    var header_file_buf: [1024]u8 = undefined;
+    const header_file = try @".zag-out".createFile(self.module_header_path, .{});
+    defer header_file.close();
+    var header_file_writer = header_file.writer(&header_file_buf);
+
+    const guard_name = try std.fmt.allocPrint(self.alloc, "__ZAG_MODULE_{}_H", .{std.hash.Wyhash.hash(0, self.source_path)});
+    defer self.alloc.free(guard_name);
+
+    try header_file_writer.interface.print("#ifndef {s}\n#define {s}\n\n", .{ guard_name, guard_name });
+    try header_file_writer.interface.writeAll("#include <zag.h>\n\n");
+    try header_file_writer.interface.writeAll(self.sections.get(.header_includes).items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).items);
+    try header_file_writer.interface.writeAll("\n#endif\n");
+    try header_file_writer.interface.flush();
+
+    var zag_header_buf: [1024]u8 = undefined;
+    const zag_header = try @".zag-out".createFile(self.zag_header_path, .{});
+    defer zag_header.close();
+    var zag_header_writer = zag_header.writer(&zag_header_buf);
+
+    try zag_header_writer.interface.writeAll(@import("zag.h.zig").CONTENT);
+    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_types).items);
+    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_macros).items);
+    try zag_header_writer.interface.writeAll("\n#endif\n");
+    try zag_header_writer.interface.flush();
 }
 
 pub fn mangle(self: *const Self, name: []const u8) ![]const u8 {
@@ -530,27 +489,9 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     try child_compiler.analyze();
 
-    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
-    defer @".zag-out".close();
-    // mkdir .zag-out/src
-    try @".zag-out".makePath(std.fs.path.dirname(full_path) orelse "");
-
-    var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
-    defer @".zag-out/zag".close();
-
-    const @".c" = try std.fmt.allocPrint(self.alloc, "{s}.c", .{full_path}); // src/main.zag -> src/main.zag.c
-    const output_file = try @".zag-out".openFile(@".c", .{ .mode = .read_write });
-
-    const module_file = try self.alloc.create(File);
-    module_file.* = try .init(self.alloc, @".c", output_file);
-
     // Create module from exports
     // Allocate on heap to ensure pointer stability
-    var mod: Module = try .init(
-        self.alloc,
-        import_stmt.alias orelse import_stmt.module_name.getLast(),
-        module_file,
-    );
+    var mod: Module = try .init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
 
     var it = child_compiler.exported_symbols.iterator();
     while (it.next()) |entry| {
@@ -665,13 +606,13 @@ pub fn compileType(
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                try self.switchWriter(&self.zag_header.?);
-                defer self.switchWriterBack();
+                const saved_section = self.current_section;
+                self.switchSection(.zag_header_types);
+                defer self.switchSection(saved_section);
 
                 try self.print("__ZAG_OPTIONAL_TYPE({s}, ", .{type_name});
                 try self.compileType(optional.*, new_opts);
                 try self.write(")\n");
-                try self.flush();
 
                 try self.zag_header_contents.put(t, type_name);
             }
@@ -681,8 +622,9 @@ pub fn compileType(
         .error_union => |error_union| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                try self.switchWriter(&self.zag_header.?);
-                defer self.switchWriterBack();
+                const saved_section = self.current_section;
+                self.switchSection(.zag_header_types);
+                defer self.switchSection(saved_section);
 
                 try self.print("__ZAG_ERROR_UNION_TYPE({s}, ", .{type_name});
                 try self.compileType(error_union.failure.*, new_opts);
@@ -695,7 +637,6 @@ pub fn compileType(
                 }, new_opts);
 
                 try self.write(")\n");
-                try self.flush();
 
                 try self.zag_header_contents.put(t, type_name);
             }
@@ -705,8 +646,9 @@ pub fn compileType(
         .slice => |slice| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
-                try self.switchWriter(&self.zag_header.?);
-                defer self.switchWriterBack();
+                const saved_section = self.current_section;
+                self.switchSection(.zag_header_types);
+                defer self.switchSection(saved_section);
 
                 try self.print("__ZAG_SLICE_TYPE({s}, ", .{type_name});
                 try self.compileType(slice.inner.*, .{
@@ -714,7 +656,6 @@ pub fn compileType(
                     .is_top_level = new_opts.is_top_level,
                 });
                 try self.write(")\n");
-                try self.flush();
 
                 try self.zag_header_contents.put(t, type_name);
             }
@@ -986,7 +927,7 @@ fn registerConstants(self: *Self) !void {
     try self.registerSymbol("c_char", .{ .type = .c_char }, .{});
     try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } }, .{});
 
-    const builtins: Module = try .init(self.alloc, "builtins", null);
+    const builtins: Module = try .init(self.alloc, "builtins");
 
     try self.registerSymbol("sizeof", .{
         .symbol = .{

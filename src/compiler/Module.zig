@@ -4,8 +4,6 @@ const Type = @import("Type.zig").Type;
 
 const Self = @This();
 
-const File = @import("Compiler.zig").File;
-
 pub const Symbol = struct {
     is_pub: bool,
     name: []const u8,
@@ -17,16 +15,13 @@ name: []const u8,
 
 symbols: *std.StringHashMap(Symbol),
 
-file: ?*File,
-
-pub fn init(alloc: std.mem.Allocator, name: []const u8, file: ?*File) !Self {
+pub fn init(alloc: std.mem.Allocator, name: []const u8) !Self {
     const symbols = try alloc.create(std.StringHashMap(Symbol));
     symbols.* = .init(alloc);
 
     return .{
         .name = name,
         .symbols = symbols,
-        .file = file,
     };
 }
 

@@ -664,7 +664,7 @@ pub const Type = union(enum) {
                 };
             },
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
-            .block => .void,
+            .block => |block| try inferBlock(compiler, block),
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
                 try compiler.pushScope();
                 if (@"if".capture) |capture| {
@@ -742,6 +742,21 @@ pub const Type = union(enum) {
             .function => |function| function.return_type.*,
             else => |t| errors.illegalCallExpression(t, call.pos),
         };
+    }
+
+    pub fn inferBlock(self: *Compiler, blk: ast.Expression.Block) !Type {
+        try self.pushScope();
+        defer self.popScope();
+
+        for (blk.block.items) |statement| switch (statement) {
+            .variable_definition => |vd| try self.registerSymbol(vd.variable_name, .{
+                .symbol = .{ .type = try .infer(self, vd.assigned_value) },
+            }, .{}),
+            .block_eval => |expr| return try .infer(self, expr),
+            else => {},
+        };
+
+        return .void;
     }
 
     /// Returns a type from an AST compound type declaration statement.

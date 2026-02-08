@@ -188,8 +188,45 @@ pub fn compile(
 }
 
 fn block(self: *Self, blk: ast.Expression.Block) !void {
-    // TODO: replace with sections
-    try self.compileBlock(blk.block, .{});
+    const helper_name = try std.fmt.allocPrint(self.alloc, "__zag_block_expr_{}", .{utils.randInt(u64)});
+
+    // First pass: Infer return type by simulating compilation
+    const return_type: Type = try .inferBlock(self, blk);
+
+    const saved_section = self.current_section;
+
+    // Emit helper function to helper section
+    self.switchSection(.source_helper_functions);
+    try self.write("static inline ");
+    try self.compileType(return_type, .{ .binding_mut = true });
+    try self.print(" {s}() {{\n", .{helper_name});
+    self.indent_level += 1;
+
+    // Second pass: Actually compile and emit
+    try self.pushScope();
+    defer self.popScope();
+
+    for (blk.block.items, 0..) |*statement, i| {
+        const is_last = i == blk.block.items.len - 1;
+
+        try self.indent();
+
+        // If it's the last statement and it's an expression, return it
+        if (is_last and statement.* == .expression and return_type != .void) {
+            try self.write("return ");
+            try compile(self, &statement.expression, .{});
+            try self.write(";\n");
+        } else {
+            try statements.compile(self, statement);
+        }
+    }
+
+    self.indent_level -= 1;
+    try self.write("}\n\n");
+
+    // Back to original section, emit the call
+    self.switchSection(saved_section);
+    try self.print("{s}()", .{helper_name});
 }
 
 fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {

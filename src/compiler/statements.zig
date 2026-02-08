@@ -58,8 +58,10 @@ fn compoundTypeDeclaration(
         else => {},
     }
 
-    if (type_decl.is_pub and self.module_header != null)
-        try self.switchWriter(&self.module_header.?);
+    const saved_section = self.current_section;
+
+    self.switchSection(if (type_decl.is_pub) .header_type_defs else .source_type_impls);
+    defer self.switchSection(saved_section);
 
     const inner_name = try self.getInnerName(type_decl.name);
     try self.print("typedef {s} {s} {s};\n", .{ @tagName(T), inner_name, inner_name });
@@ -125,8 +127,7 @@ fn compoundTypeDeclaration(
                 .inner_name,
         });
 
-    try self.switchWriter(&self.output.?);
-
+    self.switchSection(.source_function_impls);
     for (type_decl.methods.items) |method| {
         try self.pushScope();
         defer self.popScope();
@@ -156,8 +157,8 @@ fn compoundTypeDeclaration(
             .{ .inner_name = try self.mangle(method.name) },
         );
 
-        if (type_decl.is_pub and self.module_header != null) {
-            try self.switchWriter(&self.module_header.?);
+        if (type_decl.is_pub) {
+            self.switchSection(.header_function_decls);
 
             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
@@ -167,7 +168,7 @@ fn compoundTypeDeclaration(
             }
             try self.write(");\n");
 
-            try self.switchWriter(&self.output.?);
+            self.switchSection(.source_function_impls);
         }
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
@@ -266,8 +267,10 @@ fn variableDefinition(
         }, .{ .inner_name = mangled_name });
 
         if (v.is_pub) {
-            try self.switchWriter(&self.module_header.?);
-            defer self.switchWriterBack();
+            const saved_section = self.current_section;
+            self.switchSection(.header_forward_decls);
+            defer self.switchSection(saved_section);
+
             try self.write("extern ");
             // For extern, it's a declaration. binding_mut=false gives 'const' for let/const.
             try self.compileVariableSignature(mangled_name, final_type, .{ .binding_mut = v.binding == .is_mut });
@@ -465,9 +468,10 @@ fn functionDefinition(
     defer self.current_return_type = previous_return_type;
     self.current_return_type = try Type.fromAst(self, function_def.return_type);
 
-    if (binding_function or function_def.is_pub and self.module_header != null) {
-        try self.switchWriter(&self.module_header.?);
-        defer self.switchWriterBack();
+    if (binding_function or function_def.is_pub) {
+        const saved_section = self.current_section;
+        self.switchSection(.header_forward_decls);
+        defer self.switchSection(saved_section);
 
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.

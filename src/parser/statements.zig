@@ -18,8 +18,8 @@ pub fn parse(self: *Self) ParserError!ast.Statement {
 
     if (self.currentToken() == .@";") {
         _ = self.advance();
-        return .{ .block_eval = expression };
-    } else return .{ .expression = expression };
+        return .{ .expression = expression };
+    } else return .{ .block_eval = expression };
 }
 
 pub fn variableDefinition(self: *Self) ParserError!ast.Statement {

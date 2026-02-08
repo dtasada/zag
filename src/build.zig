@@ -20,7 +20,6 @@ pub fn transpile(
         );
     defer compiler.deinit();
 
-    // Call emit to build the module
     compiler.emit() catch |err| return utils.printErr(
         error.CompilationError,
         "Compilation error: {}\n",
@@ -68,6 +67,12 @@ pub fn build() !void {
 
 /// Compiles C code into machine code.
 pub fn compile(alloc: std.mem.Allocator) !void {
+    var @".zag-out" = try std.fs.cwd().openDir(".zag-out", .{});
+    defer @".zag-out".close();
+
+    var @".zag-out/bin" = try @".zag-out".makeOpenPath("bin", .{});
+    defer @".zag-out/bin".close();
+
     const main_obj = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
     defer alloc.free(main_obj);
 
