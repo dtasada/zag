@@ -403,6 +403,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 if (func.is_pub) try self.exported_symbols.put(func.name, .{
                     .name = func.name,
+                    .inner_name = try self.mangle(func.name),
                     .is_pub = func.is_pub,
                     .type = t,
                 });
@@ -413,6 +414,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } }, .{ .is_defined = false });
                 if (func.is_pub) try self.exported_symbols.put(func.name, .{
                     .name = func.name,
+                    .inner_name = func.name,
                     .is_pub = func.is_pub,
                     .type = t,
                 });
@@ -436,6 +438,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 if (var_def.is_pub) try self.exported_symbols.put(var_def.variable_name, .{
                     .name = var_def.variable_name,
+                    .inner_name = try self.mangle(var_def.variable_name),
                     .is_pub = var_def.is_pub,
                     .type = final_type,
                     .is_mut = var_def.binding == .is_mut,
@@ -459,6 +462,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 // Exported symbols logic
                 if (struct_decl.is_pub) try self.exported_symbols.put(struct_decl.name, .{
                     .name = struct_decl.name,
+                    .inner_name = try self.mangle(struct_decl.name),
                     .is_pub = struct_decl.is_pub,
                     .type = symbol_type,
                 });
@@ -1085,7 +1089,7 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         var scope_it = scope.iterator();
         while (scope_it.next()) |entry| {
             switch (entry.value_ptr.*) {
-                .module => |module| if (module.symbols.get(symbol)) |s| return s.name,
+                .module => |module| if (module.symbols.get(symbol)) |s| return s.inner_name,
                 else => {},
             }
         }

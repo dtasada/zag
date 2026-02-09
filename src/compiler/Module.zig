@@ -7,6 +7,7 @@ const Self = @This();
 pub const Symbol = struct {
     is_pub: bool,
     name: []const u8,
+    inner_name: []const u8,
     type: Type,
     is_mut: bool = false,
 };
