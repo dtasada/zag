@@ -361,33 +361,31 @@ pub fn scan(self: *Self) CompilerError!void {
         else => {},
     };
 
-    for (self.input.items) |*statement| {
-        switch (statement.*) {
-            .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl),
-            .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl),
-            .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl),
-            .function_definition => |*func| {
-                var t = try Type.fromAst(self, func.getType());
-                t.function.definition = func;
-                try self.registerSymbol(
-                    func.name,
-                    .{ .symbol = .{ .type = t } },
-                    .{
-                        .inner_name = try self.mangle(func.name),
-                        .is_defined = false,
-                    },
-                );
-            },
-            .binding_function_declaration => |*func| {
-                var t: Type = try .fromAst(self, func.getType());
-                t.function.is_bind = true;
-                try self.registerSymbol(func.name, .{
-                    .symbol = .{ .type = t },
-                }, .{ .is_defined = false });
-            },
-            else => {},
-        }
-    }
+    for (self.input.items) |*statement| switch (statement.*) {
+        .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl),
+        .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl),
+        .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl),
+        .function_definition => |*func| {
+            var t = try Type.fromAst(self, func.getType());
+            t.function.definition = func;
+            try self.registerSymbol(
+                func.name,
+                .{ .symbol = .{ .type = t } },
+                .{
+                    .inner_name = try self.mangle(func.name),
+                    .is_defined = false,
+                },
+            );
+        },
+        .binding_function_declaration => |*func| {
+            var t: Type = try .fromAst(self, func.getType());
+            t.function.is_bind = true;
+            try self.registerSymbol(func.name, .{
+                .symbol = .{ .type = t },
+            }, .{ .is_defined = false });
+        },
+        else => {},
+    };
 }
 
 pub fn analyze(self: *Self) CompilerError!void {

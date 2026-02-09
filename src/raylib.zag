@@ -108,6 +108,8 @@ pub struct Camera3D {
     projection: i32,         // Camera projection: CAMERA_PERSPECTIVE or CAMERA_ORTHOGRAPHIC
 }
 
+const Camera = Camera3D;
+
 // Camera2D, defines position/orientation in 2d space
 pub struct Camera2D {
     offset: Vector2,         // Camera offset (screen space offset from window origin)
@@ -1153,11 +1155,11 @@ pub bind fn ImageDrawRectangle(dst: &mut Image, posX: i32, posY: i32, width: i32
 pub bind fn ImageDrawRectangleV(dst: &mut Image, position: Vector2, size: Vector2, color: Color) void;
 pub bind fn ImageDrawRectangleRec(dst: &mut Image, rec: Rectangle, color: Color) void;
 pub bind fn ImageDrawRectangleLines(dst: &mut Image, rec: Rectangle, thick: i32, color: Color) void;
-pub bind fn ImageDrawTriangle(dst: &mut Image, v1, v2, v3: Vector2, color: Color);               // Draw triangle within an image
-pub bind fn ImageDrawTriangleEx(dst: &mut Image, v1, v2, v3: Vector2, c1, c2, c3: Color); // Draw triangle with interpolated colors within an image
-pub bind fn ImageDrawTriangleLines(dst: &mut Image, v1, v2, v3: Vector2, color: Color);          // Draw triangle outline within an image
-pub bind fn ImageDrawTriangleFan(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color);               // Draw a triangle fan defined by points within an image (first vertex is the center)
-pub bind fn ImageDrawTriangleStrip(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color);             // Draw a triangle strip defined by points within an image
+pub bind fn ImageDrawTriangle(dst: &mut Image, v1, v2, v3: Vector2, color: Color) void;               // Draw triangle within an image
+pub bind fn ImageDrawTriangleEx(dst: &mut Image, v1, v2, v3: Vector2, c1, c2, c3: Color) void; // Draw triangle with interpolated colors within an image
+pub bind fn ImageDrawTriangleLines(dst: &mut Image, v1, v2, v3: Vector2, color: Color) void;          // Draw triangle outline within an image
+pub bind fn ImageDrawTriangleFan(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color) void;               // Draw a triangle fan defined by points within an image (first vertex is the center)
+pub bind fn ImageDrawTriangleStrip(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color) void;             // Draw a triangle strip defined by points within an image
 pub bind fn ImageDraw(dst: &mut Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color) void;
 pub bind fn ImageDrawText(dst: &mut Image, text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
 pub bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
@@ -1342,7 +1344,7 @@ pub bind fn LoadModelAnimations(fileName: &c_char, animCount: &mut u32) &mut Mod
 pub bind fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: i32) void;
 pub bind fn UpdateModelAnimationBones(model: Model, anim: ModelAnimation, frame: i32) void;          // Update model animation mesh bone matrices (GPU skinning)
 pub bind fn UnloadModelAnimation(anim: ModelAnimation) void;
-pub bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: i32);                // Unload animation array data
+pub bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: i32) void;                // Unload animation array data
 pub bind fn IsModelAnimationValid(model: Model, anim: ModelAnimation) bool;
 
 // Collision detection functions
