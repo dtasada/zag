@@ -1,13 +1,1319 @@
-pub struct Color {
-    r, g, b, a: u8,
+// Vector2, 2 components
+struct Vector2 {
+    x: f32,                // Vector x component
+    y: f32,                // Vector y component
 }
 
-pub bind fn InitWindow(width, height: i32, name: &c_char) void;
-pub bind fn CloseWindow() void;
+// Vector3, 3 components
+struct Vector3 {
+    x: f32,                // Vector x component
+    y: f32,                // Vector y component
+    z: f32,                // Vector z component
+}
 
-pub bind fn WindowShouldClose() bool;
+// Vector4, 4 components
+struct Vector4 {
+    x: f32,                // Vector x component
+    y: f32,                // Vector y component
+    z: f32,                // Vector z component
+    w: f32,                // Vector w component
+}
 
-pub bind fn BeginDrawing() bool;
-pub bind fn EndDrawing() bool;
+// Matrix, 4x4 components, column major, OpenGL style, right-handed
+struct Matrix {
+    m0, m4, m8, m12: f32,  // Matrix first row (4 components)
+    m1, m5, m9, m13: f32,  // Matrix second row (4 components)
+    m2, m6, m10, m14: f32, // Matrix third row (4 components)
+    m3, m7, m11, m15: f32, // Matrix fourth row (4 components)
+}
 
-pub bind fn ClearBackground(color: Color) void;
+// Color, 4 components, R8G8B8A8 (32bit)
+struct Color {
+    r: u8,        // Color red value
+    g: u8,        // Color green value
+    b: u8,        // Color blue value
+    a: u8,        // Color alpha value
+}
+
+// Rectangle, 4 components
+struct Rectangle {
+    x: f32,                // Rectangle top-left corner position x
+    y: f32,                // Rectangle top-left corner position y
+    width: f32,            // Rectangle width
+    height: f32,           // Rectangle height
+}
+
+// Image, pixel data stored in CPU memory (RAM)
+struct Image {
+    data: &mut void,             // Image raw data
+    width: i32,              // Image base width
+    height: i32,             // Image base height
+    mipmaps: i32,            // Mipmap levels, 1 by default
+    format: i32,             // Data format (PixelFormat type)
+}
+
+// Texture, tex data stored in GPU memory (VRAM)
+struct Texture {
+    id: u32,       // OpenGL texture id
+    width: i32,              // Texture base width
+    height: i32,             // Texture base height
+    mipmaps: i32,            // Mipmap levels, 1 by default
+    format: i32,             // Data format (PixelFormat type)
+}
+
+// RenderTexture, fbo for texture rendering
+struct RenderTexture {
+    id: u32,        // OpenGL framebuffer object id
+    texture: Texture,        // Color buffer attachment texture
+    depth: Texture,          // Depth buffer attachment texture
+}
+
+// NPatchInfo, n-patch layout info
+struct NPatchInfo {
+    source: Rectangle,       // Texture source rectangle
+    left: i32,               // Left border offset
+    top: i32,                // Top border offset
+    right: i32,              // Right border offset
+    bottom: i32,             // Bottom border offset
+    layout: i32,             // Layout of the n-patch: 3x3, 1x3 or 3x1
+}
+
+// GlyphInfo, font characters glyphs info
+struct GlyphInfo {
+    value: i32,              // Character value (Unicode)
+    offsetX: i32,            // Character offset X when drawing
+    offsetY: i32,            // Character offset Y when drawing
+    advanceX: i32,           // Character advance position X
+    image: Image,            // Character image data
+}
+
+// Font, font texture and GlyphInfo array data
+struct Font {
+    baseSize: i32,           // Base size (default chars height)
+    glyphCount: i32,         // Number of glyph characters
+    glyphPadding: i32,       // Padding around the glyph characters
+    texture: Texture,      // Texture atlas containing the glyphs
+    recs: &mut Rectangle,        // Rectangles in texture for the glyphs
+    glyphs: &mut GlyphInfo,      // Glyphs info data
+}
+
+// Camera, defines position/orientation in 3d space
+struct Camera3D {
+    position: Vector3,       // Camera position
+    target: Vector3,         // Camera target it looks-at
+    up: Vector3,             // Camera up vector (rotation over its axis)
+    fovy: f32,             // Camera field-of-view aperture in Y (degrees) in perspective, used as near plane height in world units in orthographic
+    projection: i32,         // Camera projection: CAMERA_PERSPECTIVE or CAMERA_ORTHOGRAPHIC
+}
+
+// Camera2D, defines position/orientation in 2d space
+struct Camera2D {
+    offset: Vector2,         // Camera offset (screen space offset from window origin)
+    target: Vector2,         // Camera target (world space target point that is mapped to screen space offset)
+    rotation: f32,         // Camera rotation in degrees (pivots around target)
+    zoom: f32,             // Camera zoom (scaling around target), must not be set to 0, set to 1.0f for no scale
+}
+
+// Mesh, vertex data and vao/vbo
+struct Mesh {
+    vertexCount: i32,        // Number of vertices stored in arrays
+    triangleCount: i32,      // Number of triangles stored (indexed or not)
+
+    // Vertex attributes data
+    vertices: &mut f32,        // Vertex position (XYZ - 3 components per vertex) (shader-location = 0)
+    texcoords: &mut f32,       // Vertex texture coordinates (UV - 2 components per vertex) (shader-location = 1)
+    texcoords2: &mut f32,      // Vertex texture second coordinates (UV - 2 components per vertex) (shader-location = 5)
+    normals: &mut f32,         // Vertex normals (XYZ - 3 components per vertex) (shader-location = 2)
+    tangents: &mut f32,        // Vertex tangents (XYZW - 4 components per vertex) (shader-location = 4)
+    colors: &mut u8,      // Vertex colors (RGBA - 4 components per vertex) (shader-location = 3)
+    indices: &mut u16,    // Vertex indices (in case vertex data comes indexed)
+
+    // Animation vertex data
+    animVertices: &mut f32,    // Animated vertex positions (after bones transformations)
+    animNormals: &mut f32,     // Animated normals (after bones transformations)
+    boneIds: &mut u8, // Vertex bone ids, max 255 bone ids up to 4 bones influence by vertex (skinning) (shader-location = 6)
+    boneWeights: &mut f32,     // Vertex bone weight up to 4 bones influence by vertex (skinning) (shader-location = 7)
+    boneMatrices: &mut Matrix,   // Bones animated transformation matrices
+    boneCount: i32,          // Number of bones
+
+    // OpenGL identifiers
+    vaoId: u32,     // OpenGL Vertex Array Object id
+    vboId: &mut u32,    // OpenGL Vertex Buffer Objects id (default vertex data)
+}
+
+// Shader
+struct Shader {
+    id: u32,        // Shader program id
+    locs: &mut u32,              // Shader locations array (RL_MAX_SHADER_LOCATIONS)
+}
+
+// MaterialMap
+struct MaterialMap {
+    texture: Texture,      // Material map texture
+    color: Color,            // Material map color
+    value: f32,            // Material map value
+}
+
+// Material, includes shader and maps
+struct Material {
+    shader: Shader,          // Material shader
+    maps: &mut MaterialMap,      // Material maps array (MAX_MATERIAL_MAPS)
+    params: [4]f32,        // Material generic parameters (if required)
+}
+
+// Transform, vertex transformation data
+struct Transform {
+    translation: Vector3,    // Translation
+    rotation: Vector4,    // Rotation
+    scale: Vector3,          // Scale
+}
+
+// Bone, skeletal animation bone
+struct BoneInfo {
+    name: [32]c_char,          // Bone name
+    parent: i32,             // Bone parent
+}
+
+// Model, meshes, materials and animation data
+struct Model {
+    transform: Matrix,       // Local transform matrix
+
+    meshCount: i32,          // Number of meshes
+    materialCount: i32,      // Number of materials
+    meshes: &mut Mesh,           // Meshes array
+    materials: &mut Material,    // Materials array
+    meshMaterial: &mut i32,      // Mesh material number
+
+    // Animation data
+    boneCount: i32,          // Number of bones
+    bones: &mut BoneInfo,        // Bones information (skeleton)
+    bindPose: &mut Transform,    // Bones base transformation (pose)
+}
+
+// ModelAnimation
+struct ModelAnimation {
+    boneCount: i32,          // Number of bones
+    frameCount: i32,         // Number of animation frames
+    bones: &BoneInfo,        // Bones information (skeleton)
+    framePoses: &mut &mut Transform, // Poses array by frame
+    name: [32]c_char,          // Animation name
+}
+
+// Ray, ray for raycasting
+struct Ray {
+    position: Vector3,       // Ray position (origin)
+    direction: Vector3,      // Ray direction (normalized)
+}
+
+// RayCollision, ray hit information
+struct RayCollision {
+    hit: bool,               // Did the ray hit something?
+    distance: f32,         // Distance to the nearest hit
+    point: Vector3,          // Point of the nearest hit
+    normal: Vector3,         // Surface normal of hit
+}
+
+// BoundingBox
+struct BoundingBox {
+    min: Vector3,            // Minimum vertex box-corner
+    max: Vector3,            // Maximum vertex box-corner
+}
+
+// Wave, audio wave data
+struct Wave {
+    frameCount: u32,    // Total number of frames (considering channels)
+    sampleRate: u32,    // Frequency (samples per second)
+    sampleSize: u32,    // Bit depth (bits per sample): 8, 16, 32 (24 not supported)
+    channels: u32,      // Number of channels (1-mono, 2-stereo, ...)
+    data: &mut void,                 // Buffer data pointer
+}
+
+struct AudioStream {
+    buffer: &mut rAudioBuffer,       // Pointer to internal data used by the audio system
+    processor: &mut rAudioProcessor, // Pointer to internal data processor, useful for audio effects
+
+    sampleRate: u32,    // Frequency (samples per second)
+    sampleSize: u32,    // Bit depth (bits per sample): 8, 16, 32 (24 not supported)
+    channels: u32,      // Number of channels (1-mono, 2-stereo, ...)
+}
+
+// Sound
+struct Sound {
+    stream: AudioStream,         // Audio stream
+    frameCount: u32,    // Total number of frames (considering channels)
+}
+
+// Music, audio stream, anything longer than ~10 seconds should be streamed
+struct Music {
+    stream: AudioStream,         // Audio stream
+    frameCount: u32,    // Total number of frames (considering channels)
+    looping: bool,               // Music looping enable
+
+    ctxType: i32,                // Type of music context (audio filetype)
+    ctxData: &mut void,              // Audio context data, depends on type
+}
+
+// VrDeviceInfo, Head-Mounted-Display device parameters
+struct VrDeviceInfo {
+    hResolution: i32,                // Horizontal resolution in pixels
+    vResolution: i32,                // Vertical resolution in pixels
+    hScreenSize: f32,              // Horizontal size in meters
+    vScreenSize: f32,              // Vertical size in meters
+    eyeToScreenDistance: f32,      // Distance between eye and display in meters
+    lensSeparationDistance: f32,   // Lens separation distance in meters
+    interpupillaryDistance: f32,   // IPD (distance between pupils) in meters
+    lensDistortionValues: [4]f32,  // Lens distortion constant parameters
+    chromaAbCorrection: [4]f32,    // Chromatic aberration correction parameters
+}
+
+// VrStereoConfig, VR stereo rendering configuration for simulator
+struct VrStereoConfig {
+    projection: [2]Matrix,           // VR projection matrices (per eye)
+    viewOffset: [2]Matrix,           // VR projection matrices (per eye)
+    leftLensCenter: [2]f32,        // VR left lens center
+    rightLensCenter: [2]f32,       // VR right lens center
+    leftScreenCenter: [2]f32,      // VR left screen center
+    rightScreenCenter: [2]f32,     // VR right screen center
+    scale: [2]f32,                 // VR distortion scale
+    scaleIn: [2]f32,               // VR distortion scale in
+}
+
+// File path list
+struct FilePathList {
+    count: u32,             // Filepaths entries count
+    paths: &mut &mut paths,                   // Filepaths entries
+}
+
+// Automation event
+struct AutomationEvent {
+    frame: u32,             // Event frame
+    type: u32,              // Event type (AutomationEventType)
+    params: [4]u32,                  // Event parameters (if required)
+}
+
+// Automation event list
+struct AutomationEventList {
+    capacity: u32,          // Events max entries (MAX_AUTOMATION_EVENTS)
+    count: u32,             // Events entries count
+    events: &mut AutomationEvent,        // Events entries
+}
+
+//----------------------------------------------------------------------------------
+// Enumerators Definition
+//----------------------------------------------------------------------------------
+// System/Window config flags
+// NOTE: Every bit registers one state (use it with bit masks)
+// By default all flags are set to 0
+enum ConfigFlags {
+    FLAG_VSYNC_HINT         = 0x00000040,   // Set to try enabling V-Sync on GPU
+    FLAG_FULLSCREEN_MODE    = 0x00000002,   // Set to run program in fullscreen
+    FLAG_WINDOW_RESIZABLE   = 0x00000004,   // Set to allow resizable window
+    FLAG_WINDOW_UNDECORATED = 0x00000008,   // Set to disable window decoration (frame and buttons)
+    FLAG_WINDOW_HIDDEN      = 0x00000080,   // Set to hide window
+    FLAG_WINDOW_MINIMIZED   = 0x00000200,   // Set to minimize window (iconify)
+    FLAG_WINDOW_MAXIMIZED   = 0x00000400,   // Set to maximize window (expanded to monitor)
+    FLAG_WINDOW_UNFOCUSED   = 0x00000800,   // Set to window non focused
+    FLAG_WINDOW_TOPMOST     = 0x00001000,   // Set to window always on top
+    FLAG_WINDOW_ALWAYS_RUN  = 0x00000100,   // Set to allow windows running while minimized
+    FLAG_WINDOW_TRANSPARENT = 0x00000010,   // Set to allow transparent framebuffer
+    FLAG_WINDOW_HIGHDPI     = 0x00002000,   // Set to support HighDPI
+    FLAG_WINDOW_MOUSE_PASSTHROUGH = 0x00004000, // Set to support mouse passthrough, only supported when FLAG_WINDOW_UNDECORATED
+    FLAG_BORDERLESS_WINDOWED_MODE = 0x00008000, // Set to run program in borderless windowed mode
+    FLAG_MSAA_4X_HINT       = 0x00000020,   // Set to try enabling MSAA 4X
+    FLAG_INTERLACED_HINT    = 0x00010000    // Set to try enabling interlaced video format (for V3D)
+}
+
+// Trace log level
+// NOTE: Organized by priority level
+enum TraceLogLevel {
+    LOG_ALL = 0,        // Display all logs
+    LOG_TRACE,          // Trace logging, intended for internal use only
+    LOG_DEBUG,          // Debug logging, used for internal debugging, it should be disabled on release builds
+    LOG_INFO,           // Info logging, used for program execution info
+    LOG_WARNING,        // Warning logging, used on recoverable failures
+    LOG_ERROR,          // Error logging, used on unrecoverable failures
+    LOG_FATAL,          // Fatal logging, used to abort program: exit(EXIT_FAILURE)
+    LOG_NONE            // Disable logging
+};
+
+// Keyboard keys (US keyboard layout)
+// NOTE: Use GetKeyPressed() to allow redefining required keys for alternative layouts
+enum KeyboardKey {
+    KEY_NULL            = 0,        // Key: NULL, used for no key pressed
+    // Alphanumeric keys
+    KEY_APOSTROPHE      = 39,       // Key: '
+    KEY_COMMA           = 44,       // Key: ,
+    KEY_MINUS           = 45,       // Key: -
+    KEY_PERIOD          = 46,       // Key: .
+    KEY_SLASH           = 47,       // Key: /
+    KEY_ZERO            = 48,       // Key: 0
+    KEY_ONE             = 49,       // Key: 1
+    KEY_TWO             = 50,       // Key: 2
+    KEY_THREE           = 51,       // Key: 3
+    KEY_FOUR            = 52,       // Key: 4
+    KEY_FIVE            = 53,       // Key: 5
+    KEY_SIX             = 54,       // Key: 6
+    KEY_SEVEN           = 55,       // Key: 7
+    KEY_EIGHT           = 56,       // Key: 8
+    KEY_NINE            = 57,       // Key: 9
+    KEY_SEMICOLON       = 59,       // Key: ;
+    KEY_EQUAL           = 61,       // Key: =
+    KEY_A               = 65,       // Key: A | a
+    KEY_B               = 66,       // Key: B | b
+    KEY_C               = 67,       // Key: C | c
+    KEY_D               = 68,       // Key: D | d
+    KEY_E               = 69,       // Key: E | e
+    KEY_F               = 70,       // Key: F | f
+    KEY_G               = 71,       // Key: G | g
+    KEY_H               = 72,       // Key: H | h
+    KEY_I               = 73,       // Key: I | i
+    KEY_J               = 74,       // Key: J | j
+    KEY_K               = 75,       // Key: K | k
+    KEY_L               = 76,       // Key: L | l
+    KEY_M               = 77,       // Key: M | m
+    KEY_N               = 78,       // Key: N | n
+    KEY_O               = 79,       // Key: O | o
+    KEY_P               = 80,       // Key: P | p
+    KEY_Q               = 81,       // Key: Q | q
+    KEY_R               = 82,       // Key: R | r
+    KEY_S               = 83,       // Key: S | s
+    KEY_T               = 84,       // Key: T | t
+    KEY_U               = 85,       // Key: U | u
+    KEY_V               = 86,       // Key: V | v
+    KEY_W               = 87,       // Key: W | w
+    KEY_X               = 88,       // Key: X | x
+    KEY_Y               = 89,       // Key: Y | y
+    KEY_Z               = 90,       // Key: Z | z
+    KEY_LEFT_BRACKET    = 91,       // Key: [
+    KEY_BACKSLASH       = 92,       // Key: '\'
+    KEY_RIGHT_BRACKET   = 93,       // Key: ]
+    KEY_GRAVE           = 96,       // Key: `
+    // Function keys
+    KEY_SPACE           = 32,       // Key: Space
+    KEY_ESCAPE          = 256,      // Key: Esc
+    KEY_ENTER           = 257,      // Key: Enter
+    KEY_TAB             = 258,      // Key: Tab
+    KEY_BACKSPACE       = 259,      // Key: Backspace
+    KEY_INSERT          = 260,      // Key: Ins
+    KEY_DELETE          = 261,      // Key: Del
+    KEY_RIGHT           = 262,      // Key: Cursor right
+    KEY_LEFT            = 263,      // Key: Cursor left
+    KEY_DOWN            = 264,      // Key: Cursor down
+    KEY_UP              = 265,      // Key: Cursor up
+    KEY_PAGE_UP         = 266,      // Key: Page up
+    KEY_PAGE_DOWN       = 267,      // Key: Page down
+    KEY_HOME            = 268,      // Key: Home
+    KEY_END             = 269,      // Key: End
+    KEY_CAPS_LOCK       = 280,      // Key: Caps lock
+    KEY_SCROLL_LOCK     = 281,      // Key: Scroll down
+    KEY_NUM_LOCK        = 282,      // Key: Num lock
+    KEY_PRINT_SCREEN    = 283,      // Key: Print screen
+    KEY_PAUSE           = 284,      // Key: Pause
+    KEY_F1              = 290,      // Key: F1
+    KEY_F2              = 291,      // Key: F2
+    KEY_F3              = 292,      // Key: F3
+    KEY_F4              = 293,      // Key: F4
+    KEY_F5              = 294,      // Key: F5
+    KEY_F6              = 295,      // Key: F6
+    KEY_F7              = 296,      // Key: F7
+    KEY_F8              = 297,      // Key: F8
+    KEY_F9              = 298,      // Key: F9
+    KEY_F10             = 299,      // Key: F10
+    KEY_F11             = 300,      // Key: F11
+    KEY_F12             = 301,      // Key: F12
+    KEY_LEFT_SHIFT      = 340,      // Key: Shift left
+    KEY_LEFT_CONTROL    = 341,      // Key: Control left
+    KEY_LEFT_ALT        = 342,      // Key: Alt left
+    KEY_LEFT_SUPER      = 343,      // Key: Super left
+    KEY_RIGHT_SHIFT     = 344,      // Key: Shift right
+    KEY_RIGHT_CONTROL   = 345,      // Key: Control right
+    KEY_RIGHT_ALT       = 346,      // Key: Alt right
+    KEY_RIGHT_SUPER     = 347,      // Key: Super right
+    KEY_KB_MENU         = 348,      // Key: KB menu
+    // Keypad keys
+    KEY_KP_0            = 320,      // Key: Keypad 0
+    KEY_KP_1            = 321,      // Key: Keypad 1
+    KEY_KP_2            = 322,      // Key: Keypad 2
+    KEY_KP_3            = 323,      // Key: Keypad 3
+    KEY_KP_4            = 324,      // Key: Keypad 4
+    KEY_KP_5            = 325,      // Key: Keypad 5
+    KEY_KP_6            = 326,      // Key: Keypad 6
+    KEY_KP_7            = 327,      // Key: Keypad 7
+    KEY_KP_8            = 328,      // Key: Keypad 8
+    KEY_KP_9            = 329,      // Key: Keypad 9
+    KEY_KP_DECIMAL      = 330,      // Key: Keypad .
+    KEY_KP_DIVIDE       = 331,      // Key: Keypad /
+    KEY_KP_MULTIPLY     = 332,      // Key: Keypad *
+    KEY_KP_SUBTRACT     = 333,      // Key: Keypad -
+    KEY_KP_ADD          = 334,      // Key: Keypad +
+    KEY_KP_ENTER        = 335,      // Key: Keypad Enter
+    KEY_KP_EQUAL        = 336,      // Key: Keypad =
+    // Android key buttons
+    KEY_BACK            = 4,        // Key: Android back button
+    KEY_MENU            = 5,        // Key: Android menu button
+    KEY_VOLUME_UP       = 24,       // Key: Android volume up button
+    KEY_VOLUME_DOWN     = 25        // Key: Android volume down button
+}
+
+// Mouse buttons
+enum MouseButton {
+    MOUSE_BUTTON_LEFT    = 0,       // Mouse button left
+    MOUSE_BUTTON_RIGHT   = 1,       // Mouse button right
+    MOUSE_BUTTON_MIDDLE  = 2,       // Mouse button middle (pressed wheel)
+    MOUSE_BUTTON_SIDE    = 3,       // Mouse button side (advanced mouse device)
+    MOUSE_BUTTON_EXTRA   = 4,       // Mouse button extra (advanced mouse device)
+    MOUSE_BUTTON_FORWARD = 5,       // Mouse button forward (advanced mouse device)
+    MOUSE_BUTTON_BACK    = 6,       // Mouse button back (advanced mouse device)
+}
+
+// Mouse cursor
+enum MouseCursor {
+    MOUSE_CURSOR_DEFAULT       = 0,     // Default pointer shape
+    MOUSE_CURSOR_ARROW         = 1,     // Arrow shape
+    MOUSE_CURSOR_IBEAM         = 2,     // Text writing cursor shape
+    MOUSE_CURSOR_CROSSHAIR     = 3,     // Cross shape
+    MOUSE_CURSOR_POINTING_HAND = 4,     // Pointing hand cursor
+    MOUSE_CURSOR_RESIZE_EW     = 5,     // Horizontal resize/move arrow shape
+    MOUSE_CURSOR_RESIZE_NS     = 6,     // Vertical resize/move arrow shape
+    MOUSE_CURSOR_RESIZE_NWSE   = 7,     // Top-left to bottom-right diagonal resize/move arrow shape
+    MOUSE_CURSOR_RESIZE_NESW   = 8,     // The top-right to bottom-left diagonal resize/move arrow shape
+    MOUSE_CURSOR_RESIZE_ALL    = 9,     // The omnidirectional resize/move cursor shape
+    MOUSE_CURSOR_NOT_ALLOWED   = 10     // The operation-not-allowed shape
+}
+
+// Gamepad buttons
+enum GamepadButton {
+    GAMEPAD_BUTTON_UNKNOWN = 0,         // Unknown button, just for error checking
+    GAMEPAD_BUTTON_LEFT_FACE_UP,        // Gamepad left DPAD up button
+    GAMEPAD_BUTTON_LEFT_FACE_RIGHT,     // Gamepad left DPAD right button
+    GAMEPAD_BUTTON_LEFT_FACE_DOWN,      // Gamepad left DPAD down button
+    GAMEPAD_BUTTON_LEFT_FACE_LEFT,      // Gamepad left DPAD left button
+    GAMEPAD_BUTTON_RIGHT_FACE_UP,       // Gamepad right button up (i.e. PS3: Triangle, Xbox: Y)
+    GAMEPAD_BUTTON_RIGHT_FACE_RIGHT,    // Gamepad right button right (i.e. PS3: Circle, Xbox: B)
+    GAMEPAD_BUTTON_RIGHT_FACE_DOWN,     // Gamepad right button down (i.e. PS3: Cross, Xbox: A)
+    GAMEPAD_BUTTON_RIGHT_FACE_LEFT,     // Gamepad right button left (i.e. PS3: Square, Xbox: X)
+    GAMEPAD_BUTTON_LEFT_TRIGGER_1,      // Gamepad top/back trigger left (first), it could be a trailing button
+    GAMEPAD_BUTTON_LEFT_TRIGGER_2,      // Gamepad top/back trigger left (second), it could be a trailing button
+    GAMEPAD_BUTTON_RIGHT_TRIGGER_1,     // Gamepad top/back trigger right (first), it could be a trailing button
+    GAMEPAD_BUTTON_RIGHT_TRIGGER_2,     // Gamepad top/back trigger right (second), it could be a trailing button
+    GAMEPAD_BUTTON_MIDDLE_LEFT,         // Gamepad center buttons, left one (i.e. PS3: Select)
+    GAMEPAD_BUTTON_MIDDLE,              // Gamepad center buttons, middle one (i.e. PS3: PS, Xbox: XBOX)
+    GAMEPAD_BUTTON_MIDDLE_RIGHT,        // Gamepad center buttons, right one (i.e. PS3: Start)
+    GAMEPAD_BUTTON_LEFT_THUMB,          // Gamepad joystick pressed button left
+    GAMEPAD_BUTTON_RIGHT_THUMB          // Gamepad joystick pressed button right
+}
+
+// Gamepad axes
+enum GamepadAxis {
+    GAMEPAD_AXIS_LEFT_X        = 0,     // Gamepad left stick X axis
+    GAMEPAD_AXIS_LEFT_Y        = 1,     // Gamepad left stick Y axis
+    GAMEPAD_AXIS_RIGHT_X       = 2,     // Gamepad right stick X axis
+    GAMEPAD_AXIS_RIGHT_Y       = 3,     // Gamepad right stick Y axis
+    GAMEPAD_AXIS_LEFT_TRIGGER  = 4,     // Gamepad back trigger left, pressure level: [1..-1]
+    GAMEPAD_AXIS_RIGHT_TRIGGER = 5      // Gamepad back trigger right, pressure level: [1..-1]
+}
+
+// Material map index
+enum MaterialMapIndex {
+    MATERIAL_MAP_ALBEDO = 0,        // Albedo material (same as: MATERIAL_MAP_DIFFUSE)
+    MATERIAL_MAP_METALNESS,         // Metalness material (same as: MATERIAL_MAP_SPECULAR)
+    MATERIAL_MAP_NORMAL,            // Normal material
+    MATERIAL_MAP_ROUGHNESS,         // Roughness material
+    MATERIAL_MAP_OCCLUSION,         // Ambient occlusion material
+    MATERIAL_MAP_EMISSION,          // Emission material
+    MATERIAL_MAP_HEIGHT,            // Heightmap material
+    MATERIAL_MAP_CUBEMAP,           // Cubemap material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
+    MATERIAL_MAP_IRRADIANCE,        // Irradiance material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
+    MATERIAL_MAP_PREFILTER,         // Prefilter material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
+    MATERIAL_MAP_BRDF               // Brdf material
+}
+
+// Shader location index
+enum ShaderLocationIndex {
+    SHADER_LOC_VERTEX_POSITION = 0, // Shader location: vertex attribute: position
+    SHADER_LOC_VERTEX_TEXCOORD01,   // Shader location: vertex attribute: texcoord01
+    SHADER_LOC_VERTEX_TEXCOORD02,   // Shader location: vertex attribute: texcoord02
+    SHADER_LOC_VERTEX_NORMAL,       // Shader location: vertex attribute: normal
+    SHADER_LOC_VERTEX_TANGENT,      // Shader location: vertex attribute: tangent
+    SHADER_LOC_VERTEX_COLOR,        // Shader location: vertex attribute: color
+    SHADER_LOC_MATRIX_MVP,          // Shader location: matrix uniform: model-view-projection
+    SHADER_LOC_MATRIX_VIEW,         // Shader location: matrix uniform: view (camera transform)
+    SHADER_LOC_MATRIX_PROJECTION,   // Shader location: matrix uniform: projection
+    SHADER_LOC_MATRIX_MODEL,        // Shader location: matrix uniform: model (transform)
+    SHADER_LOC_MATRIX_NORMAL,       // Shader location: matrix uniform: normal
+    SHADER_LOC_VECTOR_VIEW,         // Shader location: vector uniform: view
+    SHADER_LOC_COLOR_DIFFUSE,       // Shader location: vector uniform: diffuse color
+    SHADER_LOC_COLOR_SPECULAR,      // Shader location: vector uniform: specular color
+    SHADER_LOC_COLOR_AMBIENT,       // Shader location: vector uniform: ambient color
+    SHADER_LOC_MAP_ALBEDO,          // Shader location: sampler2d texture: albedo (same as: SHADER_LOC_MAP_DIFFUSE)
+    SHADER_LOC_MAP_METALNESS,       // Shader location: sampler2d texture: metalness (same as: SHADER_LOC_MAP_SPECULAR)
+    SHADER_LOC_MAP_NORMAL,          // Shader location: sampler2d texture: normal
+    SHADER_LOC_MAP_ROUGHNESS,       // Shader location: sampler2d texture: roughness
+    SHADER_LOC_MAP_OCCLUSION,       // Shader location: sampler2d texture: occlusion
+    SHADER_LOC_MAP_EMISSION,        // Shader location: sampler2d texture: emission
+    SHADER_LOC_MAP_HEIGHT,          // Shader location: sampler2d texture: height
+    SHADER_LOC_MAP_CUBEMAP,         // Shader location: samplerCube texture: cubemap
+    SHADER_LOC_MAP_IRRADIANCE,      // Shader location: samplerCube texture: irradiance
+    SHADER_LOC_MAP_PREFILTER,       // Shader location: samplerCube texture: prefilter
+    SHADER_LOC_MAP_BRDF,            // Shader location: sampler2d texture: brdf
+    SHADER_LOC_VERTEX_BONEIDS,      // Shader location: vertex attribute: boneIds
+    SHADER_LOC_VERTEX_BONEWEIGHTS,  // Shader location: vertex attribute: boneWeights
+    SHADER_LOC_BONE_MATRICES,       // Shader location: array of matrices uniform: boneMatrices
+    SHADER_LOC_VERTEX_INSTANCE_TX   // Shader location: vertex attribute: instanceTransform
+}
+
+// Shader uniform data type
+enum ShaderUniformDataType {
+    SHADER_UNIFORM_FLOAT = 0,       // Shader uniform type: float
+    SHADER_UNIFORM_VEC2,            // Shader uniform type: vec2 (2 float)
+    SHADER_UNIFORM_VEC3,            // Shader uniform type: vec3 (3 float)
+    SHADER_UNIFORM_VEC4,            // Shader uniform type: vec4 (4 float)
+    SHADER_UNIFORM_INT,             // Shader uniform type: int
+    SHADER_UNIFORM_IVEC2,           // Shader uniform type: ivec2 (2 int)
+    SHADER_UNIFORM_IVEC3,           // Shader uniform type: ivec3 (3 int)
+    SHADER_UNIFORM_IVEC4,           // Shader uniform type: ivec4 (4 int)
+    SHADER_UNIFORM_UINT,            // Shader uniform type: unsigned int
+    SHADER_UNIFORM_UIVEC2,          // Shader uniform type: uivec2 (2 unsigned int)
+    SHADER_UNIFORM_UIVEC3,          // Shader uniform type: uivec3 (3 unsigned int)
+    SHADER_UNIFORM_UIVEC4,          // Shader uniform type: uivec4 (4 unsigned int)
+    SHADER_UNIFORM_SAMPLER2D        // Shader uniform type: sampler2d
+}
+
+// Shader attribute data types
+enum ShaderAttributeDataType {
+    SHADER_ATTRIB_FLOAT = 0,        // Shader attribute type: float
+    SHADER_ATTRIB_VEC2,             // Shader attribute type: vec2 (2 float)
+    SHADER_ATTRIB_VEC3,             // Shader attribute type: vec3 (3 float)
+    SHADER_ATTRIB_VEC4              // Shader attribute type: vec4 (4 float)
+}
+
+// Pixel formats
+// NOTE: Support depends on OpenGL version and platform
+enum PixelFormat {
+    PIXELFORMAT_UNCOMPRESSED_GRAYSCALE = 1, // 8 bit per pixel (no alpha)
+    PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA,    // 8*2 bpp (2 channels)
+    PIXELFORMAT_UNCOMPRESSED_R5G6B5,        // 16 bpp
+    PIXELFORMAT_UNCOMPRESSED_R8G8B8,        // 24 bpp
+    PIXELFORMAT_UNCOMPRESSED_R5G5B5A1,      // 16 bpp (1 bit alpha)
+    PIXELFORMAT_UNCOMPRESSED_R4G4B4A4,      // 16 bpp (4 bit alpha)
+    PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,      // 32 bpp
+    PIXELFORMAT_UNCOMPRESSED_R32,           // 32 bpp (1 channel - float)
+    PIXELFORMAT_UNCOMPRESSED_R32G32B32,     // 32*3 bpp (3 channels - float)
+    PIXELFORMAT_UNCOMPRESSED_R32G32B32A32,  // 32*4 bpp (4 channels - float)
+    PIXELFORMAT_UNCOMPRESSED_R16,           // 16 bpp (1 channel - half float)
+    PIXELFORMAT_UNCOMPRESSED_R16G16B16,     // 16*3 bpp (3 channels - half float)
+    PIXELFORMAT_UNCOMPRESSED_R16G16B16A16,  // 16*4 bpp (4 channels - half float)
+    PIXELFORMAT_COMPRESSED_DXT1_RGB,        // 4 bpp (no alpha)
+    PIXELFORMAT_COMPRESSED_DXT1_RGBA,       // 4 bpp (1 bit alpha)
+    PIXELFORMAT_COMPRESSED_DXT3_RGBA,       // 8 bpp
+    PIXELFORMAT_COMPRESSED_DXT5_RGBA,       // 8 bpp
+    PIXELFORMAT_COMPRESSED_ETC1_RGB,        // 4 bpp
+    PIXELFORMAT_COMPRESSED_ETC2_RGB,        // 4 bpp
+    PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA,   // 8 bpp
+    PIXELFORMAT_COMPRESSED_PVRT_RGB,        // 4 bpp
+    PIXELFORMAT_COMPRESSED_PVRT_RGBA,       // 4 bpp
+    PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA,   // 8 bpp
+    PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA    // 2 bpp
+}
+
+// Texture parameters: filter mode
+// NOTE 1: Filtering considers mipmaps if available in the texture
+// NOTE 2: Filter is accordingly set for minification and magnification
+enum TextureFilter {
+    TEXTURE_FILTER_POINT = 0,               // No filter, just pixel approximation
+    TEXTURE_FILTER_BILINEAR,                // Linear filtering
+    TEXTURE_FILTER_TRILINEAR,               // Trilinear filtering (linear with mipmaps)
+    TEXTURE_FILTER_ANISOTROPIC_4X,          // Anisotropic filtering 4x
+    TEXTURE_FILTER_ANISOTROPIC_8X,          // Anisotropic filtering 8x
+    TEXTURE_FILTER_ANISOTROPIC_16X,         // Anisotropic filtering 16x
+}
+
+// Texture parameters: wrap mode
+enum TextureWrap {
+    TEXTURE_WRAP_REPEAT = 0,                // Repeats texture in tiled mode
+    TEXTURE_WRAP_CLAMP,                     // Clamps texture to edge pixel in tiled mode
+    TEXTURE_WRAP_MIRROR_REPEAT,             // Mirrors and repeats the texture in tiled mode
+    TEXTURE_WRAP_MIRROR_CLAMP               // Mirrors and clamps to border the texture in tiled mode
+}
+
+// Cubemap layouts
+enum CubemapLayout {
+    CUBEMAP_LAYOUT_AUTO_DETECT = 0,         // Automatically detect layout type
+    CUBEMAP_LAYOUT_LINE_VERTICAL,           // Layout is defined by a vertical line with faces
+    CUBEMAP_LAYOUT_LINE_HORIZONTAL,         // Layout is defined by a horizontal line with faces
+    CUBEMAP_LAYOUT_CROSS_THREE_BY_FOUR,     // Layout is defined by a 3x4 cross with cubemap faces
+    CUBEMAP_LAYOUT_CROSS_FOUR_BY_THREE     // Layout is defined by a 4x3 cross with cubemap faces
+}
+
+// Font type, defines generation method
+enum FontType {
+    FONT_DEFAULT = 0,               // Default font generation, anti-aliased
+    FONT_BITMAP,                    // Bitmap font generation, no anti-aliasing
+    FONT_SDF                        // SDF font generation, requires external shader
+}
+
+// Color blending modes (pre-defined)
+enum BlendMode {
+    BLEND_ALPHA = 0,                // Blend textures considering alpha (default)
+    BLEND_ADDITIVE,                 // Blend textures adding colors
+    BLEND_MULTIPLIED,               // Blend textures multiplying colors
+    BLEND_ADD_COLORS,               // Blend textures adding colors (alternative)
+    BLEND_SUBTRACT_COLORS,          // Blend textures subtracting colors (alternative)
+    BLEND_ALPHA_PREMULTIPLY,        // Blend premultiplied textures considering alpha
+    BLEND_CUSTOM,                   // Blend textures using custom src/dst factors (use rlSetBlendFactors())
+    BLEND_CUSTOM_SEPARATE           // Blend textures using custom rgb/alpha separate src/dst factors (use rlSetBlendFactorsSeparate())
+}
+
+// Gesture
+// NOTE: Provided as bit-wise flags to enable only desired gestures
+enum Gesture {
+    GESTURE_NONE        = 0,        // No gesture
+    GESTURE_TAP         = 1,        // Tap gesture
+    GESTURE_DOUBLETAP   = 2,        // Double tap gesture
+    GESTURE_HOLD        = 4,        // Hold gesture
+    GESTURE_DRAG        = 8,        // Drag gesture
+    GESTURE_SWIPE_RIGHT = 16,       // Swipe right gesture
+    GESTURE_SWIPE_LEFT  = 32,       // Swipe left gesture
+    GESTURE_SWIPE_UP    = 64,       // Swipe up gesture
+    GESTURE_SWIPE_DOWN  = 128,      // Swipe down gesture
+    GESTURE_PINCH_IN    = 256,      // Pinch in gesture
+    GESTURE_PINCH_OUT   = 512       // Pinch out gesture
+}
+
+// Camera system modes
+enum CameraMode {
+    CAMERA_CUSTOM = 0,              // Camera custom, controlled by user (UpdateCamera() does nothing)
+    CAMERA_FREE,                    // Camera free mode
+    CAMERA_ORBITAL,                 // Camera orbital, around target, zoom supported
+    CAMERA_FIRST_PERSON,            // Camera first person
+    CAMERA_THIRD_PERSON             // Camera third person
+}
+
+// Camera projection
+enum CameraProjection {
+    CAMERA_PERSPECTIVE = 0,         // Perspective projection
+    CAMERA_ORTHOGRAPHIC             // Orthographic projection
+}
+
+// N-patch layout
+enum NPatchLayout {
+    NPATCH_NINE_PATCH = 0,          // Npatch layout: 3x3 tiles
+    NPATCH_THREE_PATCH_VERTICAL,    // Npatch layout: 1x3 tiles
+    NPATCH_THREE_PATCH_HORIZONTAL   // Npatch layout: 3x1 tiles
+}
+
+// Callbacks to hook some internal functions
+// WARNING: These callbacks are intended for advanced users
+const TraceLogCallback = fn (logLevel: i32, text: &c_char, ...) void; // Logging: Redirect trace log messages
+const LoadFileDataCallback = fn (fileName: &c_char, dataSize: &mut u32) &mut u8; // FileIO: Load binary data
+const SaveFileDataCallback = fn (fileName: &c_char, data: &mut void, dataSize: u32) bool; // FileIO: Save binary data
+const LoadFileTextCallback = fn (fileName: &c_char) &mut u8; // FileIO: Load text data
+const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool; // FileIO: Save text data
+
+//------------------------------------------------------------------------------------
+// Window and Graphics Context Functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn InitWindow(width: i32, height: i32, title: &c_char) void;
+bind fn CloseWindow() void;
+bind fn WindowShouldClose() bool;
+bind fn IsWindowReady() bool;
+bind fn IsWindowFullscreen() bool;
+bind fn IsWindowHidden() bool;
+bind fn IsWindowMinimized() bool;
+bind fn IsWindowMaximized() bool;
+bind fn IsWindowFocused() bool;
+bind fn IsWindowResized() bool;
+bind fn IsWindowState(flag: u32) bool;
+bind fn SetWindowState(flags: u32) void;
+bind fn ClearWindowState(flags: u32) void;
+bind fn ToggleFullscreen() void;
+bind fn ToggleBorderlessWindowed() void;
+bind fn MaximizeWindow() void;
+bind fn MinimizeWindow() void;
+bind fn RestoreWindow() void;
+bind fn SetWindowIcon(image: Image) void;
+bind fn SetWindowIcons(images: &mut Image, count: i32) void;
+bind fn SetWindowTitle(title: &c_char) void;
+bind fn SetWindowPosition(x: i32, y: i32) void;
+bind fn SetWindowMonitor(monitor: i32) void;
+bind fn SetWindowMinSize(width: i32, height: i32) void;
+bind fn SetWindowMaxSize(width: i32, height: i32) void;
+bind fn SetWindowSize(width: i32, height: i32) void;
+bind fn SetWindowOpacity(opacity: f32) void;
+bind fn SetWindowFocused() void;
+bind fn GetWindowHandle() &mut void;
+bind fn GetScreenWidth() i32;
+bind fn GetScreenHeight() i32;
+bind fn GetRenderWidth() i32;
+bind fn GetRenderHeight() i32;
+bind fn GetMonitorCount() i32;
+bind fn GetCurrentMonitor() i32;
+bind fn GetMonitorPosition(monitor: i32) Vector2;
+bind fn GetMonitorWidth(monitor: i32) i32;
+bind fn GetMonitorHeight(monitor: i32) i32;
+bind fn GetMonitorPhysicalWidth(monitor: i32) i32;
+bind fn GetMonitorPhysicalHeight(monitor: i32) i32;
+bind fn GetMonitorRefreshRate(monitor: i32) i32;
+bind fn GetWindowPosition() Vector2;
+bind fn GetWindowScaleDPI() Vector2;
+bind fn GetMonitorName(monitor: i32) &c_char;
+bind fn SetClipboardText(text: &c_char) void;
+bind fn GetClipboardText() &c_char;
+bind fn EnableEventWaiting() void;
+bind fn DisableEventWaiting() void;
+
+//------------------------------------------------------------------------------------
+// Cursor and Input Functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn ShowCursor() void;
+bind fn HideCursor() void;
+bind fn IsCursorHidden() bool;
+bind fn EnableCursor() void;
+bind fn DisableCursor() void;
+bind fn IsCursorOnScreen() bool;
+
+//------------------------------------------------------------------------------------
+// Drawing-related functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn ClearBackground(color: Color) void;
+bind fn BeginDrawing() void;
+bind fn EndDrawing() void;
+bind fn BeginMode2D(camera: Camera2D) void;
+bind fn EndMode2D() void;
+bind fn BeginMode3D(camera: Camera3D) void;
+bind fn EndMode3D() void;
+bind fn BeginTextureMode(target: RenderTexture) void;
+bind fn EndTextureMode() void;
+bind fn BeginShaderMode(shader: Shader) void;
+bind fn EndShaderMode() void;
+bind fn BeginBlendMode(mode: i32) void;
+bind fn EndBlendMode() void;
+bind fn BeginScissorMode(x: i32, y: i32, width: i32, height: i32) void;
+bind fn EndScissorMode() void;
+bind fn BeginVrStereoMode(config: VrStereoConfig) void;
+bind fn EndVrStereoMode() void;
+
+//------------------------------------------------------------------------------------
+// VR stereo config functions for VR simulator (Module: core)
+//------------------------------------------------------------------------------------
+bind fn LoadVrStereoConfig(device: VrDeviceInfo) VrStereoConfig;
+bind fn UnloadVrStereoConfig(config: VrStereoConfig) void;
+
+//------------------------------------------------------------------------------------
+// Shader management functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn LoadShader(vsFileName: &c_char, fsFileName: &c_char) Shader;
+bind fn LoadShaderFromMemory(vsCode: &c_char, fsCode: &c_char) Shader;
+bind fn IsShaderReady(shader: Shader) bool;
+bind fn GetShaderLocation(shader: Shader, uniformName: &c_char) i32;
+bind fn GetShaderLocationAttrib(shader: Shader, attribName: &c_char) i32;
+bind fn SetShaderValue(shader: Shader, locIndex: i32, value: &const void, uniformType: i32) void;
+bind fn SetShaderValueV(shader: Shader, locIndex: i32, value: &const void, uniformType: i32, count: i32) void;
+bind fn SetShaderValueMatrix(shader: Shader, locIndex: i32, mat: Matrix) void;
+bind fn SetShaderValueTexture(shader: Shader, locIndex: i32, texture: Texture) void;
+bind fn UnloadShader(shader: Shader) void;
+
+//------------------------------------------------------------------------------------
+// Screen-space-related functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn GetMouseRay(mousePosition: Vector2, camera: Camera3D) Ray;
+bind fn GetCameraMatrix(camera: Camera3D) Matrix;
+bind fn GetCameraMatrix2D(camera: Camera2D) Matrix;
+bind fn GetWorldToScreen(position: Vector3, camera: Camera3D) Vector2;
+bind fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) Vector2;
+bind fn GetWorldToScreenEx(position: Vector3, camera: Camera3D, width: i32, height: i32) Vector2;
+bind fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) Vector2;
+
+//------------------------------------------------------------------------------------
+// Timing-related functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn SetTargetFPS(fps: i32) void;
+bind fn GetFrameTime() f32;
+bind fn GetTime() f64;
+bind fn GetFPS() i32;
+
+//------------------------------------------------------------------------------------
+// Custom frame control functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn SwapScreenBuffer() void;
+bind fn PollInputEvents() void;
+bind fn WaitTime(seconds: f64) void;
+
+//------------------------------------------------------------------------------------
+// Random values generation functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn SetRandomSeed(seed: u32) void;
+bind fn GetRandomValue(min: i32, max: i32) i32;
+bind fn LoadRandomSequence(count: u32, min: i32, max: i32) &mut i32;
+bind fn UnloadRandomSequence(sequence: &mut i32) void;
+
+//------------------------------------------------------------------------------------
+// Misc. functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn TakeScreenshot(fileName: &c_char) void;
+bind fn SetConfigFlags(flags: u32) void;
+bind fn OpenURL(url: &c_char) void;
+bind fn SetTraceLogLevel(logLevel: i32) void;
+bind fn TraceLog(logLevel: i32, text: &c_char, ...) void;
+bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
+bind fn MemAlloc(size: u32) &mut void;
+bind fn MemRealloc(ptr: &mut void, size: u32) &mut void;
+bind fn MemFree(ptr: &mut void) void;
+
+//------------------------------------------------------------------------------------
+// Files management functions (Module: core)
+//------------------------------------------------------------------------------------
+bind fn LoadFileData(fileName: &c_char, dataSize: &mut u32) &mut u8;
+bind fn UnloadFileData(data: &mut u8) void;
+bind fn SaveFileData(fileName: &c_char, data: &mut void, dataSize: u32) bool;
+bind fn ExportDataAsCode(data: &const u8, dataSize: u32, fileName: &c_char) bool;
+bind fn LoadFileText(fileName: &c_char) &mut u8;
+bind fn UnloadFileText(text: &mut u8) void;
+bind fn SaveFileText(fileName: &c_char, text: &c_char) bool;
+bind fn FileExists(fileName: &c_char) bool;
+bind fn DirectoryExists(dirPath: &c_char) bool;
+bind fn IsFileExtension(fileName: &c_char, ext: &c_char) bool;
+bind fn GetFileLength(fileName: &c_char) i32;
+bind fn GetFileExtension(fileName: &c_char) &c_char;
+bind fn GetFileName(filePath: &c_char) &c_char;
+bind fn GetFileNameWithoutExt(filePath: &c_char) &c_char;
+bind fn GetDirectoryPath(filePath: &c_char) &c_char;
+bind fn GetPrevDirectoryPath(dirPath: &c_char) &c_char;
+bind fn GetWorkingDirectory() &c_char;
+bind fn GetApplicationDirectory() &c_char;
+bind fn ChangeDirectory(dir: &c_char) bool;
+bind fn IsPathFile(path: &c_char) bool;
+bind fn LoadDirectoryFiles(dirPath: &c_char) FilePathList;
+bind fn LoadDirectoryFilesEx(basePath: &c_char, filter: &c_char, scanSubdirs: bool) FilePathList;
+bind fn UnloadDirectoryFiles(files: FilePathList) void;
+bind fn IsFileDropped() bool;
+bind fn LoadDroppedFiles() FilePathList;
+bind fn UnloadDroppedFiles(files: FilePathList) void;
+bind fn GetFileModTime(fileName: &c_char) c_long;
+bind fn CompressData(data: &const u8, dataSize: i32, compDataSize: &mut i32) &mut u8;
+bind fn DecompressData(compData: &const u8, compDataSize: i32, dataSize: &mut i32) &mut u8;
+bind fn EncodeDataBase64(data: &const u8, dataSize: i32, outputSize: &mut i32) &mut u8;
+bind fn DecodeDataBase64(data: &const u8, outputSize: &mut i32) &mut u8;
+
+//----------------------------------------------------------------------------------
+// Module: rgestures
+//----------------------------------------------------------------------------------
+bind fn SetGesturesEnabled(flags: u32) void;
+bind fn IsGestureDetected(gesture: u32) bool;
+bind fn GetGestureDetected() i32;
+bind fn GetGestureHoldDuration() f32;
+bind fn GetGestureDragVector() Vector2;
+bind fn GetGestureDragAngle() f32;
+bind fn GetGesturePinchVector() Vector2;
+bind fn GetGesturePinchAngle() f32;
+
+//------------------------------------------------------------------------------------
+// Module: rcamera
+//------------------------------------------------------------------------------------
+bind fn UpdateCamera(camera: &mut Camera3D, mode: i32) void;
+bind fn UpdateCameraPro(camera: &mut Camera3D, movement: Vector3, rotation: Vector3, zoom: f32) void;
+
+//------------------------------------------------------------------------------------
+// Module: shapes
+//------------------------------------------------------------------------------------
+bind fn SetShapesTexture(texture: Texture, source: Rectangle) void;
+bind fn DrawPixel(posX: i32, posY: i32, color: Color) void;
+bind fn DrawPixelV(position: Vector2, color: Color) void;
+bind fn DrawLine(startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color) void;
+bind fn DrawLineV(startPos: Vector2, endPos: Vector2, color: Color) void;
+bind fn DrawLineEx(startPos: Vector2, endPos: Vector2, thick: f32, color: Color) void;
+bind fn DrawLineStrip(points: &const Vector2, pointCount: i32, color: Color) void;
+bind fn DrawLineBezier(startPos: Vector2, endPos: Vector2, thick: f32, color: Color) void;
+bind fn DrawCircle(centerX: i32, centerY: i32, radius: f32, color: Color) void;
+bind fn DrawCircleSector(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
+bind fn DrawCircleSectorLines(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
+bind fn DrawCircleGradient(centerX: i32, centerY: i32, radius: f32, color1: Color, color2: Color) void;
+bind fn DrawCircleV(center: Vector2, radius: f32, color: Color) void;
+bind fn DrawCircleLines(centerX: i32, centerY: i32, radius: f32, color: Color) void;
+bind fn DrawEllipse(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color) void;
+bind fn DrawEllipseLines(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color) void;
+bind fn DrawRing(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
+bind fn DrawRingLines(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
+bind fn DrawRectangle(posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
+bind fn DrawRectangleV(position: Vector2, size: Vector2, color: Color) void;
+bind fn DrawRectangleRec(rec: Rectangle, color: Color) void;
+bind fn DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: f32, color: Color) void;
+bind fn DrawRectangleGradientV(posX: i32, posY: i32, width: i32, height: i32, color1: Color, color2: Color) void;
+bind fn DrawRectangleGradientH(posX: i32, posY: i32, width: i32, height: i32, color1: Color, color2: Color) void;
+bind fn DrawRectangleGradientEx(rec: Rectangle, col1: Color, col2: Color, col3: Color, col4: Color) void;
+bind fn DrawRectangleLines(posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
+bind fn DrawRectangleLinesEx(rec: Rectangle, lineThick: f32, color: Color) void;
+bind fn DrawRectangleRounded(rec: Rectangle, roundness: f32, segments: i32, color: Color) void;
+bind fn DrawRectangleRoundedLines(rec: Rectangle, roundness: f32, segments: i32, lineThick: f32, color: Color) void;
+bind fn DrawTriangle(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) void;
+bind fn DrawTriangleLines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) void;
+bind fn DrawTriangleFan(points: &const Vector2, pointCount: i32, color: Color) void;
+bind fn DrawTriangleStrip(points: &const Vector2, pointCount: i32, color: Color) void;
+bind fn DrawPoly(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void;
+bind fn DrawPolyLines(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void;
+bind fn DrawPolyLinesEx(center: Vector2, sides: i32, radius: f32, rotation: f32, lineThick: f32, color: Color) void;
+
+// Splines drawing functions
+bind fn DrawSplineLinear(points: &const Vector2, pointCount: i32, thick: f32, color: Color) void;
+bind fn DrawSplineBasis(points: &const Vector2, pointCount: i32, thick: f32, color: Color) void;
+bind fn DrawSplineCatmullRom(points: &const Vector2, pointCount: i32, thick: f32, color: Color) void;
+bind fn DrawSplineBezierQuadratic(points: &const Vector2, pointCount: i32, thick: f32, color: Color) void;
+bind fn DrawSplineBezierCubic(points: &const Vector2, pointCount: i32, thick: f32, color: Color) void;
+bind fn DrawSplineSegmentLinear(p1: Vector2, p2: Vector2, thick: f32, color: Color) void;
+bind fn DrawSplineSegmentBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: f32, color: Color) void;
+bind fn DrawSplineSegmentCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: f32, color: Color) void;
+bind fn DrawSplineSegmentBezierQuadratic(p1: Vector2, c2: Vector2, p3: Vector2, thick: f32, color: Color) void;
+bind fn DrawSplineSegmentBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, thick: f32, color: Color) void;
+
+// Spline segment point evaluation functions, for a given t [0.0f .. 1.0f]
+bind fn GetSplinePointLinear(startPos: Vector2, endPos: Vector2, t: f32) Vector2;
+bind fn GetSplinePointBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) Vector2;
+bind fn GetSplinePointCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) Vector2;
+bind fn GetSplinePointBezierQuad(p1: Vector2, c2: Vector2, p3: Vector2, t: f32) Vector2;
+bind fn GetSplinePointBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, t: f32) Vector2;
+
+
+// Basic shapes collision detection functions
+bind fn CheckCollisionRecs(rec1: Rectangle, rec2: Rectangle) bool;
+bind fn CheckCollisionCircles(center1: Vector2, radius1: f32, center2: Vector2, radius2: f32) bool;
+bind fn CheckCollisionCircleRec(center: Vector2, radius: f32, rec: Rectangle) bool;
+bind fn CheckCollisionPointRec(point: Vector2, rec: Rectangle) bool;
+bind fn CheckCollisionPointCircle(point: Vector2, center: Vector2, radius: f32) bool;
+bind fn CheckCollisionPointTriangle(point: Vector2, p1: Vector2, p2: Vector2, p3: Vector2) bool;
+bind fn CheckCollisionLines(startPos1: Vector2, endPos1: Vector2, startPos2: Vector2, endPos2: &mut Vector2) bool;
+bind fn CheckCollisionPointLine(point: Vector2, p1: Vector2, p2: Vector2, threshold: i32) bool;
+bind fn GetCollisionRec(rec1: Rectangle, rec2: Rectangle) Rectangle;
+
+//------------------------------------------------------------------------------------
+// Module: textures
+//------------------------------------------------------------------------------------
+bind fn LoadImage(fileName: &c_char) Image;
+bind fn LoadImageRaw(fileName: &c_char, width: i32, height: i32, format: i32, headerSize: i32) Image;
+bind fn LoadImageAnim(fileName: &c_char, frames: &mut i32) Image;
+bind fn LoadImageFromMemory(fileType: &c_char, fileData: &const u8, dataSize: i32) Image;
+bind fn LoadImageFromTexture(texture: Texture) Image;
+bind fn LoadImageFromScreen() Image;
+bind fn IsImageReady(image: Image) bool;
+bind fn UnloadImage(image: Image) void;
+bind fn ExportImage(image: Image, fileName: &c_char) bool;
+bind fn ExportImageAsCode(image: Image, fileName: &c_char) bool;
+bind fn GenImageColor(width: i32, height: i32, color: Color) Image;
+bind fn GenImageGradientLinear(width: i32, height: i32, direction: i32, start: Color, end: Color) Image;
+bind fn GenImageGradientRadial(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image;
+bind fn GenImageGradientSquare(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image;
+bind fn GenImageChecked(width: i32, height: i32, checksX: i32, checksY: i32, col1: Color, col2: Color) Image;
+bind fn GenImageWhiteNoise(width: i32, height: i32, factor: f32) Image;
+bind fn GenImagePerlinNoise(width: i32, height: i32, offsetX: i32, offsetY: i32, scale: f32) Image;
+bind fn GenImageCellular(width: i32, height: i32, tileSize: i32) Image;
+bind fn GenImageText(width: i32, height: i32, text: &c_char) Image;
+bind fn ImageCopy(image: Image) Image;
+bind fn ImageFromImage(image: Image, rec: Rectangle) Image;
+bind fn ImageText(text: &c_char, fontSize: i32, color: Color) Image;
+bind fn ImageTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32, tint: Color) Image;
+bind fn ImageFormat(image: &mut Image, newFormat: i32) void;
+bind fn ImageToPOT(image: &mut Image, fill: Color) void;
+bind fn ImageCrop(image: &mut Image, crop: Rectangle) void;
+bind fn ImageAlphaCrop(image: &mut Image, threshold: f32) void;
+bind fn ImageAlphaClear(image: &mut Image, color: Color, threshold: f32) void;
+bind fn ImageAlphaMask(image: &mut Image, alphaMask: Image) void;
+bind fn ImageAlphaPremultiply(image: &mut Image) void;
+bind fn ImageBlurGaussian(image: &mut Image, blurSize: i32) void;
+bind fn ImageResize(image: &mut Image, newWidth: i32, newHeight: i32) void;
+bind fn ImageResizeNN(image: &mut Image, newWidth: i32, newHeight: i32) void;
+bind fn ImageResizeCanvas(image: &mut Image, newWidth: i32, newHeight: i32, offsetX: i32, offsetY: i32, fill: Color) void;
+bind fn ImageMipmaps(image: &mut Image) void;
+bind fn ImageDither(image: &mut Image, rBpp: i32, gBpp: i32, bBpp: i32, aBpp: i32) void;
+bind fn ImageFlipVertical(image: &mut Image) void;
+bind fn ImageFlipHorizontal(image: &mut Image) void;
+bind fn ImageRotate(image: &mut Image, degrees: i32) void;
+bind fn ImageRotateCW(image: &mut Image) void;
+bind fn ImageRotateCCW(image: &mut Image) void;
+bind fn ImageColorTint(image: &mut Image, color: Color) void;
+bind fn ImageColorInvert(image: &mut Image) void;
+bind fn ImageColorGrayscale(image: &mut Image) void;
+bind fn ImageColorContrast(image: &mut Image, contrast: f32) void;
+bind fn ImageColorBrightness(image: &mut Image, brightness: i32) void;
+bind fn ImageColorReplace(image: &mut Image, color: Color, replace: Color) void;
+bind fn LoadImageColors(image: Image) &mut Color;
+bind fn LoadImagePalette(image: Image, maxPaletteSize: i32, colorCount: &mut i32) &mut Color;
+bind fn UnloadImageColors(colors: &mut Color) void;
+bind fn UnloadImagePalette(colors: &mut Color) void;
+bind fn GetImageAlphaBorder(image: Image, threshold: f32) Rectangle;
+bind fn GetImageColor(image: Image, x: i32, y: i32) Color;
+bind fn ImageClearBackground(dst: &mut Image, color: Color) void;
+bind fn ImageDrawPixel(dst: &mut Image, posX: i32, posY: i32, color: Color) void;
+bind fn ImageDrawPixelV(dst: &mut Image, position: Vector2, color: Color) void;
+bind fn ImageDrawLine(dst: &mut Image, startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color) void;
+bind fn ImageDrawLineV(dst: &mut Image, start: Vector2, end: Vector2, color: Color) void;
+bind fn ImageDrawCircle(dst: &mut Image, centerX: i32, centerY: i32, radius: i32, color: Color) void;
+bind fn ImageDrawCircleV(dst: &mut Image, center: Vector2, radius: i32, color: Color) void;
+bind fn ImageDrawCircleLines(dst: &mut Image, centerX: i32, centerY: i32, radius: i32, color: Color) void;
+bind fn ImageDrawCircleLinesV(dst: &mut Image, center: Vector2, radius: i32, color: Color) void;
+bind fn ImageDrawRectangle(dst: &mut Image, posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
+bind fn ImageDrawRectangleV(dst: &mut Image, position: Vector2, size: Vector2, color: Color) void;
+bind fn ImageDrawRectangleRec(dst: &mut Image, rec: Rectangle, color: Color) void;
+bind fn ImageDrawRectangleLines(dst: &mut Image, rec: Rectangle, thick: i32, color: Color) void;
+bind fn ImageDraw(dst: &mut Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color) void;
+bind fn ImageDrawText(dst: &mut Image, text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
+bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+bind fn LoadTexture(fileName: &c_char) Texture;
+bind fn LoadTextureFromImage(image: Image) Texture;
+bind fn LoadTextureCubemap(image: Image, layout: i32) Texture;
+bind fn LoadRenderTexture(width: i32, height: i32) RenderTexture;
+bind fn IsTextureReady(texture: Texture) bool;
+bind fn UnloadTexture(texture: Texture) void;
+bind fn IsRenderTextureReady(target: RenderTexture) bool;
+bind fn UnloadRenderTexture(target: RenderTexture) void;
+bind fn UpdateTexture(texture: Texture, pixels: &const void) void;
+bind fn UpdateTextureRec(texture: Texture, rec: Rectangle, pixels: &const void) void;
+bind fn GenTextureMipmaps(texture: &mut Texture) void;
+bind fn SetTextureFilter(texture: Texture, filter: i32) void;
+bind fn SetTextureWrap(texture: Texture, wrap: i32) void;
+bind fn DrawTexture(texture: Texture, posX: i32, posY: i32, tint: Color) void;
+bind fn DrawTextureV(texture: Texture, position: Vector2, tint: Color) void;
+bind fn DrawTextureEx(texture: Texture, position: Vector2, rotation: f32, scale: f32, tint: Color) void;
+bind fn DrawTextureRec(texture: Texture, source: Rectangle, position: Vector2, tint: Color) void;
+bind fn DrawTexturePro(texture: Texture, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
+bind fn DrawTextureNPatch(texture: Texture, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
+
+// Color/pixel related functions
+bind fn Fade(color: Color, alpha: f32) Color;
+bind fn ColorToInt(color: Color) i32;
+bind fn ColorNormalize(color: Color) Vector4;
+bind fn ColorFromNormalized(normalized: Vector4) Color;
+bind fn ColorToHSV(color: Color) Vector3;
+bind fn ColorFromHSV(hue: f32, saturation: f32, value: f32) Color;
+bind fn ColorTint(color: Color, tint: Color) Color;
+bind fn ColorBrightness(color: Color, factor: f32) Color;
+bind fn ColorContrast(color: Color, contrast: f32) Color;
+bind fn ColorAlpha(color: Color, alpha: f32) Color;
+bind fn ColorAlphaBlend(dst: Color, src: Color, tint: Color) Color;
+bind fn GetColor(hexValue: u32) Color;
+bind fn GetPixelColor(srcPtr: &mut void, format: i32) Color;
+bind fn SetPixelColor(dstPtr: &mut void, color: Color, format: i32) void;
+bind fn GetPixelDataSize(width: i32, height: i32, format: i32) i32;
+
+//------------------------------------------------------------------------------------
+// Module: text
+//------------------------------------------------------------------------------------
+bind fn GetFontDefault() Font;
+bind fn LoadFont(fileName: &c_char) Font;
+bind fn LoadFontEx(fileName: &c_char, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
+bind fn LoadFontFromImage(image: Image, key: Color, firstChar: i32) Font;
+bind fn LoadFontFromMemory(fileType: &c_char, fileData: &const u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
+bind fn IsFontReady(font: Font) bool;
+bind fn LoadFontData(fileData: &const u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32, type: i32) &mut GlyphInfo;
+bind fn GenImageFontAtlas(chars: &const GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image;
+bind fn UnloadFontData(chars: &mut GlyphInfo, glyphCount: i32) void;
+bind fn UnloadFont(font: Font) void;
+bind fn ExportFontAsCode(font: Font, fileName: &c_char) bool;
+
+// Text drawing functions
+bind fn DrawFPS(posX: i32, posY: i32) void;
+bind fn DrawText(text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
+bind fn DrawTextEx(font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+bind fn DrawTextPro(font: Font, text: &c_char, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color) void;
+bind fn DrawTextCodepoint(font: Font, codepoint: i32, position: Vector2, fontSize: f32, tint: Color) void;
+bind fn DrawTextCodepoints(font: Font, codepoints: &const i32, count: i32, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+
+// Text font info functions
+bind fn SetTextLineSpacing(spacing: i32) void;
+bind fn MeasureText(text: &c_char, fontSize: i32) i32;
+bind fn MeasureTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32) Vector2;
+bind fn GetGlyphIndex(font: Font, codepoint: i32) i32;
+bind fn GetGlyphInfo(font: Font, codepoint: i32) GlyphInfo;
+bind fn GetGlyphAtlasRec(font: Font, codepoint: i32) Rectangle;
+
+// Text codepoint functions
+bind fn LoadUTF8(codepoints: &const i32, length: i32) &mut u8;
+bind fn UnloadUTF8(text: &mut u8) void;
+bind fn LoadCodepoints(text: &c_char, count: &mut i32) &mut i32;
+bind fn UnloadCodepoints(codepoints: &mut i32) void;
+bind fn GetCodepointCount(text: &c_char) i32;
+bind fn GetCodepoint(text: &c_char, codepointSize: &mut i32) i32;
+bind fn CodepointToUTF8(codepoint: i32, utf8Size: &mut i32) &c_char;
+
+// Text strings management functions
+bind fn TextCopy(dst: &mut u8, src: &const u8) i32;
+bind fn TextIsEqual(text1: &c_char, text2: &c_char) bool;
+bind fn TextLength(text: &c_char) u32;
+bind fn TextFormat(text: &c_char, ...) &c_char;
+bind fn TextSubtext(text: &c_char, position: i32, length: i32) &c_char;
+bind fn TextReplace(text: &mut u8, replace: &c_char, search: &c_char) &mut u8;
+bind fn TextInsert(text: &c_char, insert: &c_char, position: i32) &mut u8;
+bind fn TextJoin(textList: &mut &mut u8, count: i32, delimiter: &c_char) &mut u8;
+bind fn TextSplit(text: &c_char, delimiter: u8, count: &mut i32) &mut &mut u8;
+bind fn TextAppend(text: &mut u8, append: &c_char, position: &mut i32) void;
+bind fn TextFindIndex(text: &c_char, find: &c_char) i32;
+bind fn TextToUpper(text: &c_char) &c_char;
+bind fn TextToLower(text: &c_char) &c_char;
+bind fn TextToPascal(text: &c_char) &c_char;
+bind fn TextToInteger(text: &c_char) i32;
+
+//------------------------------------------------------------------------------------
+// Module: models
+//------------------------------------------------------------------------------------
+bind fn DrawLine3D(startPos: Vector3, endPos: Vector3, color: Color) void;
+bind fn DrawPoint3D(position: Vector3, color: Color) void;
+bind fn DrawCircle3D(center: Vector3, radius: f32, rotationAxis: Vector3, rotationAngle: f32, color: Color) void;
+bind fn DrawTriangle3D(v1: Vector3, v2: Vector3, v3: Vector3, color: Color) void;
+bind fn DrawTriangleStrip3D(points: &const Vector3, pointCount: i32, color: Color) void;
+bind fn DrawCube(position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
+bind fn DrawCubeV(position: Vector3, size: Vector3, color: Color) void;
+bind fn DrawCubeWires(position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
+bind fn DrawCubeWiresV(position: Vector3, size: Vector3, color: Color) void;
+bind fn DrawSphere(centerPos: Vector3, radius: f32, color: Color) void;
+bind fn DrawSphereEx(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color) void;
+bind fn DrawSphereWires(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color) void;
+bind fn DrawCylinder(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color) void;
+bind fn DrawCylinderEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color) void;
+bind fn DrawCylinderWires(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color) void;
+bind fn DrawCylinderWiresEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color) void;
+bind fn DrawCapsule(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color) void;
+bind fn DrawCapsuleWires(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color) void;
+bind fn DrawPlane(centerPos: Vector3, size: Vector2, color: Color) void;
+bind fn DrawRay(ray: Ray, color: Color) void;
+bind fn DrawGrid(slices: i32, spacing: f32) void;
+
+// Model management functions
+bind fn LoadModel(fileName: &c_char) Model;
+bind fn LoadModelFromMesh(mesh: Mesh) Model;
+bind fn IsModelReady(model: Model) bool;
+bind fn UnloadModel(model: Model) void;
+bind fn GetModelBoundingBox(model: Model) BoundingBox;
+
+// Model drawing functions
+bind fn DrawModel(model: Model, position: Vector3, scale: f32, tint: Color) void;
+bind fn DrawModelEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void;
+bind fn DrawModelWires(model: Model, position: Vector3, scale: f32, tint: Color) void;
+bind fn DrawModelWiresEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void;
+bind fn DrawBoundingBox(box: BoundingBox, color: Color) void;
+bind fn DrawBillboard(camera: Camera3D, texture: Texture, position: Vector3, size: f32, tint: Color) void;
+bind fn DrawBillboardRec(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, size: Vector2, tint: Color) void;
+bind fn DrawBillboardPro(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: f32, tint: Color) void;
+
+// Mesh management functions
+bind fn UploadMesh(mesh: &mut Mesh, dynamic: bool) void;
+bind fn UpdateMeshBuffer(mesh: Mesh, index: i32, data: &const void, dataSize: i32, offset: i32) void;
+bind fn UnloadMesh(mesh: Mesh) void;
+bind fn DrawMesh(mesh: Mesh, material: Material, transform: Matrix) void;
+bind fn DrawMeshInstanced(mesh: Mesh, material: Material, transforms: &const Matrix, instances: i32) void;
+bind fn ExportMesh(mesh: Mesh, fileName: &c_char) bool;
+bind fn GetMeshBoundingBox(mesh: Mesh) BoundingBox;
+bind fn GenMeshTangents(mesh: &mut Mesh) void;
+
+// Mesh generation functions
+bind fn GenMeshPoly(sides: i32, radius: f32) Mesh;
+bind fn GenMeshPlane(width: f32, length: f32, resX: i32, resZ: i32) Mesh;
+bind fn GenMeshCube(width: f32, height: f32, length: f32) Mesh;
+bind fn GenMeshSphere(radius: f32, rings: i32, slices: i32) Mesh;
+bind fn GenMeshHemiSphere(radius: f32, rings: i32, slices: i32) Mesh;
+bind fn GenMeshCylinder(radius: f32, height: f32, slices: i32) Mesh;
+bind fn GenMeshCone(radius: f32, height: f32, slices: i32) Mesh;
+bind fn GenMeshTorus(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
+bind fn GenMeshKnot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
+bind fn GenMeshHeightmap(heightmap: Image, size: Vector3) Mesh;
+bind fn GenMeshCubicmap(cubicmap: Image, cubeSize: Vector3) Mesh;
+
+// Material loading/unloading functions
+bind fn LoadMaterials(fileName: &c_char, materialCount: &mut i32) &mut Material;
+bind fn LoadMaterialDefault() Material;
+bind fn IsMaterialReady(material: Material) bool;
+bind fn UnloadMaterial(material: Material) void;
+bind fn SetMaterialTexture(material: &mut Material, mapType: i32, texture: Texture) void;
+bind fn SetModelMeshMaterial(model: &mut Model, meshId: i32, materialId: i32) void;
+
+// Model animation loading/unloading functions
+bind fn LoadModelAnimations(fileName: &c_char, animCount: &mut u32) &mut ModelAnimation;
+bind fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: i32) void;
+bind fn UnloadModelAnimation(anim: ModelAnimation) void;
+bind fn IsModelAnimationValid(model: Model, anim: ModelAnimation) bool;
+
+// Collision detection functions
+bind fn CheckCollisionSpheres(center1: Vector3, radius1: f32, center2: Vector3, radius2: f32) bool;
+bind fn CheckCollisionBoxes(box1: BoundingBox, box2: BoundingBox) bool;
+bind fn CheckCollisionBoxSphere(box: BoundingBox, center: Vector3, radius: f32) bool;
+bind fn GetRayCollisionSphere(ray: Ray, center: Vector3, radius: f32) RayCollision;
+bind fn GetRayCollisionBox(ray: Ray, box: BoundingBox) RayCollision;
+bind fn GetRayCollisionMesh(ray: Ray, mesh: Mesh, transform: Matrix) RayCollision;
+bind fn GetRayCollisionTriangle(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3) RayCollision;
+bind fn GetRayCollisionQuad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) RayCollision;
+
+//------------------------------------------------------------------------------------
+// Module: audio
+//------------------------------------------------------------------------------------
+const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
+bind fn InitAudioDevice() void;
+bind fn CloseAudioDevice() void;
+bind fn IsAudioDeviceReady() bool;
+bind fn SetMasterVolume(volume: f32) void;
+
+// Wave/Sound loading/unloading functions
+bind fn LoadWave(fileName: &c_char) Wave;
+bind fn LoadWaveFromMemory(fileType: &c_char, fileData: &const u8, dataSize: i32) Wave;
+bind fn IsWaveReady(wave: Wave) bool;
+bind fn LoadSound(fileName: &c_char) Sound;
+bind fn LoadSoundFromWave(wave: Wave) Sound;
+bind fn IsSoundReady(sound: Sound) bool;
+bind fn UpdateSound(sound: Sound, data: &const void, sampleCount: i32) void;
+bind fn UnloadWave(wave: Wave) void;
+bind fn UnloadSound(sound: Sound) void;
+bind fn ExportWave(wave: Wave, fileName: &c_char) bool;
+bind fn ExportWaveAsCode(wave: Wave, fileName: &c_char) bool;
+
+// Wave/Sound management functions
+bind fn PlaySound(sound: Sound) void;
+bind fn StopSound(sound: Sound) void;
+bind fn PauseSound(sound: Sound) void;
+bind fn ResumeSound(sound: Sound) void;
+bind fn IsSoundPlaying(sound: Sound) bool;
+bind fn SetSoundVolume(sound: Sound, volume: f32) void;
+bind fn SetSoundPitch(sound: Sound, pitch: f32) void;
+bind fn SetSoundPan(sound: Sound, pan: f32) void;
+bind fn GetSoundsPlaying() i32;
+bind fn WaveCopy(wave: Wave) Wave;
+bind fn WaveCrop(wave: &mut Wave, initFrame: i32, finalFrame: i32) void;
+bind fn WaveFormat(wave: &mut Wave, sampleRate: i32, sampleSize: i32, channels: i32) void;
+bind fn LoadWaveSamples(wave: Wave) &mut f32;
+bind fn UnloadWaveSamples(samples: &mut f32) void;
+
+// Music management functions
+bind fn LoadMusicStream(fileName: &c_char) Music;
+bind fn LoadMusicStreamFromMemory(fileType: &c_char, data: &const u8, dataSize: i32) Music;
+bind fn IsMusicReady(music: Music) bool;
+bind fn UnloadMusicStream(music: Music) void;
+bind fn PlayMusicStream(music: Music) void;
+bind fn IsMusicStreamPlaying(music: Music) bool;
+bind fn UpdateMusicStream(music: Music) void;
+bind fn StopMusicStream(music: Music) void;
+bind fn PauseMusicStream(music: Music) void;
+bind fn ResumeMusicStream(music: Music) void;
+bind fn SeekMusicStream(music: Music, position: f32) void;
+bind fn SetMusicVolume(music: Music, volume: f32) void;
+bind fn SetMusicPitch(music: Music, pitch: f32) void;
+bind fn SetMusicPan(music: Music, pan: f32) void;
+bind fn GetMusicTimeLength(music: Music) f32;
+bind fn GetMusicTimePlayed(music: Music) f32;
+
+// AudioStream management functions
+bind fn LoadAudioStream(sampleRate: u32, sampleSize: u32, channels: u32) AudioStream;
+bind fn IsAudioStreamReady(stream: AudioStream) bool;
+bind fn UnloadAudioStream(stream: AudioStream) void;
+bind fn UpdateAudioStream(stream: AudioStream, data: &const void, frameCount: i32) void;
+bind fn IsAudioStreamProcessed(stream: AudioStream) bool;
+bind fn PlayAudioStream(stream: AudioStream) void;
+bind fn PauseAudioStream(stream: AudioStream) void;
+bind fn ResumeAudioStream(stream: AudioStream) void;
+bind fn IsAudioStreamPlaying(stream: AudioStream) bool;
+bind fn StopAudioStream(stream: AudioStream) void;
+bind fn SetAudioStreamVolume(stream: AudioStream, volume: f32) void;
+bind fn SetAudioStreamPitch(stream: AudioStream, pitch: f32) void;
+bind fn SetAudioStreamPan(stream: AudioStream, pan: f32) void;
+bind fn SetAudioStreamBufferSizeDefault(size: i32) void;
+bind fn SetAudioStreamCallback(stream: AudioStream, callback: AudioCallback) void;
+
+bind fn AttachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
+bind fn DetachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
+
+bind fn AttachAudioMixedProcessor(processor: AudioCallback) void;
+bind fn DetachAudioMixedProcessor(processor: AudioCallback) void;
