@@ -213,7 +213,14 @@ pub const Type = union(enum) {
     u64,
 
     c_char,
+    c_long,
+    c_short,
     c_int,
+
+    c_uchar,
+    c_ulong,
+    c_ushort,
+    c_uint,
 
     usize,
 

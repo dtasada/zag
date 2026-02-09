@@ -53,6 +53,7 @@ export default grammar({
       $.union_declaration,
       $.function_definition,
       $.binding_function_declaration,
+      $.binding_type_declaration,
       $.if_statement,
       $.while_statement,
       $.for_statement,
@@ -150,9 +151,16 @@ export default grammar({
       "bind",
       "fn",
       field("name", $.ident),
-      optional(field("generic_parameters", $.generic_parameter_list)),
       field("parameters", $.parameter_list),
       field("return_type", $.type),
+      ";",
+    ),
+
+    binding_type_declaration: $ => seq(
+      optional("pub"),
+      "bind",
+      choice("struct", "enum", "union"),
+      field("name", $.ident),
       ";",
     ),
 
@@ -346,6 +354,13 @@ export default grammar({
 
       "c_char",
       "c_int",
+      "c_short",
+      "c_long",
+
+      "c_uchar",
+      "c_uint",
+      "c_ushort",
+      "c_ulong",
     ),
 
     optional_type: $ => prec.right(8, seq(
@@ -580,8 +595,42 @@ export default grammar({
     ),
 
     char_literal: $ => seq("'", /./, "'"),
-    number_literal: $ => /[+-]?([0-9]*[.])?[0-9]+/,
+    number_literal: $ => choice($.integer, $.float),
     comment: $ => token(seq('//', /.*/)),
+
+    integer: _ => {
+      const separator = '_';
+      const hex = /[0-9A-Fa-f]/;
+      const oct = /[0-7]/;
+      const bin = /[0-1]/;
+      const decimal = /[0-9]/;
+      const hexDigits = seq(repeat1(hex), repeat(seq(separator, repeat1(hex))));
+      const octDigits = seq(repeat1(oct), repeat(seq(separator, repeat1(oct))));
+      const binDigits = seq(repeat1(bin), repeat(seq(separator, repeat1(bin))));
+      const decimalDigits = seq(repeat1(decimal), repeat(seq(separator, repeat1(decimal))));
+
+      return token(choice(
+        seq('0x', hexDigits),
+        seq('0o', octDigits),
+        seq('0b', binDigits),
+        decimalDigits,
+      ));
+    },
+
+    float: _ => {
+      const separator = '_';
+      const hex = /[0-9A-Fa-f]/;
+      const decimal = /[0-9]/;
+      const hexDigits = seq(repeat1(hex), repeat(seq(separator, repeat1(hex))));
+      const decimalDigits = seq(repeat1(decimal), repeat(seq(separator, repeat1(decimal))));
+
+      return token(choice(
+        seq('0x', hexDigits, '.', hexDigits, optional(seq(/[pP][+-]?/, decimalDigits))),
+        seq(decimalDigits, '.', decimalDigits, optional(seq(/[eE][+-]?/, decimalDigits))),
+        seq('0x', hexDigits, /[pP][+-]?/, decimalDigits),
+        seq(decimalDigits, /[eE][+-]?/, decimalDigits),
+      ));
+    },
 
     true_literal: $ => "true",
     false_literal: $ => "false",

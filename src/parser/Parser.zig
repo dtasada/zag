@@ -137,6 +137,8 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.nud(.@"!", expressions.prefix);
     try self.nud(.@"(", expressions.group);
 
+    try self.nud(.@"fn", expressions.functionType);
+
     // Call/member expressions
     try self.led(.@".", .member, expressions.member);
     try self.led(.@"{", .call, expressions.structInstantiation);
@@ -160,7 +162,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.@"enum", statements.enumDeclaration);
     try self.statement(.@"union", statements.unionDeclaration);
     try self.statement(.@"fn", statements.functionDefinition);
-    try self.statement(.bind, statements.bindingFunctionDeclaration);
+    try self.statement(.bind, statements.bindingDeclaration);
     try self.statement(.@"while", statements.@"while");
     try self.statement(.@"return", statements.@"return");
     try self.statement(.@"for", statements.@"for");
@@ -311,13 +313,15 @@ pub inline fn getHandler(
         .bp => self.bp_lookup,
     }.get(token)) |handler| handler else return if (opts.silent_error)
         error.HandlerDoesNotExist
-    else
+    else {
+        std.debug.dumpCurrentStackTrace(null);
         return utils.printErr(
             error.HandlerDoesNotExist,
             "Parser error: Syntax error at {f}.\n",
             .{self.currentPosition()},
             .red,
         );
+    };
 }
 
 /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.

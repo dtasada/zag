@@ -351,6 +351,13 @@ pub fn scan(self: *Self) CompilerError!void {
             .{ .type = .{ .@"enum" = try Type.Enum.init(self, enum_decl.name, try self.mangle(enum_decl.name), Type.getTagType(enum_decl.members.items.len)) } },
             .{ .inner_name = try self.mangle(enum_decl.name), .is_defined = false },
         ),
+        .binding_type_declaration => |btd| try self.registerSymbol(btd.name, .{
+            .type = switch (btd.type) {
+                .@"struct" => .{ .@"struct" = try Type.Struct.init(self, btd.name, btd.name, null) },
+                .@"union" => .{ .@"union" = try Type.Union.init(self, btd.name, btd.name, null) },
+                .@"enum" => .{ .@"enum" = try Type.Enum.init(self, btd.name, btd.name, null) },
+            },
+        }, .{}),
         else => {},
     };
 
@@ -372,7 +379,7 @@ pub fn scan(self: *Self) CompilerError!void {
                 );
             },
             .binding_function_declaration => |*func| {
-                var t = try Type.fromAst(self, func.getType());
+                var t: Type = try .fromAst(self, func.getType());
                 t.function.is_bind = true;
                 try self.registerSymbol(func.name, .{
                     .symbol = .{ .type = t },
@@ -442,6 +449,22 @@ pub fn analyze(self: *Self) CompilerError!void {
                     .is_pub = var_def.is_pub,
                     .type = final_type,
                     .is_mut = var_def.binding == .is_mut,
+                });
+            },
+            .binding_type_declaration => |btd| {
+                const t: Type = switch (btd.type) {
+                    .@"struct" => .{ .@"struct" = try Type.Struct.init(self, btd.name, btd.name, null) },
+                    .@"union" => .{ .@"union" = try Type.Union.init(self, btd.name, btd.name, null) },
+                    .@"enum" => .{ .@"enum" = try Type.Enum.init(self, btd.name, btd.name, null) },
+                };
+
+                try self.registerSymbol(btd.name, .{ .type = t }, .{});
+
+                if (btd.is_pub) try self.exported_symbols.put(btd.name, .{
+                    .name = btd.name,
+                    .inner_name = btd.name,
+                    .is_pub = btd.is_pub,
+                    .type = t,
                 });
             },
             inline .struct_declaration, .union_declaration, .enum_declaration => |*struct_decl| {
@@ -940,6 +963,14 @@ fn registerConstants(self: *Self) !void {
 
     try self.registerSymbol("c_int", .{ .type = .c_int }, .{ .inner_name = "int" });
     try self.registerSymbol("c_char", .{ .type = .c_char }, .{ .inner_name = "char" });
+    try self.registerSymbol("c_long", .{ .type = .c_long }, .{ .inner_name = "long" });
+    try self.registerSymbol("c_short", .{ .type = .c_short }, .{ .inner_name = "short" });
+
+    try self.registerSymbol("c_uint", .{ .type = .c_uint }, .{ .inner_name = "unsigned int" });
+    try self.registerSymbol("c_uchar", .{ .type = .c_uchar }, .{ .inner_name = "unsigned char" });
+    try self.registerSymbol("c_ulong", .{ .type = .c_ulong }, .{ .inner_name = "unsigned long" });
+    try self.registerSymbol("c_ushort", .{ .type = .c_ushort }, .{ .inner_name = "unsigned short" });
+
     try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } }, .{ .inner_name = "NULL" });
 
     const builtins: Module = try .init(self.alloc, "builtins");

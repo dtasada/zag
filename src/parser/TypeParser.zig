@@ -48,6 +48,7 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
     try self.nud(.@"&", parseReferenceType);
     try self.nud(.@"?", parseOptionalType);
     try self.nud(.@"!", parseInferredErrorType);
+    try self.nud(.@"fn", parseFunctionType);
     try self.nud(.@"(", parseGroupType);
     try self.led(.@"!", .logical, parseErrorType);
     try self.led(.@"<", .call, parseGenericType);
@@ -164,6 +165,37 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError
     success.* = try parseType(self, alloc, .default);
 
     return .{ .error_union = .{ .pos = position, .success = success } };
+}
+
+pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+    const pos = self.parent_parser.currentPosition();
+    _ = self.parent_parser.advance(); // consume "fn" keyword
+    const generic_parameters: ast.ParameterList = switch (self.parent_parser.currentToken()) {
+        .@"(" => .empty,
+        .@"<" => try self.parent_parser.parseGenericParameters(),
+        else => |other| return self.parent_parser.unexpectedToken("function type", "(' or '<", other),
+    };
+    const parameters = try self.parent_parser.parseParameters();
+    const return_type = try alloc.create(ast.Type);
+    return_type.* = parseType(self, alloc, .default) catch |err| switch (err) {
+        error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
+            error.MissingReturnType,
+            "Parser error: missing return type in function type at {f}.\n",
+            .{self.parent_parser.currentPosition()},
+            .red,
+        ),
+        else => return err,
+    };
+
+    return .{
+        .function = .{
+            .pos = pos,
+            .name = "function_type",
+            .parameters = parameters,
+            .generic_parameters = generic_parameters,
+            .return_type = return_type,
+        },
+    };
 }
 
 pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {

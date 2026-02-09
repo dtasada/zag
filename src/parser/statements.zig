@@ -276,34 +276,56 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     };
 }
 
-pub fn bindingFunctionDeclaration(self: *Self) ParserError!ast.Statement {
+pub fn bindingDeclaration(self: *Self) ParserError!ast.Statement {
     const is_pub = isPub(self);
 
     const pos = self.currentPosition();
     _ = self.advance(); // consume "bind" keyword
-    try self.expect(self.advance(), .@"fn", "binding function declaration", "fn");
-    const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
-    const parameters = try self.parseParameters();
-    const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
-        error.HandlerDoesNotExist => return utils.printErr(
-            error.MissingReturnType,
-            "Parser error: missing return type in function '{s}' at {f}.\n",
-            .{ function_name, self.currentPosition() },
+
+    switch (self.advance()) {
+        .@"fn" => {
+            const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
+            const parameters = try self.parseParameters();
+            const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
+                error.HandlerDoesNotExist => return utils.printErr(
+                    error.MissingReturnType,
+                    "Parser error: missing return type in function '{s}' at {f}.\n",
+                    .{ function_name, self.currentPosition() },
+                    .red,
+                ),
+                else => return err,
+            };
+            try self.expectSemicolon("binding function definition");
+
+            return .{
+                .binding_function_declaration = .{
+                    .pos = pos,
+                    .is_pub = is_pub,
+                    .name = function_name,
+                    .parameters = parameters,
+                    .return_type = return_type,
+                },
+            };
+        },
+        inline .@"struct", .@"union", .@"enum" => |_, tag| {
+            const type_decl: ast.Statement = .{
+                .binding_type_declaration = .{
+                    .pos = pos,
+                    .is_pub = is_pub,
+                    .type = std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
+                    .name = try self.expect(self.advance(), .ident, "binding type declaration", @tagName(tag) ++ " name"),
+                },
+            };
+            try self.expectSemicolon("binding type declaration");
+            return type_decl;
+        },
+        else => |other| return utils.printErr(
+            error.UnexpectedToken,
+            "Parser error: expected function, struct, union or enum declaration after 'bind', received '{f}' ({f}).\n",
+            .{ other, pos },
             .red,
         ),
-        else => return err,
-    };
-    try self.expectSemicolon("binding function definition");
-
-    return .{
-        .binding_function_declaration = .{
-            .pos = pos,
-            .is_pub = is_pub,
-            .name = function_name,
-            .parameters = parameters,
-            .return_type = return_type,
-        },
-    };
+    }
 }
 
 pub fn @"return"(self: *Self) ParserError!ast.Statement {

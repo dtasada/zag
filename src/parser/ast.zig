@@ -231,6 +231,7 @@ pub const Statement = union(enum) {
     @"return": Return,
     @"while": While,
     binding_function_declaration: BindingFunctionDeclaration,
+    binding_type_declaration: BindingTypeDeclaration,
     block: ast.Expression.Block,
     enum_declaration: EnumDeclaration,
     expression: Expression,
@@ -333,7 +334,7 @@ pub const Statement = union(enum) {
     };
 
     pub const EnumDeclaration = struct {
-        const Member = struct {
+        pub const Member = struct {
             name: []const u8,
             value: ?ast.Expression = null,
         };
@@ -351,6 +352,13 @@ pub const Statement = union(enum) {
         condition: ast.Expression,
         capture: ?[]const u8 = null,
         body: *const Statement,
+    };
+
+    pub const BindingTypeDeclaration = struct {
+        pos: utils.Position,
+        is_pub: bool,
+        name: []const u8,
+        type: utils.CompoundTypeTag,
     };
 
     pub const BindingFunctionDeclaration = struct {

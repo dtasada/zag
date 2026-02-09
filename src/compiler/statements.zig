@@ -37,6 +37,20 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
             .pos = block_eval.getPosition(),
             .@"return" = block_eval,
         }),
+        .binding_type_declaration => |btd| {
+            const t: Type = switch (btd.type) {
+                .@"struct" => .{ .@"struct" = try Type.Struct.init(self, btd.name, btd.name, null) },
+                .@"union" => .{ .@"union" = try Type.Union.init(self, btd.name, btd.name, null) },
+                .@"enum" => .{ .@"enum" = try Type.Enum.init(self, btd.name, btd.name, null) },
+            };
+            try self.registerSymbol(btd.name, .{ .type = t }, .{});
+
+            const saved_section = self.current_section;
+            self.switchSection(.header_forward_decls);
+            defer self.switchSection(saved_section);
+
+            try self.print("typedef {s} {s} {s};\n", .{ @tagName(btd.type), btd.name, btd.name });
+        },
     }
 }
 
@@ -130,11 +144,12 @@ fn compoundTypeDeclaration(
                 try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
                 try self.write(";\n");
             },
-            .@"enum" => try self.print("__zag_{s}_{s} = {},\n", .{
-                compound_type.name,
-                member.key_ptr.*,
-                member.value_ptr.*,
-            }),
+            .@"enum" => {
+                try self.print("{s} = {d},\n", .{
+                    member.key_ptr.*,
+                    member.value_ptr.*,
+                });
+            },
         }
     }
 

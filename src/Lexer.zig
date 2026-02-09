@@ -400,6 +400,30 @@ inline fn appendAndNext(self: *Self, alloc: std.mem.Allocator, token: Token) !vo
 }
 
 fn parseNumber(self: *Self, alloc: std.mem.Allocator, start_pos: usize) !void {
+    // Check for 0x prefix for hex literals
+    if (self.currentChar() == '0' and self.pos + 1 < self.input.len and (self.input[self.pos + 1] == 'x' or self.input[self.pos + 1] == 'X')) {
+        self.advanceN(2); // consume "0x"
+        const hex_start_pos = self.pos;
+        while (self.pos < self.input.len and std.ascii.isHex(self.currentChar())) {
+            _ = self.advance();
+        }
+
+        if (self.pos == hex_start_pos) { // "0x" with no digits
+            try self.appendToken(alloc, Token{ .bad_token = LexerError.BadNumber });
+            return;
+        }
+
+        const number_str = self.input[hex_start_pos..self.pos];
+        const value = std.fmt.parseInt(u64, number_str, 16) catch |err| {
+            utils.print("Couldn't lex hex integer: {}", .{err}, .red);
+            try self.appendToken(alloc, Token{ .bad_token = LexerError.BadNumber });
+            return;
+        };
+
+        try self.appendToken(alloc, .{ .int = value });
+        return;
+    }
+
     var is_float = false;
 
     // Consume integer part

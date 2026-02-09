@@ -467,3 +467,8 @@ pub fn @"try"(self: *Self) ParserError!ast.Expression {
 
     return .{ .@"try" = .{ .@"try" = expr, .pos = pos } };
 }
+
+pub fn functionType(self: *Self) !ast.Expression {
+    const type_node = try self.type_parser.parseType(self.alloc, .primary);
+    return .{ .type = type_node };
+}

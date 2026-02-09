@@ -1,16 +1,25 @@
 import std;
 import c;
 
-import raylib;
+import raylib as rl;
 
 fn main() void {
-    raylib.InitWindow(1280, 720, "Hello world!");
+    rl.InitWindow(1280, 720, "Hello world!");
 
-    while (!raylib.WindowShouldClose()) {
-        raylib.BeginDrawing();
-        raylib.ClearBackground(raylib.Color { r: 255, g: 255, b: 255, a: 255 });
-        raylib.EndDrawing();
+    let pos = rl.Vector2 {x: 0, y: 0};
+
+    while (!rl.WindowShouldClose()) {
+        rl.BeginDrawing();
+        rl.ClearBackground(rl.Color { r: 255, g: 255, b: 255, a: 255 });
+
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_W)) {
+            pos.y += 4;
+        }
+
+        rl.DrawCircleV(pos, 10, rl.Color{r:255,g:0,b:0,a:255});
+
+        rl.EndDrawing();
     }
 
-    raylib.CloseWindow();
+    rl.CloseWindow();
 }
