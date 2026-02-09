@@ -503,7 +503,17 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
                     return errors.badAccess(.@"enum", @"enum".name, expr.pos);
                 try self.write(variable.inner_name);
             },
-            .member => try self.print("__zag_{s}_{s}", .{ @"enum".name, expr.member_name }),
+            .member => {
+                // Check if this is a union tag enum (used internally) vs a regular user enum
+                // Union tag enums have names ending in "_tag_type" and use the __zag_ prefix
+                if (std.mem.endsWith(u8, @"enum".inner_name, "_tag_type")) {
+                    // This is a union's internal tag enum
+                    try self.print("__zag_{s}_{s}", .{ @"enum".inner_name, expr.member_name });
+                } else {
+                    // This is a regular user-defined enum
+                    try self.print("{s}_{s}", .{ @"enum".inner_name, expr.member_name });
+                }
+            },
             .method => |method| try self.write(method.inner_name),
         } else return errors.undeclaredProperty(.{ .@"enum" = @"enum" }, expr.member_name, expr.pos),
 
@@ -994,7 +1004,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         const received_expr = call_expr.args.items[i];
         const received_type: Type = try .infer(self, received_expr);
         if (expected_type.type != .variadic and
-            !expected_type.type.check(received_type))
+            !received_type.check(expected_type.type))
             return errors.typeMismatch(expected_type.type, received_type, received_expr.getPosition());
     }
 

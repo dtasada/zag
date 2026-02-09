@@ -254,10 +254,19 @@ pub const Type = union(enum) {
     /// `infer` is the expression with which the type is inferred.
     pub fn fromAst(compiler: *Compiler, t: ast.Type) CompilerError!Self {
         return switch (t) {
-            .symbol => |symbol| compiler.getSymbolType(symbol.symbol) catch return errors.unknownSymbol(
-                symbol.symbol,
-                symbol.pos,
-            ),
+            .symbol => |symbol| {
+                const result = compiler.getSymbolType(symbol.symbol) catch return errors.unknownSymbol(
+                    symbol.symbol,
+                    symbol.pos,
+                );
+                // If we get a .type, unwrap it to the actual type
+                if (result == .type) {
+                    if (result.type) |inner_type| {
+                        return inner_type.*;
+                    }
+                }
+                return result;
+            },
             .generic => |generic| try instantiateGeneric(
                 compiler,
                 try fromAst(compiler, generic.lhs.*),
@@ -1107,9 +1116,7 @@ pub const Type = union(enum) {
     /// That means that a type can automatically be cast to another.
     /// Examples are `i64` -> `i32` or `usize` -> `?usize`
     pub fn check(received: Type, expected: Type) bool {
-        if (expected == .any) return true;
-
-        if (received.eql(expected)) return true;
+        if (expected == .any or received.eql(expected)) return true;
 
         const fallback = switch (expected) {
             .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => switch (received) {

@@ -358,6 +358,42 @@ pub fn scan(self: *Self) CompilerError!void {
                 .@"enum" => .{ .@"enum" = try Type.Enum.init(self, btd.name, btd.name, null) },
             },
         }, .{}),
+        .variable_definition => |*var_def| {
+            var final_type: Type = undefined;
+
+            if (var_def.type != .inferred) {
+                final_type = try .fromAst(self, var_def.type);
+            } else {
+                const received_type: Type = try .infer(self, var_def.assigned_value);
+                if (received_type == .type) {
+                    if (received_type.type) |inner_type| {
+                        try self.registerSymbol(var_def.variable_name, .{ .type = inner_type.* }, .{ .is_defined = false, .inner_name = try self.mangle(var_def.variable_name) });
+                    }
+                    continue;
+                }
+
+                if (received_type == .type) {
+                    if (received_type.type) |inner_type| {
+                        try self.registerSymbol(
+                            var_def.variable_name,
+                            .{ .type = inner_type.* },
+                            .{
+                                .is_defined = false,
+                                .inner_name = try self.mangle(var_def.variable_name),
+                            },
+                        );
+                    }
+                    continue;
+                }
+                final_type = received_type;
+            }
+
+            try self.registerSymbol(
+                var_def.variable_name,
+                .{ .symbol = .{ .is_mut = var_def.binding == .is_mut, .type = final_type } },
+                .{ .is_defined = false, .inner_name = try self.mangle(var_def.variable_name) },
+            );
+        },
         else => {},
     };
 

@@ -144,12 +144,11 @@ fn compoundTypeDeclaration(
                 try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
                 try self.write(";\n");
             },
-            .@"enum" => {
-                try self.print("{s} = {d},\n", .{
-                    member.key_ptr.*,
-                    member.value_ptr.*,
-                });
-            },
+            .@"enum" => try self.print("{s}_{s} = {d},\n", .{
+                inner_name,
+                member.key_ptr.*,
+                member.value_ptr.*,
+            }),
         }
     }
 
@@ -282,9 +281,10 @@ fn variableDefinition(
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
     const final_type = expected_type orelse received_type;
 
-    if (self.getScopeItem(v.variable_name)) |_|
-        return errors.symbolShadowing(v.variable_name, v.pos)
-    else |_| {}
+    if (self.getScopeItem(v.variable_name)) |item| {
+        if (item == .symbol and item.symbol.is_defined)
+            return errors.symbolShadowing(v.variable_name, v.pos);
+    } else |_| {}
 
     if (expected_type) |et| if (!received_type.check(et))
         return errors.typeMismatch(et, received_type, v.assigned_value.getPosition());
