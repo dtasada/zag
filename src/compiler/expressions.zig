@@ -99,18 +99,8 @@ pub fn compile(
             try self.write(inner_name);
         } else |_| return errors.unknownSymbol(ident.ident, expression.getPosition()),
         .struct_instantiation => |struct_inst| {
-            const val = try self.solveComptimeExpression(struct_inst.type_expr.*);
-            const struct_type = switch (val.type) {
-                .type => |inner_ptr| if (inner_ptr) |ptr| ptr.* else return utils.printErr(
-                    error.IllegalExpression,
-                    "comperr: Cannot instantiate type 'type' ({f})\n",
-                    .{expression.getPosition()},
-                    .red,
-                ),
-                else => val.type,
-            };
-
-            switch (struct_type) {
+            const val: Type = try .infer(self, struct_inst.type_expr.*);
+            switch (val) {
                 .@"struct" => |s| try structInstantiation(self, struct_inst, s),
                 .@"union" => |u| try unionInstantiation(self, struct_inst, u),
                 else => unreachable,

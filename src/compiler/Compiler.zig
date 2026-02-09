@@ -303,7 +303,7 @@ fn writeOutputFiles(self: *Self) !void {
     try output_file_writer.interface.writeAll(self.sections.get(.source_function_impls).buffer.items);
 
     if (std.mem.eql(u8, self.source_path, "src/main.zag"))
-        try output_file_writer.interface.writeAll("int main() { main_main(); }\n");
+        try output_file_writer.interface.writeAll("int main() { main_main(); return 0; }\n");
 
     try output_file_writer.interface.flush();
 
@@ -324,16 +324,6 @@ fn writeOutputFiles(self: *Self) !void {
     try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).buffer.items);
     try header_file_writer.interface.writeAll("\n#endif\n");
     try header_file_writer.interface.flush();
-
-    var zag_header_buf: [1024]u8 = undefined;
-    const zag_header = try @".zag-out".openFile(self.zag_header_path, .{ .mode = .write_only });
-    defer zag_header.close();
-
-    try zag_header.seekFromEnd(0);
-    var zag_header_writer = zag_header.writer(&zag_header_buf);
-    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_types).buffer.items);
-    try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_macros).buffer.items);
-    try zag_header_writer.interface.flush();
 }
 
 pub fn mangle(self: *const Self, name: []const u8) ![]const u8 {

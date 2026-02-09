@@ -59,37 +59,95 @@ pub fn build() !void {
     defer arena_back.deinit();
     const arena = arena_back.allocator();
 
-    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
-    defer @".zag-out".close();
+    var registry = std.StringHashMap(Compiler.Module).init(arena);
 
-    var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
-    defer @".zag-out/zag".close();
+    var zag_header_types: std.ArrayList(u8) = .empty;
+    var zag_header_macros: std.ArrayList(u8) = .empty;
+
+    try transpileModuleWithHeaders(arena, "src", &registry, &zag_header_types, &zag_header_macros);
+
+    try writeZagHeader(zag_header_types.items, zag_header_macros.items);
+
+    try compile(alloc);
+}
+
+fn transpileModuleWithHeaders(
+    alloc: std.mem.Allocator,
+    dir_path: []const u8,
+    registry: *std.StringHashMap(Compiler.Module),
+    zag_header_types: *std.ArrayList(u8),
+    zag_header_macros: *std.ArrayList(u8),
+) !void {
+    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
+    defer dir.close();
+
+    var walker = try dir.walk(alloc);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, ".zag")) continue;
+
+        const file_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir_path, entry.path });
+        defer alloc.free(file_path);
+
+        try transpileWithHeaders(alloc, file_path, registry, zag_header_types, zag_header_macros);
+    }
+}
+
+fn transpileWithHeaders(
+    alloc: std.mem.Allocator,
+    file_path: []const u8,
+    registry: *std.StringHashMap(Compiler.Module),
+    zag_header_types: *std.ArrayList(u8),
+    zag_header_macros: *std.ArrayList(u8),
+) !void {
+    const ast = try Compiler.getAST(alloc, file_path);
+
+    var compiler = Compiler.init(alloc, ast.root, file_path, registry, .emit) catch |err|
+        return utils.printErr(
+            error.FailedToCreateCompiler,
+            "Failed to create compiler: {}\n",
+            .{err},
+            .red,
+        );
+    defer compiler.deinit();
+
+    compiler.emit() catch |err| return utils.printErr(
+        error.CompilationError,
+        "Compilation error: {}\n",
+        .{err},
+        .red,
+    );
+
+    // Accumulate zag header content from this module
+    try zag_header_types.appendSlice(alloc, compiler.sections.get(.zag_header_types).buffer.items);
+    try zag_header_macros.appendSlice(alloc, compiler.sections.get(.zag_header_macros).buffer.items);
+}
+
+fn writeZagHeader(types: []const u8, macros: []const u8) !void {
+    var zag_out = try std.fs.cwd().openDir(".zag-out", .{});
+    defer zag_out.close();
+
+    try zag_out.makePath("zag");
 
     var zag_header_buf: [1024]u8 = undefined;
-    var zag_header = try @".zag-out/zag".createFile("zag.h", .{});
+    const zag_header = try zag_out.createFile("zag/zag.h", .{});
+    defer zag_header.close();
     var zag_header_writer = zag_header.writer(&zag_header_buf);
+
     try zag_header_writer.interface.writeAll(
         \\#ifndef ZAG_H
         \\#define ZAG_H
         \\#include <stdbool.h>
         \\#include <stdlib.h>
+        \\#include <stdint.h>
         \\
     );
-    try zag_header_writer.interface.flush();
-    zag_header.close();
-
-    var registry: std.StringHashMap(Compiler.Module) = .init(arena);
-    try transpileModule(arena, "src", &registry);
-
-    zag_header = try @".zag-out/zag".openFile("zag.h", .{ .mode = .write_only });
-
-    try zag_header.seekFromEnd(0);
-    zag_header_writer = zag_header.writer(&zag_header_buf);
+    try zag_header_writer.interface.writeAll(types);
+    try zag_header_writer.interface.writeAll(macros);
     try zag_header_writer.interface.writeAll("\n#endif\n");
     try zag_header_writer.interface.flush();
-    zag_header.close();
-
-    try compile(alloc);
 }
 
 /// Compiles C code into machine code.
@@ -127,7 +185,7 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const cmd_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "/usr/bin/cc", "-o", main_obj },
         files.items,
-        &.{ @"-Iinclude", "-Wall", "-Wextra", "-Wno-parentheses-equality", "-Wno-sign-compare" },
+        &.{ @"-Iinclude", "-Wall", "-Wextra", "-Wno-parentheses-equality", "-Wno-sign-compare", "-lraylib" },
     });
     defer alloc.free(cmd_args);
 

@@ -666,13 +666,7 @@ pub const Type = union(enum) {
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .range => @panic("invalid"),
             .assignment => .void,
-            .struct_instantiation => |struct_inst| {
-                const val = try compiler.solveComptimeExpression(struct_inst.type_expr.*);
-                return switch (val.type) {
-                    .type => |inner_ptr| if (inner_ptr) |ptr| ptr.* else .{ .type = null },
-                    else => val.type,
-                };
-            },
+            .struct_instantiation => |struct_inst| try infer(compiler, struct_inst.type_expr.*),
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => |block| try inferBlock(compiler, block),
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {

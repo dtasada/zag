@@ -3,14 +3,14 @@ import c;
 
 import raylib;
 
-fn main() !i32 {
+fn main() void {
     raylib.InitWindow(1280, 720, "Hello world!");
 
     while (!raylib.WindowShouldClose()) {
-        // raylib.BeginDrawing();
-        // raylib.ClearBackground(rl.Color { r: 255, g: 255, b: 255, a: 255 });
-        // raylib.EndDrawing();
+        raylib.BeginDrawing();
+        raylib.ClearBackground(raylib.Color { r: 255, g: 255, b: 255, a: 255 });
+        raylib.EndDrawing();
     }
 
-    // raylib.CloseWindow();
+    raylib.CloseWindow();
 }
