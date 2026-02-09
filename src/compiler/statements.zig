@@ -70,7 +70,10 @@ fn compoundTypeDeclaration(
         .@"struct", .@"union" => "struct",
         .@"enum" => "enum",
     };
+
+    self.switchSection(.header_forward_decls);
     try self.print("typedef {s} {s} {s};\n", .{ structure_type, inner_name, inner_name });
+    self.switchSection(if (type_decl.is_pub) .header_type_defs else .source_type_impls);
 
     for (type_decl.subtypes.items) |subtype| switch (subtype) {
         inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
@@ -487,7 +490,7 @@ fn functionDefinition(
 
     const previous_return_type = self.current_return_type;
     defer self.current_return_type = previous_return_type;
-    self.current_return_type = try Type.fromAst(self, function_def.return_type);
+    self.current_return_type = try .fromAst(self, function_def.return_type);
 
     if (binding_function or function_def.is_pub) {
         const saved_section = self.current_section;
@@ -496,7 +499,7 @@ fn functionDefinition(
 
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.
-        try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
+        try self.compileType(self.current_return_type.?, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 1..) |parameter, i| {
             try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});

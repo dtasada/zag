@@ -1,0 +1,13 @@
+pub struct Color {
+    r, g, b, a: u8,
+}
+
+pub bind fn InitWindow(width, height: i32, name: &c_char) void;
+pub bind fn CloseWindow() void;
+
+pub bind fn WindowShouldClose() bool;
+
+pub bind fn BeginDrawing() bool;
+pub bind fn EndDrawing() bool;
+
+pub bind fn ClearBackground(color: Color) void;

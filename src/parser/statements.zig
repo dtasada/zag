@@ -55,7 +55,7 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
 
     const assigned_value = try expressions.parse(self, .assignment, .{});
 
-    try self.expect(self.advance(), .@";", environment, ";");
+    try self.expectSemicolon(environment);
 
     return .{
         .variable_definition = .{

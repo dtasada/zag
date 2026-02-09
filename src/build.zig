@@ -44,7 +44,7 @@ fn transpileModule(
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zag")) continue;
 
-        const file_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir_path, entry.path });
+        const file_path = try std.fs.path.join(alloc, &.{ dir_path, entry.path });
         defer alloc.free(file_path);
 
         try transpile(alloc, file_path, registry);
@@ -59,8 +59,35 @@ pub fn build() !void {
     defer arena_back.deinit();
     const arena = arena_back.allocator();
 
-    var registry = std.StringHashMap(Compiler.Module).init(arena);
+    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+    defer @".zag-out".close();
+
+    var @".zag-out/zag" = try @".zag-out".makeOpenPath("zag", .{});
+    defer @".zag-out/zag".close();
+
+    var zag_header_buf: [1024]u8 = undefined;
+    var zag_header = try @".zag-out/zag".createFile("zag.h", .{});
+    var zag_header_writer = zag_header.writer(&zag_header_buf);
+    try zag_header_writer.interface.writeAll(
+        \\#ifndef ZAG_H
+        \\#define ZAG_H
+        \\#include <stdbool.h>
+        \\#include <stdlib.h>
+        \\
+    );
+    try zag_header_writer.interface.flush();
+    zag_header.close();
+
+    var registry: std.StringHashMap(Compiler.Module) = .init(arena);
     try transpileModule(arena, "src", &registry);
+
+    zag_header = try @".zag-out/zag".openFile("zag.h", .{ .mode = .write_only });
+
+    try zag_header.seekFromEnd(0);
+    zag_header_writer = zag_header.writer(&zag_header_buf);
+    try zag_header_writer.interface.writeAll("\n#endif\n");
+    try zag_header_writer.interface.flush();
+    zag_header.close();
 
     try compile(alloc);
 }

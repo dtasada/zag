@@ -1,18 +1,16 @@
 import std;
 import c;
 
+import raylib;
+
 fn main() !i32 {
-    let var = {
-        let a = 4;
-        let b = 5;
-        a + b
-    };
+    raylib.InitWindow(1280, 720, "Hello world!");
 
-    c.printf("var: %d\n", var);
+    while (!raylib.WindowShouldClose()) {
+        // raylib.BeginDrawing();
+        // raylib.ClearBackground(rl.Color { r: 255, g: 255, b: 255, a: 255 });
+        // raylib.EndDrawing();
+    }
 
-    let result: !i32 = 4;
-    let inner = try result;
-
-    return c_null;
+    // raylib.CloseWindow();
 }
-

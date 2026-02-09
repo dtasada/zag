@@ -284,7 +284,7 @@ pub fn emit(self: *Self) CompilerError!void {
 
 fn writeOutputFiles(self: *Self) !void {
     // Create output directories
-    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
+    var @".zag-out" = try std.fs.cwd().openDir(".zag-out", .{});
     defer @".zag-out".close();
 
     try @".zag-out".makePath(std.fs.path.dirname(self.output_path).?);
@@ -326,20 +326,13 @@ fn writeOutputFiles(self: *Self) !void {
     try header_file_writer.interface.flush();
 
     var zag_header_buf: [1024]u8 = undefined;
-    const zag_header = try @".zag-out".createFile(self.zag_header_path, .{});
+    const zag_header = try @".zag-out".openFile(self.zag_header_path, .{ .mode = .write_only });
     defer zag_header.close();
-    var zag_header_writer = zag_header.writer(&zag_header_buf);
 
-    try zag_header_writer.interface.writeAll(
-        \\#ifndef ZAG_H
-        \\#define ZAG_H
-        \\#include <stdbool.h>
-        \\#include <stdlib.h>
-        \\
-    );
+    try zag_header.seekFromEnd(0);
+    var zag_header_writer = zag_header.writer(&zag_header_buf);
     try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_types).buffer.items);
     try zag_header_writer.interface.writeAll(self.sections.get(.zag_header_macros).buffer.items);
-    try zag_header_writer.interface.writeAll("\n#endif\n");
     try zag_header_writer.interface.flush();
 }
 

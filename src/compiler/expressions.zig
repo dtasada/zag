@@ -994,7 +994,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         expected_args - 1,
         received_args,
         call_expr.pos,
-    ) else if (variadic_arg == 0 and expected_args != received_args) return errors.argumentCountMismatch(
+    ) else if (expected_args != received_args) return errors.argumentCountMismatch(
         expected_args,
         received_args,
         call_expr.pos,

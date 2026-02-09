@@ -313,6 +313,7 @@ pub inline fn getHandler(
         error.HandlerDoesNotExist
     else {
         std.debug.dumpCurrentStackTrace(null);
+
         return utils.printErr(
             error.HandlerDoesNotExist,
             "Parser error: Syntax error at {f}.\n",

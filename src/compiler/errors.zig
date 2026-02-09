@@ -4,6 +4,7 @@ const utils = @import("utils");
 const Type = @import("Type.zig").Type;
 
 pub const CompilerError = error{
+    AccessDenied,
     ArgumentCountMismatch,
     AssignmentToImmutableVariable,
     BadMutability,
@@ -32,6 +33,7 @@ pub const CompilerError = error{
     UndeclaredType,
     UndeclaredVariable,
     UnknownSymbol,
+    Unseekable,
     UnsupportedExpression,
     UnsupportedType,
     VariableRedeclaration,
@@ -48,7 +50,6 @@ pub fn typeMismatch(
     received_type: Type,
     position: utils.Position,
 ) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.TypeMismatch,
         "comperr: Expected '{f}', received '{f}' ({f}).\n",
@@ -93,7 +94,6 @@ pub fn argumentCountMismatch(
 }
 
 pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UnknownSymbol,
         "comperr: Unknown symbol '{s}' at {f}.\n",
