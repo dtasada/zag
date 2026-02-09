@@ -1,7 +1,15 @@
 import std;
 import c;
 
-fn main() !&void {
+fn main() !i32 {
+    let var = {
+        let a = 4;
+        let b = 5;
+        a + b
+    };
+
+    c.printf("var: %d\n", var);
+
     let result: !i32 = 4;
     let inner = try result;
 
