@@ -195,7 +195,16 @@ pub fn ifExpressionMustContainElseClause(pos: utils.Position) CompilerError {
 pub fn tryExpressionOnNonErrorUnion(t: Type, pos: utils.Position) CompilerError {
     return utils.printErr(
         error.IllegalExpression,
-        "comperr: Illegal 'try' expression on type '{f}'. 'try' requires an error union ({f}).\n",
+        "comperr: Illegal catch expression on type '{f}'. Try expressions require error unions ({f}).\n",
+        .{ t, pos },
+        .red,
+    );
+}
+
+pub fn catchExpressionOnNonErrorUnion(t: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Illegal catch expression on type '{f}'. Catch expressions require error unions ({f}).\n",
         .{ t, pos },
         .red,
     );

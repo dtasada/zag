@@ -140,6 +140,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "catch_expression"
+        },
+        {
+          "type": "SYMBOL",
           "name": "call_expression"
         },
         {
@@ -232,6 +236,23 @@
         {
           "type": "STRING",
           "value": "try"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        }
+      ]
+    },
+    "catch_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        },
+        {
+          "type": "STRING",
+          "value": "catch"
         },
         {
           "type": "SYMBOL",
@@ -4349,6 +4370,21 @@
     ],
     [
       "try_expression",
+      "generic_expression"
+    ],
+    [
+      "try_expression",
+      "catch_expression"
+    ],
+    [
+      "catch_expression"
+    ],
+    [
+      "catch_expression",
+      "index_expression"
+    ],
+    [
+      "catch_expression",
       "generic_expression"
     ]
   ],

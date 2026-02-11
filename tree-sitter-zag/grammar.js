@@ -39,6 +39,10 @@ export default grammar({
     [$.union_declaration],
     [$.try_expression, $.index_expression],
     [$.try_expression, $.generic_expression],
+    [$.try_expression, $.catch_expression],
+    [$.catch_expression],
+    [$.catch_expression, $.index_expression],
+    [$.catch_expression, $.generic_expression],
   ],
 
   rules: {
@@ -79,6 +83,7 @@ export default grammar({
       $.undefined_literal,
 
       $.try_expression,
+      $.catch_expression,
       $.call_expression,
       $.member_expression,
       $.binary_expression,
@@ -100,6 +105,7 @@ export default grammar({
     continue_statement: $ => seq("continue", ";"),
 
     try_expression: $ => seq("try", $.expression),
+    catch_expression: $ => seq($.expression, "catch", $.expression),
 
     generic_expression: $ => seq(
       $.expression,

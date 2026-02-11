@@ -4,6 +4,7 @@
  "as"
  "bind"
  "break"
+ "catch"
  "const"
  "continue"
  "else"

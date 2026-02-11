@@ -198,8 +198,29 @@ pub fn compile(
             try self.print("{s}.payload.success", .{temp_name});
         },
         .@"catch" => |c| {
-            _ = c;
-            unreachable;
+            const lhs_t: Type = try .infer(self, c.lhs.*);
+            const inner = switch (lhs_t) {
+                .error_union => |eu| eu.success.*,
+                else => return errors.catchExpressionOnNonErrorUnion(lhs_t, c.pos),
+            };
+
+            const rhs_t: Type = try .infer(self, c.rhs.*);
+
+            if (!(inner.eql(rhs_t) or inner.check(rhs_t) or inner.check(lhs_t)))
+                return errors.typeMismatchCatchExpression(lhs_t, rhs_t, c.pos);
+
+            const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(c.lhs))});
+
+            self.currentSection().pos = self.currentSection().current_statement;
+            try self.compileType(lhs_t, .{});
+            try self.print(" {s} = ", .{temp_name});
+            try compile(self, c.lhs, .{});
+            try self.write(";\n");
+            self.currentSection().pos = self.currentWriter().items.len;
+
+            try self.print("({s}.is_success ? {s}.payload.success : (", .{ temp_name, temp_name });
+            try compile(self, c.rhs, .{ .expected_type = inner });
+            try self.write("))");
         },
         .bad_node => unreachable,
     }

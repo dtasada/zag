@@ -464,6 +464,21 @@
     }
   },
   {
+    "type": "catch_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "char_literal",
     "named": true,
     "fields": {}
@@ -629,6 +644,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "catch_expression",
           "named": true
         },
         {
@@ -2466,6 +2485,10 @@
   },
   {
     "type": "c_ushort",
+    "named": false
+  },
+  {
+    "type": "catch",
     "named": false
   },
   {
