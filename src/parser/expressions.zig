@@ -472,3 +472,18 @@ pub fn functionType(self: *Self) !ast.Expression {
     const type_node = try self.type_parser.parseType(self.alloc, .primary);
     return .{ .type = type_node };
 }
+
+pub fn @"catch"(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
+    _ = self.advance(); // move past 'catch'
+
+    const rhs = try self.alloc.create(ast.Expression);
+    rhs.* = try parse(self, .default, .{});
+
+    return .{
+        .@"catch" = .{
+            .pos = lhs.getPosition(),
+            .lhs = lhs,
+            .rhs = rhs,
+        },
+    };
+}

@@ -99,6 +99,11 @@ pub const Expression = union(enum) {
     struct_instantiation: StructInstantiation,
     type: Type,
     @"try": struct { pos: utils.Position, @"try": *const Expression },
+    @"catch": struct {
+        pos: utils.Position,
+        lhs: *const Expression,
+        rhs: *const Expression,
+    },
 
     pub const Match = struct {
         pub const Case = struct {

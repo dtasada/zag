@@ -3,22 +3,9 @@ import c;
 
 import raylib as rl;
 
-struct Vector2<T, N: usize> {
-    items: [N]T,
-
-    fn print(self: &Vector2<T, N>) void {
-        for (self.items) |i| {
-            c.printf("item: %d\n", i);
-        }
-    }
-}
-
 fn main() void {
     rl.InitWindow(1280, 720, "Hello world!");
     rl.SetTargetFPS(60);
-
-    let v = Vector2<i32, 3> { items: [3]i32{1, 2, 3} };
-    v.print();
 
     let mut pos = rl.Vector2 { x: 360, y: 0 };
     let mut vel = 0;
@@ -42,7 +29,12 @@ fn main() void {
         if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_D))) pos.x += 6;
 
         rl.DrawCircleV(pos, ball_radius, red);
-        rl.DrawLineEx(rl.Vector2 { x: 0, y: line_height }, rl.Vector2 {x: 1280, y: line_height}, 2.0, green);
+        rl.DrawLineEx(
+            rl.Vector2 { x: 0, y: line_height },
+            rl.Vector2 {x: 1280, y: line_height},
+            2.0,
+            green,
+        );
 
         rl.EndDrawing();
     }

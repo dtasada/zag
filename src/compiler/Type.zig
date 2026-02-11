@@ -765,6 +765,15 @@ pub const Type = union(enum) {
                 else => |other| errors.illegalSliceExpression(other, slice.pos),
             },
             .bad_node => unreachable,
+            .@"catch" => |c| {
+                const lhs_t = try infer(compiler, c.lhs.*);
+                const rhs_t = try infer(compiler, c.rhs.*);
+
+                if (!(lhs_t.eql(rhs_t) or lhs_t.check(rhs_t) or rhs_t.check(lhs_t)))
+                    return errors.typeMismatchCatchExpression(lhs_t, rhs_t, c.pos);
+
+                return lhs_t;
+            },
         };
     }
 

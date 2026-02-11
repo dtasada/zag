@@ -213,3 +213,12 @@ pub fn tryExpressionBadReturnType(
         .red,
     );
 }
+
+pub fn typeMismatchCatchExpression(lhs_t: Type, rhs_t: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.TypeMismatch,
+        "comperr: Incompatible types '{f}' and '{f}' in catch expression ({f}).\n",
+        .{ lhs_t, rhs_t, pos },
+        .red,
+    );
+}

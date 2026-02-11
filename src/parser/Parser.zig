@@ -154,6 +154,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"..", .relational, expressions.range);
     try self.led(.@"..=", .relational, expressions.range);
     try self.led(.@"[", .call, expressions.index);
+    try self.led(.@"catch", .default, expressions.@"catch");
 
     // Statements
     try self.statement(.let, statements.variableDefinition);

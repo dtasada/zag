@@ -203,12 +203,13 @@ fn advanceN(self: *Self, n: usize) void {
 pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
     errdefer self.tokens.deinit(alloc);
 
-    var keywords: std.StaticStringMap(Token) = .initComptime(.{
+    const keywords: std.StaticStringMap(Token) = .initComptime(.{
         .{ "and", .@"and" },
         .{ "as", .as },
         .{ "bind", .bind },
         .{ "break", .@"break" },
         .{ "but", .but },
+        .{ "catch", .@"catch" },
         .{ "const", .@"const" },
         .{ "continue", .@"continue" },
         .{ "else", .@"else" },

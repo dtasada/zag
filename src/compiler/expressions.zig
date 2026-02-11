@@ -197,6 +197,10 @@ pub fn compile(
 
             try self.print("{s}.payload.success", .{temp_name});
         },
+        .@"catch" => |c| {
+            _ = c;
+            unreachable;
+        },
         .bad_node => unreachable,
     }
 }
