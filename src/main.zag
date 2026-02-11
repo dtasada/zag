@@ -7,6 +7,9 @@ fn main() void {
     rl.InitWindow(1280, 720, "Hello world!");
     rl.SetTargetFPS(60);
 
+    let err: !i32 = 4;
+    let caught = err catch 4;
+
     let mut pos = rl.Vector2 { x: 360, y: 0 };
     let mut vel = 0;
 

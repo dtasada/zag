@@ -259,6 +259,8 @@ pub const Type = union(enum) {
                     symbol.symbol,
                     symbol.pos,
                 );
+                if (result == .void and !std.mem.eql(u8, symbol.symbol, "void"))
+                    return errors.unknownSymbol(symbol.symbol, symbol.pos);
                 // If we get a .type, unwrap it to the actual type
                 if (result == .type) {
                     if (result.type) |inner_type| {

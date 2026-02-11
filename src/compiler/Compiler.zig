@@ -367,24 +367,21 @@ pub fn scan(self: *Self) CompilerError!void {
                 const received_type: Type = try .infer(self, var_def.assigned_value);
                 if (received_type == .type) {
                     if (received_type.type) |inner_type| {
-                        try self.registerSymbol(var_def.variable_name, .{ .type = inner_type.* }, .{ .is_defined = false, .inner_name = try self.mangle(var_def.variable_name) });
-                    }
-                    continue;
-                }
-
-                if (received_type == .type) {
-                    if (received_type.type) |inner_type| {
                         try self.registerSymbol(
                             var_def.variable_name,
                             .{ .type = inner_type.* },
                             .{
                                 .is_defined = false,
-                                .inner_name = try self.mangle(var_def.variable_name),
+                                .inner_name = switch (inner_type.*) {
+                                    inline .@"struct", .@"union", .@"enum" => |ct| ct.inner_name,
+                                    else => try self.mangle(var_def.variable_name),
+                                },
                             },
                         );
                     }
                     continue;
                 }
+
                 final_type = received_type;
             }
 
