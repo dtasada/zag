@@ -670,26 +670,29 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 
     try self.write("(");
 
-    var prev_operand: *const ast.Expression = comp.left;
+    var variables: std.ArrayList(u64) = try .initCapacity(self.alloc, comp.comparisons.items.len);
+    for (comp.comparisons.items) |i|
+        variables.appendAssumeCapacity(std.hash.Wyhash.hash(0, std.mem.asBytes(i.right)));
+
+    self.currentSection().pos = self.currentSection().current_statement;
+
+    for (variables.items, 0..) |v, i| {
+        const expr = comp.comparisons.items[i].right;
+        const t: Type = try .infer(self, expr.*);
+        try self.compileType(t, .{});
+        try self.print(" _{} = ", .{v});
+        try compile(self, expr, .{});
+        try self.write(";\n");
+    }
+
+    self.currentSection().pos = self.currentWriter().items.len;
+
+    try compile(self, comp.left, .{});
 
     for (comp.comparisons.items, 0..) |item, i| {
-        if (i > 0) try self.write(" && ");
-
-        try self.write("(");
-        try compile(self, prev_operand, .{});
-        try self.print(" {s} ", .{switch (item.op) {
-            .@"==" => "==",
-            .@"!=" => "!=",
-            .@"<" => "<",
-            .@">" => ">",
-            .@"<=" => "<=",
-            .@">=" => ">=",
-            else => unreachable,
-        }});
-        try compile(self, item.right, .{});
-        try self.write(")");
-
-        prev_operand = item.right;
+        if (i > 0) try self.print("_{} ", .{variables.items[i - 1]});
+        try self.print(" {s} _{}", .{ @tagName(item.op), variables.items[i] });
+        if (i < comp.comparisons.items.len - 1) try self.write(" &&");
     }
 
     try self.write(")");
@@ -1011,14 +1014,14 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         }
     }
 
-    const expected_args = function.params.items.len;
-    const received_args = call_expr.args.items.len;
-
     const variadic_arg: ?usize = b: {
         for (function.params.items, 0..) |param_type, i|
             if (param_type.type == .variadic) break :b i;
         break :b null;
     };
+
+    const expected_args = if (variadic_arg) |_| function.params.items.len - 1 else function.params.items.len;
+    const received_args = call_expr.args.items.len;
 
     if (variadic_arg != null and received_args < expected_args - 1) return errors.argumentCountMismatch(
         expected_args - 1,

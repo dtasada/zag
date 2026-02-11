@@ -85,6 +85,7 @@ pub fn argumentCountMismatch(
     received_args: usize,
     position: utils.Position,
 ) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.ArgumentCountMismatch,
         "comperr: Expected {} arguments in function call, found {} ({f}).\n",
