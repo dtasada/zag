@@ -499,7 +499,12 @@ pub const Type = union(enum) {
             var global_scope = &compiler.scopes.items[0];
             try global_scope.put(name, .{ .type = .{
                 .type = new_type,
-                .inner_name = name,
+                .inner_name = switch (new_type) {
+                    .@"struct" => new_type.@"struct".inner_name,
+                    .@"union" => new_type.@"union".inner_name,
+                    .function => new_type.function.inner_name,
+                    else => name,
+                },
                 .is_defined = false,
             } });
 

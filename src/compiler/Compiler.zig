@@ -665,9 +665,9 @@ pub fn compileType(
 
             if (!opts.binding_mut) try self.write(" const");
         },
-        .@"struct" => |s| try self.write(try self.getInnerName(s.name)),
-        .@"union" => |u| try self.write(try self.getInnerName(u.name)),
-        .@"enum" => |e| try self.write(try self.getInnerName(e.name)),
+        .@"struct" => |s| try self.write(s.inner_name),
+        .@"union" => |u| try self.write(u.inner_name),
+        .@"enum" => |e| try self.write(e.inner_name),
         .optional => |optional| {
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {

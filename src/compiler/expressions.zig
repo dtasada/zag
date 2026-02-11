@@ -99,17 +99,11 @@ pub fn compile(
         .ident => |ident| if (self.getInnerName(ident.ident)) |inner_name| {
             try self.write(inner_name);
         } else |_| return errors.unknownSymbol(ident.ident, expression.getPosition()),
-        .struct_instantiation => |struct_inst| {
-            const inferred_type: Type = try .infer(self, struct_inst.type_expr.*);
-            var val = inferred_type;
-            if (inferred_type == .type) if (inferred_type.type) |t| {
-                val = t.*;
-            };
-            switch (val) {
-                .@"struct" => |s| try structInstantiation(self, struct_inst, s),
-                .@"union" => |u| try unionInstantiation(self, struct_inst, u),
-                else => unreachable,
-            }
+        .struct_instantiation => |struct_inst| b: switch (try Type.infer(self, struct_inst.type_expr.*)) {
+            .@"struct" => |s| try structInstantiation(self, struct_inst, s),
+            .@"union" => |u| try unionInstantiation(self, struct_inst, u),
+            .type => |t| continue :b t.?.*,
+            else => unreachable,
         },
         .reference => |reference| {
             switch (reference.inner.*) {
