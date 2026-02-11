@@ -795,7 +795,10 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             };
             break :b switch (item) {
                 .constant => |c| c.value,
-                .type => |t| .{ .type = t.type },
+                .type => |t| if (t.type == .generic_param)
+                    return error.ExpressionCannotBeEvaluatedAtCompileTime
+                else
+                    .{ .type = t.type },
                 .module => |m| .{ .type = .{ .module = m } }, // Module as value? Type?
                 .symbol => return error.ExpressionCannotBeEvaluatedAtCompileTime, // Variable cannot be evaluated at comptime (unless const?)
             };

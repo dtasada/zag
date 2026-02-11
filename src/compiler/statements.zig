@@ -327,6 +327,7 @@ fn variableDefinition(
             try expressions.compile(self, &v.assigned_value, .{
                 .binding_mut = v.binding == .is_mut,
                 .expected_type = expected_type,
+                .is_variable_declaration = true,
             });
         }
         try self.write(";\n");

@@ -313,13 +313,15 @@ pub inline fn getHandler(
         .bp => self.bp_lookup,
     }.get(token)) |handler| handler else return if (opts.silent_error)
         error.HandlerDoesNotExist
-    else
+    else {
+        std.debug.dumpCurrentStackTrace(null);
         return utils.printErr(
             error.HandlerDoesNotExist,
             "Parser error: Syntax error at {f}.\n",
             .{self.currentPosition()},
             .red,
         );
+    };
 }
 
 /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
@@ -356,7 +358,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
                 break :b .{ .type = t }
             else |_| {
                 self.pos = backup_pos;
-                break :b try expressions.parse(self, .default, .{});
+                break :b try expressions.parse(self, .relational, .{});
             }
         } else try expressions.parse(self, .default, .{}));
 

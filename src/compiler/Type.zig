@@ -682,7 +682,15 @@ pub const Type = union(enum) {
             .prefix => |prefix| try infer(compiler, prefix.rhs.*),
             .range => @panic("invalid"),
             .assignment => .void,
-            .struct_instantiation => |struct_inst| try infer(compiler, struct_inst.type_expr.*),
+            .struct_instantiation => |struct_inst| b: {
+                const inferred_type = try infer(compiler, struct_inst.type_expr.*);
+                if (inferred_type == .type) {
+                    if (inferred_type.type) |t| {
+                        break :b t.*;
+                    }
+                }
+                break :b inferred_type;
+            },
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => |block| try inferBlock(compiler, block),
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
@@ -889,6 +897,10 @@ pub const Type = union(enum) {
             .{ .type = @unionInit(Type, @tagName(T), compound_type) },
             .{ .is_defined = should_define, .inner_name = try compiler.mangle(type_decl.name) },
         );
+
+        if (T == .@"struct" or T == .@"union") {
+            if (type_decl.generic_types.items.len > 0) return compound_type;
+        }
 
         try compiler.pushScope();
         defer compiler.popScope();

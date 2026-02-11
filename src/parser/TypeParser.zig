@@ -64,14 +64,8 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower
     var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
         try nud_handler(self, alloc)
     else {
-        const pos = self.parent_parser.currentPosition();
         _ = self.parent_parser.advance();
-        return utils.printErr(
-            error.UnexpectedToken,
-            "Unexpected token '{s}' in type at {f}\n",
-            .{ @tagName(std.meta.activeTag(token)), pos },
-            .red,
-        );
+        return error.UnexpectedToken;
     };
 
     while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentToken()))) {

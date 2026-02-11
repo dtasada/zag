@@ -19,6 +19,7 @@ pub fn compile(
     opts: struct {
         binding_mut: bool = false,
         expected_type: ?Type = null, // null means infer the type from the expression
+        is_variable_declaration: bool = false,
     },
 ) CompilerError!void {
     if (opts.expected_type) |expected_type| {
@@ -99,7 +100,11 @@ pub fn compile(
             try self.write(inner_name);
         } else |_| return errors.unknownSymbol(ident.ident, expression.getPosition()),
         .struct_instantiation => |struct_inst| {
-            const val: Type = try .infer(self, struct_inst.type_expr.*);
+            const inferred_type: Type = try .infer(self, struct_inst.type_expr.*);
+            var val = inferred_type;
+            if (inferred_type == .type) if (inferred_type.type) |t| {
+                val = t.*;
+            };
             switch (val) {
                 .@"struct" => |s| try structInstantiation(self, struct_inst, s),
                 .@"union" => |u| try unionInstantiation(self, struct_inst, u),
@@ -122,9 +127,12 @@ pub fn compile(
             try compile(self, reference.inner, .{});
         },
         .array_instantiation => |array| {
-            try self.write("(");
-            try self.compileType(try .fromAst(self, array.type), .{ .binding_mut = opts.binding_mut });
-            try self.print("[]){{", .{});
+            if (!opts.is_variable_declaration) {
+                try self.write("(");
+                try self.compileType(try .fromAst(self, array.type), .{ .binding_mut = opts.binding_mut });
+                try self.print("[])", .{});
+            }
+            try self.write("{");
             for (array.contents.items, 1..) |*item, i| {
                 try compile(self, item, .{});
                 if (i < array.contents.items.len) try self.write(", ");
@@ -438,7 +446,7 @@ fn structInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiat
     while (members.next()) |m| {
         try self.indent();
         try self.print(".{s} = ", .{m.key_ptr.*});
-        try compile(self, m.value_ptr, .{});
+        try compile(self, m.value_ptr, .{ .is_variable_declaration = true });
         try self.write(",\n");
     }
 
@@ -470,7 +478,10 @@ fn unionInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiati
     try self.print(".tag = __zag_{s}_{s}, ", .{ u.tag_type.?.@"enum".inner_name, tag_name });
 
     try self.print(".payload = {{ .{s} = ", .{m.member_name});
-    try compile(self, &payload_val, .{ .expected_type = m.member_type.* });
+    try compile(self, &payload_val, .{
+        .expected_type = m.member_type.*,
+        .is_variable_declaration = true,
+    });
     try self.write(" } }");
 }
 
