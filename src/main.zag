@@ -5,26 +5,26 @@ import raylib as rl;
 
 fn main() !i32 {
     rl.InitWindow(1280, 720, "Hello world!");
+    defer rl.CloseWindow();
+
     rl.SetTargetFPS(60);
-    defer c.printf("something\n");
 
     let mut pos = rl.Vector2 { x: 360, y: 0 };
     let mut vel = 0;
 
     let red = rl.Color { r: 255, g: 0, b: 0, a: 255 };
-    let mut green = rl.Color { r: 0, g: 255, b: 0, a: 255 };
+    let green = rl.Color { r: 0, g: 255, b: 0, a: 255 };
     let line_height = 600;
     let ball_radius = 40.0;
 
     while (!rl.WindowShouldClose()) {
-        defer green.r += 3;
-
         pos.y += vel;
         vel += 1;
 
         if (pos.y + ball_radius >= line_height) vel = -vel;
 
         rl.BeginDrawing();
+        defer rl.EndDrawing();
 
         rl.ClearBackground(rl.Color { r: 0, g: 0, b: 0, a: 255 });
 
@@ -38,10 +38,5 @@ fn main() !i32 {
             2.0,
             green,
         );
-
-        rl.EndDrawing();
     }
-
-    rl.CloseWindow();
-    return 4;
 }

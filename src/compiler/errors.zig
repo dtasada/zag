@@ -232,3 +232,12 @@ pub fn typeMismatchCatchExpression(lhs_t: Type, rhs_t: Type, pos: utils.Position
         .red,
     );
 }
+
+pub fn functionMustReturn(name: []const u8, return_type: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.MissingReturnStatement,
+        "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
+        .{ name, return_type, pos },
+        .red,
+    );
+}

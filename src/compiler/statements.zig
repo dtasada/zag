@@ -231,13 +231,15 @@ fn compoundTypeDeclaration(
             .error_union => |error_union| if (error_union.success.* == .void)
                 // return dummy 0 when return type is !void, since unions in C can't have void members
                 self.current_return_type.?
-            else
-                null,
-            else => if (returns_on_all_paths) null else return utils.printErr(
-                error.MissingReturnStatement,
-                "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
-                .{ method.name, self.current_return_type.?, method.pos },
-                .red,
+            else if (returns_on_all_paths) null else return errors.functionMustReturn(
+                method.name,
+                self.current_return_type.?,
+                method.pos,
+            ),
+            else => if (returns_on_all_paths) null else return errors.functionMustReturn(
+                method.name,
+                self.current_return_type.?,
+                method.pos,
             ),
         };
 
@@ -549,13 +551,15 @@ fn functionDefinition(
             .error_union => |error_union| if (error_union.success.* == .void)
                 // return dummy 0 when return type is !void, since unions in C can't have void members
                 self.current_return_type.?
-            else
-                null,
-            else => if (returns_on_all_paths) null else return utils.printErr(
-                error.MissingReturnStatement,
-                "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
-                .{ function_def.name, self.current_return_type.?, function_def.pos },
-                .red,
+            else if (returns_on_all_paths) null else return errors.functionMustReturn(
+                function_def.name,
+                self.current_return_type.?,
+                function_def.pos,
+            ),
+            else => if (returns_on_all_paths) null else return errors.functionMustReturn(
+                function_def.name,
+                self.current_return_type.?,
+                function_def.pos,
             ),
         };
 
