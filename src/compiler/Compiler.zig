@@ -104,7 +104,10 @@ const GenericInstantiation = struct {
 };
 
 /// Maps a symbol name to the symbol's type and inner name.
-pub const Scope = std.StringHashMap(ScopeItem);
+pub const Scope = struct {
+    pending_defers: *std.ArrayList(*const ast.Statement),
+    items: *std.StringHashMap(ScopeItem),
+};
 pub const ScopeItem = union(enum) {
     symbol: struct {
         type: Type,
@@ -588,7 +591,7 @@ pub fn compileBlock(
             capture_name: []const u8,
             index: []const u8,
         } = null,
-        inject_return: ?[]const u8 = null,
+        return_implicit_success: ?Type = null,
     },
 ) CompilerError!void {
     try self.pushScope();
@@ -628,12 +631,37 @@ pub fn compileBlock(
         try self.registerSymbol(iterator.capture_name, .{ .symbol = .{ .type = inner_type } }, .{});
     }
 
-    for (block.items) |*statement| {
-        try self.indent();
-        try statements.compile(self, statement);
+    var return_expr: ?ast.Expression = null;
+    for (block.items) |*statement| switch (statement.*) {
+        .@"return" => |r| {
+            return_expr = r.@"return";
+            break;
+        },
+        else => {
+            try self.indent();
+            try statements.compile(self, statement);
+        },
+    };
+
+    if (return_expr) |e| {
+        try compileType(self, self.current_return_type.?, .{});
+        try self.write(" __zag_ret_val = ");
+        try expressions.compile(self, &e, .{
+            .is_variable_declaration = true,
+            .expected_type = self.current_return_type.?,
+        });
+        try self.write(";\n");
     }
 
-    if (opts.inject_return) |ir| try self.write(ir);
+    for (self.scopes.getLast().pending_defers.items) |pd| try statements.compile(self, pd);
+
+    if (return_expr) |_| {
+        try self.write("return __zag_ret_val;");
+    } else if (opts.return_implicit_success) |ris| {
+        try self.write("return (");
+        try self.compileType(ris, .{});
+        try self.write("){ .is_success = true, .payload = { .success = 0 } };\n");
+    }
 
     self.indent_level -= 1;
 
@@ -841,9 +869,8 @@ fn solveGenerics(self: *Self) !void {
         defer self.popScope();
 
         var it = instantiation.module.symbols.iterator();
-        var last = &self.scopes.items[self.scopes.items.len - 1];
         while (it.next()) |entry|
-            try last.put(entry.key_ptr.*, .{ .symbol = .{
+            try self.scopes.getLast().items.put(entry.key_ptr.*, .{ .symbol = .{
                 .type = entry.value_ptr.type,
                 .inner_name = entry.value_ptr.name,
                 .is_mut = false,
@@ -912,13 +939,23 @@ fn solveGenerics(self: *Self) !void {
 
 /// appends a new empty scope to the scope stack.
 pub fn pushScope(self: *Self) !void {
-    try self.scopes.append(self.alloc, .init(self.alloc));
+    const items = try self.alloc.create(std.StringHashMap(ScopeItem));
+    items.* = .init(self.alloc);
+
+    const pending_defers = try self.alloc.create(std.ArrayList(*const ast.Statement));
+    pending_defers.* = .empty;
+
+    try self.scopes.append(self.alloc, .{
+        .pending_defers = pending_defers,
+        .items = items,
+    });
 }
 
 /// pops the scope of the scope stack.
 pub fn popScope(self: *Self) void {
     var last = self.scopes.pop().?;
-    last.deinit();
+    last.pending_defers.deinit(self.alloc);
+    last.items.deinit();
 }
 
 /// registers a new entry in the top scope of the scope stack.
@@ -939,8 +976,7 @@ pub fn registerSymbol(
         is_defined: bool = true,
     },
 ) !void {
-    var last = &self.scopes.items[self.scopes.items.len - 1];
-    try last.put(name, switch (symbol_or_type) {
+    try self.scopes.getLast().items.put(name, switch (symbol_or_type) {
         .symbol => |symbol| .{
             .symbol = .{
                 .is_mut = symbol.is_mut,
@@ -1101,7 +1137,7 @@ pub fn getSymbolType(self: *const Self, symbol: []const u8) !Type {
 
 pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
     var it = std.mem.reverseIterator(self.scopes.items);
-    while (it.next()) |scope| return scope.get(symbol) orelse continue;
+    while (it.next()) |scope| return scope.items.get(symbol) orelse continue;
 
     return error.UnknownSymbol;
 }
@@ -1134,7 +1170,7 @@ pub fn getSymbolDefined(self: *const Self, symbol: []const u8) !bool {
 pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
-        if (scope.get(symbol)) |item| {
+        if (scope.items.get(symbol)) |item| {
             return switch (item) {
                 .module => |module| module.name,
                 .constant => utils.printErr(
@@ -1151,7 +1187,7 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
     // Search in modules in scope
     it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
-        var scope_it = scope.iterator();
+        var scope_it = scope.items.iterator();
         while (scope_it.next()) |entry| {
             switch (entry.value_ptr.*) {
                 .module => |module| if (module.symbols.get(symbol)) |s| return s.inner_name,

@@ -246,6 +246,7 @@ pub const Statement = union(enum) {
     union_declaration: UnionDeclaration,
     variable_definition: VariableDefinition,
     block_eval: Expression,
+    @"defer": struct { pos: utils.Position, stmt: *const Statement },
 
     pub const For = struct {
         pos: utils.Position,

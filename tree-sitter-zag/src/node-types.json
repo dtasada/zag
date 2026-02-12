@@ -311,6 +311,10 @@
           "named": true
         },
         {
+          "type": "defer_statement",
+          "named": true
+        },
+        {
           "type": "enum_declaration",
           "named": true
         },
@@ -487,6 +491,89 @@
     "type": "continue_statement",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "defer_statement",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "binding_function_declaration",
+          "named": true
+        },
+        {
+          "type": "binding_type_declaration",
+          "named": true
+        },
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "break_statement",
+          "named": true
+        },
+        {
+          "type": "continue_statement",
+          "named": true
+        },
+        {
+          "type": "defer_statement",
+          "named": true
+        },
+        {
+          "type": "enum_declaration",
+          "named": true
+        },
+        {
+          "type": "expression_statement",
+          "named": true
+        },
+        {
+          "type": "for_statement",
+          "named": true
+        },
+        {
+          "type": "function_definition",
+          "named": true
+        },
+        {
+          "type": "if_statement",
+          "named": true
+        },
+        {
+          "type": "import_statement",
+          "named": true
+        },
+        {
+          "type": "match_expression",
+          "named": true
+        },
+        {
+          "type": "return_statement",
+          "named": true
+        },
+        {
+          "type": "struct_declaration",
+          "named": true
+        },
+        {
+          "type": "union_declaration",
+          "named": true
+        },
+        {
+          "type": "variable_definition",
+          "named": true
+        },
+        {
+          "type": "while_statement",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "enum_declaration",
@@ -773,6 +860,10 @@
             "named": true
           },
           {
+            "type": "defer_statement",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -921,6 +1012,10 @@
         },
         {
           "type": "continue_statement",
+          "named": true
+        },
+        {
+          "type": "defer_statement",
           "named": true
         },
         {
@@ -1188,6 +1283,10 @@
             "named": true
           },
           {
+            "type": "defer_statement",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -1279,6 +1378,10 @@
           },
           {
             "type": "continue_statement",
+            "named": true
+          },
+          {
+            "type": "defer_statement",
             "named": true
           },
           {
@@ -1404,6 +1507,10 @@
         },
         {
           "type": "continue_statement",
+          "named": true
+        },
+        {
+          "type": "defer_statement",
           "named": true
         },
         {
@@ -1709,6 +1816,10 @@
         },
         {
           "type": "continue_statement",
+          "named": true
+        },
+        {
+          "type": "defer_statement",
           "named": true
         },
         {
@@ -2192,6 +2303,10 @@
             "named": true
           },
           {
+            "type": "defer_statement",
+            "named": true
+          },
+          {
             "type": "enum_declaration",
             "named": true
           },
@@ -2502,6 +2617,10 @@
   },
   {
     "type": "continue",
+    "named": false
+  },
+  {
+    "type": "defer",
     "named": false
   },
   {

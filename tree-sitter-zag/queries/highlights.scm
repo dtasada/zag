@@ -7,6 +7,7 @@
  "catch"
  "const"
  "continue"
+ "defer"
  "else"
  "enum"
  "fn"

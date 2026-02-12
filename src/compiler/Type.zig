@@ -498,8 +498,7 @@ pub const Type = union(enum) {
             compiler.popScope(); // Unregisters placeholders
 
             // Register globally
-            var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{
+            try compiler.scopes.items[0].items.put(name, .{ .type = .{
                 .type = new_type,
                 .inner_name = switch (new_type) {
                     .@"struct" => new_type.@"struct".inner_name,
@@ -534,8 +533,7 @@ pub const Type = union(enum) {
             const new_type: Type = .{ .function = new_f };
 
             // Register globally
-            var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{
+            try compiler.scopes.items[0].items.put(name, .{ .type = .{
                 .type = new_type,
                 .inner_name = name,
                 .is_defined = true,
@@ -566,8 +564,7 @@ pub const Type = union(enum) {
             const new_type: Type = .{ .function = new_f };
 
             // Register globally
-            var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{
+            try compiler.scopes.items[0].items.put(name, .{ .type = .{
                 .type = new_type,
                 .inner_name = name,
                 .is_defined = true,
@@ -596,8 +593,7 @@ pub const Type = union(enum) {
             const new_type: Type = .{ .function = new_f };
 
             // Register globally
-            var global_scope = &compiler.scopes.items[0];
-            try global_scope.put(name, .{ .type = .{
+            try compiler.scopes.items[0].items.put(name, .{ .type = .{
                 .type = new_type,
                 .inner_name = name,
                 .is_defined = true,

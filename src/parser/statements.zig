@@ -510,6 +510,14 @@ pub fn @"continue"(self: *Self) ParserError!ast.Statement {
     return .@"continue";
 }
 
+pub fn @"defer"(self: *Self) ParserError!ast.Statement {
+    const pos = self.currentPosition();
+    _ = self.advance();
+    const stmt = try self.alloc.create(ast.Statement);
+    stmt.* = try parse(self);
+    return .{ .@"defer" = .{ .pos = pos, .stmt = stmt } };
+}
+
 pub fn @"pub"(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume `pub` keyword
     return parse(self);

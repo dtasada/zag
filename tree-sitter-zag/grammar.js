@@ -66,6 +66,7 @@ export default grammar({
       $.break_statement,
       $.continue_statement,
       $.block,
+      $.defer_statement,
     ),
 
     expression_statement: $ => seq($.expression, ";"),
@@ -100,6 +101,8 @@ export default grammar({
       $.generic_expression,
       $.type,
     ),
+
+    defer_statement: $ => seq("defer", $._statement),
 
     break_statement: $ => seq("break", ";"),
     continue_statement: $ => seq("continue", ";"),

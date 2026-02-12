@@ -173,6 +173,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.match, statements.match);
     try self.statement(.@"break", statements.@"break");
     try self.statement(.@"continue", statements.@"continue");
+    try self.statement(.@"defer", statements.@"defer");
 
     while (std.meta.activeTag(self.currentToken()) != .eof)
         try self.output.append(self.alloc, try statements.parse(self));

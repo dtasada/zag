@@ -129,7 +129,8 @@ pub struct ArrayList<T> {
 
     pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
         if (self.items.len == 0) return c_null;
-        for (self.items.len - 1..=0) |i| {
+
+        for (self.items.len - 1 ..= 0) |i| {
             if (self.items[i] == item) return i;
         }
 
@@ -149,9 +150,4 @@ pub struct ArrayList<T> {
         // Correctly shrink the slice.
         self.items = self.items[0..self.items.len - 1];
     }
-}
-
-pub union Result<T> {
-    ok: T,
-    err,
 }

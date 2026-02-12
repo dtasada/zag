@@ -51,6 +51,10 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
 
             try self.print("typedef {s} {s} {s};\n", .{ @tagName(btd.type), btd.name, btd.name });
         },
+        .@"defer" => |d| {
+            var pending_defers = self.scopes.getLast().pending_defers;
+            try pending_defers.append(self.alloc, d.stmt);
+        },
     }
 }
 
@@ -177,17 +181,14 @@ fn compoundTypeDeclaration(
         // Register struct's generic parameters if this is an instantiation
         // Check if we have generic params in outer scope
         const outer_scope_idx = self.scopes.items.len - 2; // -1 is current, -2 is outer
-        if (outer_scope_idx >= 0) {
-            var outer_scope = &self.scopes.items[outer_scope_idx];
-            switch (T) {
-                .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
-                    // Copy from outer scope if it exists there
-                    if (outer_scope.get(g.name)) |outer_item|
-                        try self.scopes.items[self.scopes.items.len - 1].put(g.name, outer_item);
-                },
-                else => {},
-            }
-        }
+        if (outer_scope_idx >= 0) switch (T) {
+            .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
+                // Copy from outer scope if it exists there
+                if (self.scopes.items[outer_scope_idx].items.get(g.name)) |outer_item|
+                    try self.scopes.getLast().items.put(g.name, outer_item);
+            },
+            else => {},
+        };
 
         const previous_return_type = self.current_return_type;
         defer self.current_return_type = previous_return_type;
@@ -225,27 +226,22 @@ fn compoundTypeDeclaration(
 
         const returns_on_all_paths = analysis.blockReturns(method.body);
 
-        var inject_return: ?[]const u8 = null;
-
-        switch (self.current_return_type.?) {
-            .void => {},
-            .error_union => |error_union| if (error_union.success.* == .void) {
+        const inject_return: ?Type = switch (self.current_return_type.?) {
+            .void => null,
+            .error_union => |error_union| if (error_union.success.* == .void)
                 // return dummy 0 when return type is !void, since unions in C can't have void members
-                inject_return = try std.fmt.allocPrint(
-                    self.alloc,
-                    "return ({s}){{ .is_success = true, .payload = {{ .success = 0 }} }};\n",
-                    .{self.zag_header_contents.get(self.current_return_type.?).?},
-                );
-            },
-            else => if (!returns_on_all_paths) return utils.printErr(
+                self.current_return_type.?
+            else
+                null,
+            else => if (returns_on_all_paths) null else return utils.printErr(
                 error.MissingReturnStatement,
                 "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
                 .{ method.name, self.current_return_type.?, method.pos },
                 .red,
             ),
-        }
+        };
 
-        try self.compileBlock(method.body, .{ .inject_return = inject_return });
+        try self.compileBlock(method.body, .{ .return_implicit_success = inject_return });
     }
 }
 
@@ -548,27 +544,22 @@ fn functionDefinition(
 
         const returns_on_all_paths = analysis.blockReturns(function_def.body);
 
-        var inject_return: ?[]const u8 = null;
-
-        switch (self.current_return_type.?) {
-            .void => {},
-            .error_union => |error_union| if (error_union.success.* == .void) {
+        const inject_return: ?Type = switch (self.current_return_type.?) {
+            .void => null,
+            .error_union => |error_union| if (error_union.success.* == .void)
                 // return dummy 0 when return type is !void, since unions in C can't have void members
-                inject_return = try std.fmt.allocPrint(
-                    self.alloc,
-                    "return ({s}){{ .is_success = true, .payload = {{ .success = 0 }} }};\n",
-                    .{self.zag_header_contents.get(self.current_return_type.?).?},
-                );
-            },
-            else => if (!returns_on_all_paths) return utils.printErr(
+                self.current_return_type.?
+            else
+                null,
+            else => if (returns_on_all_paths) null else return utils.printErr(
                 error.MissingReturnStatement,
                 "comperr: Function '{s}' must return '{f}' on all code paths ({f}).\n",
                 .{ function_def.name, self.current_return_type.?, function_def.pos },
                 .red,
             ),
-        }
+        };
 
-        try self.compileBlock(function_def.body, .{ .inject_return = inject_return });
+        try self.compileBlock(function_def.body, .{ .return_implicit_success = inject_return });
     }
 }
 

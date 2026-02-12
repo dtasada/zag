@@ -3,27 +3,22 @@ import c;
 
 import raylib as rl;
 
-fn main() void {
+fn main() !i32 {
     rl.InitWindow(1280, 720, "Hello world!");
     rl.SetTargetFPS(60);
-
-    let a = 1;
-    let b = 2;
-    let d = 3;
-
-    if (a < b < d) {
-        c.printf("condition\n");
-    }
+    defer c.printf("something\n");
 
     let mut pos = rl.Vector2 { x: 360, y: 0 };
     let mut vel = 0;
 
     let red = rl.Color { r: 255, g: 0, b: 0, a: 255 };
-    let green = rl.Color { r: 0, g: 255, b: 0, a: 255 };
+    let mut green = rl.Color { r: 0, g: 255, b: 0, a: 255 };
     let line_height = 600;
     let ball_radius = 40.0;
 
     while (!rl.WindowShouldClose()) {
+        defer green.r += 3;
+
         pos.y += vel;
         vel += 1;
 
@@ -39,7 +34,7 @@ fn main() void {
         rl.DrawCircleV(pos, ball_radius, red);
         rl.DrawLineEx(
             rl.Vector2 { x: 0, y: line_height },
-            rl.Vector2 {x: 1280, y: line_height},
+            rl.Vector2 { x: 1280, y: line_height },
             2.0,
             green,
         );
@@ -48,4 +43,5 @@ fn main() void {
     }
 
     rl.CloseWindow();
+    return 4;
 }
