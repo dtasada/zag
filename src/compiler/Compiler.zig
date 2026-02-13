@@ -747,7 +747,7 @@ pub fn compileType(
                 try self.write("typedef struct {\n");
                 try self.compileType(slice.inner.*, .{
                     .binding_mut = slice.is_mut,
-                    .is_top_level = new_opts.is_top_level,
+                    .is_top_level = true,
                 });
                 try self.write(" *ptr;\n");
                 try self.write("size_t len;\n");
@@ -1145,12 +1145,15 @@ pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
     return switch (try self.getScopeItem(symbol)) {
         .symbol => |s| s.is_mut,
-        else => return utils.printErr(
-            error.SymbolNotVariable,
-            "Compiler error: Symbol '{s}' is not a variable\n",
-            .{symbol},
-            .red,
-        ),
+        else => {
+            std.debug.dumpCurrentStackTrace(null);
+            return utils.printErr(
+                error.SymbolNotVariable,
+                "Compiler error: Symbol '{s}' is not a variable.\n",
+                .{symbol},
+                .red,
+            );
+        },
     };
 }
 

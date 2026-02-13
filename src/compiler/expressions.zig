@@ -62,6 +62,12 @@ pub fn compile(
                     try self.print("({s}){{ .is_success = true, .payload = {{ .success = 0 }} }}", .{error_union_type_name});
                 } else unreachable;
             },
+            .reference => |ref| if (received_type == .slice and
+                received_type.slice.inner.* == .u8 and
+                ref.inner.* == .c_char)
+            {
+                try self.print("\"{s}\"", .{expression.string.string});
+            } else try compile(self, expression, .{ .binding_mut = opts.binding_mut }),
             else => try compile(self, expression, .{ .binding_mut = opts.binding_mut }),
         } else try compile(self, expression, .{ .binding_mut = opts.binding_mut });
     } else switch (expression.*) {
@@ -72,7 +78,14 @@ pub fn compile(
         .float => |float| try self.print("{}", .{float.float}),
         .int => |int| try self.print("{}", .{int.int}),
         .uint => |uint| try self.print("{}", .{uint.uint}),
-        .string => |string| try self.print("\"{s}\"", .{string.string}),
+        .string => |string| {
+            try self.write("(");
+            try self.compileType(.{ .slice = .{ .inner = &.u8, .is_mut = false } }, .{});
+            try self.print("){{ .ptr = (const uint8_t*)\"{s}\", .len = {} }}", .{
+                string.string,
+                string.string.len,
+            });
+        },
         .char => |char| try self.print("'{c}'", .{char.char}),
         .call => |c| try call(self, c),
         .member => |m| try member(self, m),
@@ -1045,7 +1058,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
 
     try self.write("(");
     for (call_expr.args.items, 1..) |*e, i| {
-        try compile(self, e, .{});
+        try compile(self, e, .{ .expected_type = function.params.items[i - 1].type });
         if (i < call_expr.args.items.len) try self.write(", ");
     }
     try self.write(")");

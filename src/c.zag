@@ -1,13 +1,28 @@
 pub bind fn printf(fmt: &c_char, args...) c_int;
 
 pub bind fn malloc(size: usize) &mut void;
-
 pub bind fn free(ptr: &mut void) void;
-
 pub bind fn realloc(ptr: &mut void, len: usize) &mut void;
+
+pub bind fn memcpy(dst: &mut void, src: &void, len: usize) &mut void;
+pub bind fn memmove(dst: &mut void, src: &void, len: usize) &mut void;
 
 pub bind fn pow(a: f64, b: f64) f64;
 
-pub bind fn memcpy(dst: &mut void, src: &void, len: usize) &mut void;
-
-pub bind fn memmove(dst: &mut void, src: &void, len: usize) &mut void;
+pub bind fn stpcpy(dst: &mut c_char, src: &c_char) &mut c_char;
+pub bind fn strcat(s1: &mut c_char, s2: &c_char) &mut c_char;
+pub bind fn strchr(s: &c_char, c: c_int) &mut c_char;
+pub bind fn strcmp(s1, s2: &c_char) c_int;
+pub bind fn strcpy(s1: &mut c_char, s2: &c_char) &mut c_char;
+pub bind fn strcspn(s1, s2: &c_char) usize;
+pub bind fn strerror(errnum: c_int) &mut c_char;
+pub bind fn strlen(s: &c_char) usize;
+pub bind fn strncat(s1: &mut c_char, s2: &c_char, n: usize) &mut c_char;
+pub bind fn strncmp(s1, s2: &c_char, n: usize) c_int;
+pub bind fn strncpy(s1: &mut c_char, s2: &c_char, n: usize) &mut c_char;
+pub bind fn strpbrk(s1, s2: &c_char) &mut c_char;
+pub bind fn strrchr(s: &c_char, c: c_int) &mut c_char;
+pub bind fn strsep(stringp: &mut &mut c_char, delim: &c_char) &mut c_char;
+pub bind fn strspn(s1, s2: &c_char) usize;
+pub bind fn strstr(s1, s2: &c_char) &mut c_char;
+pub bind fn strtok(s1: &mut c_char, s2: &c_char) &mut c_char;

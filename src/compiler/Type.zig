@@ -617,7 +617,7 @@ pub const Type = union(enum) {
                 .module => |m| .{ .module = m },
                 .constant => |c| c.type,
             },
-            .string => .{ .reference = .{ .inner = &.c_char, .is_mut = false } },
+            .string => .{ .slice = .{ .inner = &.u8, .is_mut = false } },
             .char => .u8,
             .uint => |uint| if (uint.uint <= std.math.maxInt(i32)) .i32 else .i64,
             .int => |int| if (int.int <= std.math.maxInt(i32) and int.int >= std.math.minInt(i32))
@@ -1165,6 +1165,10 @@ pub const Type = union(enum) {
         return switch (received) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => expected == .optional,
+            .slice => |rs| switch (expected) {
+                .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
+                else => fallback,
+            },
             .reference => |received_ref| switch (expected) {
                 .reference => |expected_ref| received_ref.inner.check(expected_ref.inner.*) and
                     (received_ref.is_mut or !expected_ref.is_mut),

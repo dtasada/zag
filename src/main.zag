@@ -3,7 +3,10 @@ import c;
 
 import raylib as rl;
 
-fn main() !i32 {
+fn main() void {
+    let string = "some_string";
+    let cstring: &c_char = "some_string";
+
     rl.InitWindow(1280, 720, "Hello world!");
     defer rl.CloseWindow();
 
