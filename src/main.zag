@@ -7,9 +7,9 @@ struct Player {
     position: rl.Vector2,
     color: rl.Color,
 
-    pub fn init() Player {
+    pub fn init(x: f32, y: f32) Player {
         return Player {
-            position: rl.Vector2 { x: 640, y: 360 },
+            position: rl.Vector2 { x: x, y: y },
             color: rl.Color { r: 255, g: 0, b: 0, a: 255 },
         };
     }
@@ -30,7 +30,7 @@ fn main() void {
 
     rl.SetTargetFPS(60);
 
-    let mut player = Player.init();
+    let mut player = Player.init(640, 360);
 
     while (!rl.WindowShouldClose()) {
         rl.BeginDrawing();

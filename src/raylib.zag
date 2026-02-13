@@ -711,11 +711,11 @@ pub enum NPatchLayout {
 
 // Callbacks to hook some internal functions
 // WARNING: These callbacks are intended for advanced users
-// const TraceLogCallback = fn (logLevel: i32, text: &c_char, args...) void; // Logging: Redirect trace log messages
-// const LoadFileDataCallback = fn (fileName: &c_char, dataSize: &mut u32) &mut u8; // FileIO: Load binary data
-// const SaveFileDataCallback = fn (fileName: &c_char, data: &mut void, dataSize: u32) bool; // FileIO: Save binary data
-// const LoadFileTextCallback = fn (fileName: &c_char) &mut u8; // FileIO: Load text data
-// const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool; // FileIO: Save text data
+const TraceLogCallback = fn (logLevel: i32, text: &c_char, args...) void; // Logging: Redirect trace log messages
+const LoadFileDataCallback = fn (fileName: &c_char, dataSize: &mut u32) &mut u8; // FileIO: Load binary data
+const SaveFileDataCallback = fn (fileName: &c_char, data: &mut void, dataSize: u32) bool; // FileIO: Save binary data
+const LoadFileTextCallback = fn (fileName: &c_char) &mut u8; // FileIO: Load text data
+const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool; // FileIO: Save text data
 
 //------------------------------------------------------------------------------------
 // Window and Graphics Context Functions (Module: core)
@@ -864,7 +864,7 @@ pub bind fn SetConfigFlags(flags: u32) void;
 pub bind fn OpenURL(url: &c_char) void;
 pub bind fn SetTraceLogLevel(logLevel: i32) void;
 pub bind fn TraceLog(logLevel: i32, text: &c_char, args...) void;
-// pub bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
+pub bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
 pub bind fn MemAlloc(size: u32) &mut void;
 pub bind fn MemRealloc(ptr: &mut void, size: u32) &mut void;
 pub bind fn MemFree(ptr: &mut void) void;
@@ -880,10 +880,10 @@ pub bind fn SaveFileText(fileName, text: &c_char) bool;    // Save text data to 
 
 // File access custom callbacks
 // WARNING: Callbacks setup is intended for advanced users
-// pub bind fn SetLoadFileDataCallback(callback: LoadFileDataCallback) void;  // Set custom file binary data loader
-// pub bind fn SetSaveFileDataCallback(callback: SaveFileDataCallback) void;  // Set custom file binary data saver
-// pub bind fn SetLoadFileTextCallback(callback: LoadFileTextCallback) void;  // Set custom file text data loader
-// pub bind fn SetSaveFileTextCallback(callback: SaveFileTextCallback) void;  // Set custom file text data saver
+pub bind fn SetLoadFileDataCallback(callback: LoadFileDataCallback) void;  // Set custom file binary data loader
+pub bind fn SetSaveFileDataCallback(callback: SaveFileDataCallback) void;  // Set custom file binary data saver
+pub bind fn SetLoadFileTextCallback(callback: LoadFileTextCallback) void;  // Set custom file text data loader
+pub bind fn SetSaveFileTextCallback(callback: SaveFileTextCallback) void;  // Set custom file text data saver
 
 //------------------------------------------------------------------------------------
 // Files management functions (Module: core)
@@ -1360,7 +1360,7 @@ pub bind fn GetRayCollisionQuad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3,
 //------------------------------------------------------------------------------------
 // Module: audio
 //------------------------------------------------------------------------------------
-// const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
+pub const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
 pub bind fn InitAudioDevice() void;
 pub bind fn CloseAudioDevice() void;
 pub bind fn IsAudioDeviceReady() bool;
@@ -1430,10 +1430,10 @@ pub bind fn SetAudioStreamVolume(stream: AudioStream, volume: f32) void;
 pub bind fn SetAudioStreamPitch(stream: AudioStream, pitch: f32) void;
 pub bind fn SetAudioStreamPan(stream: AudioStream, pan: f32) void;
 pub bind fn SetAudioStreamBufferSizeDefault(size: i32) void;
-// pub bind fn SetAudioStreamCallback(stream: AudioStream, callback: AudioCallback) void;
+pub bind fn SetAudioStreamCallback(stream: AudioStream, callback: AudioCallback) void;
 
-// pub bind fn AttachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
-// pub bind fn DetachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
+pub bind fn AttachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
+pub bind fn DetachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
 
-// pub bind fn AttachAudioMixedProcessor(processor: AudioCallback) void;
-// pub bind fn DetachAudioMixedProcessor(processor: AudioCallback) void;
+pub bind fn AttachAudioMixedProcessor(processor: AudioCallback) void;
+pub bind fn DetachAudioMixedProcessor(processor: AudioCallback) void;

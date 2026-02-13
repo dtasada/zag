@@ -678,7 +678,7 @@ pub fn compileType(
         is_top_level: bool = true,
     },
 ) CompilerError!void {
-    if (opts.is_top_level and !opts.binding_mut and t != .reference) try self.write("const ");
+    if (opts.is_top_level and !opts.binding_mut and t != .reference and t != .variadic) try self.write("const ");
     const new_opts: @TypeOf(opts) = .{ .binding_mut = opts.binding_mut, .is_top_level = false };
 
     return switch (t) {
@@ -763,8 +763,29 @@ pub fn compileType(
             try self.print("[{}]", .{array.size});
         },
 
-        // should be unreachable, variadic and function types are handled in `compileVariableSignature`
-        .function, .variadic => unreachable,
+        .function => |function| {
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_FuncPtr_{}", .{t.hash()});
+
+            if (self.zag_header_contents.get(t) == null) {
+                const saved_section = self.current_section;
+                self.switchSection(.zag_header_types);
+                defer self.switchSection(saved_section);
+
+                try self.write("typedef ");
+                try self.compileType(function.return_type.*, .{ .binding_mut = true, .is_top_level = new_opts.is_top_level });
+                try self.print(" (*{s})(", .{type_name});
+                for (function.params.items, 0..) |param, i| {
+                    try self.compileType(param.type, new_opts);
+                    if (i < function.params.items.len - 1) try self.write(", ");
+                }
+                try self.write(");\n");
+
+                try self.zag_header_contents.put(t, type_name);
+            }
+
+            try self.write(type_name);
+        },
+        .variadic => try self.write("..."),
         .any => try self.write("void*"),
         else => |primitive| try self.write(try self.getInnerName(@tagName(primitive))),
     };
@@ -789,11 +810,16 @@ pub fn compileVariableSignature(
             try self.print(" {s}[{}]", .{ name, array.size });
         },
         .function => |function| {
-            try self.compileType(function.return_type.*, .{ .binding_mut = opts.binding_mut });
+            if (self.zag_header_contents.get(t)) |type_name| {
+                try self.print("{s} {s}", .{ type_name, name });
+                return;
+            }
+
+            try self.compileType(function.return_type.*, .{ .binding_mut = true });
             try self.print(" (*{s})(", .{name});
-            for (function.params.items, 1..) |param, i| {
+            for (function.params.items, 0..) |param, i| {
                 try self.compileType(param.type, .{ .binding_mut = opts.binding_mut });
-                if (i < function.params.items.len) try self.write(", ");
+                if (i < function.params.items.len - 1) try self.write(", ");
             }
             try self.write(")");
         },

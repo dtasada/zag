@@ -786,7 +786,7 @@ pub const Type = union(enum) {
                 };
             },
             .match => |_| @panic("unimplemented"),
-            .type => |t| try fromAst(compiler, t),
+            .type => |t| .{ .type = try fromAstPtr(compiler, t) },
             .slice => |slice| switch (try infer(compiler, slice.lhs.*)) {
                 // TODO: change slice mutability to equal binding mutability of reference
                 inline .slice, .array => |t| .{ .slice = .{ .inner = t.inner, .is_mut = false } },

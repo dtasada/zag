@@ -205,9 +205,9 @@ fn compoundTypeDeclaration(
 
             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
-            for (method.parameters.items, 1..) |parameter_type, i| {
+            for (method.parameters.items, 0..) |parameter_type, i| {
                 try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{});
-                if (i < method.parameters.items.len) try self.write(", ");
+                if (i < method.parameters.items.len - 1) try self.write(", ");
             }
             try self.write(");\n");
 
@@ -216,11 +216,11 @@ fn compoundTypeDeclaration(
 
         try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
-        for (method.parameters.items, 1..) |parameter, i| {
+        for (method.parameters.items, 0..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
             try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type } }, .{});
             try self.compileVariableSignature(parameter.name, param_type, .{});
-            if (i < method.parameters.items.len) try self.write(", ");
+            if (i < method.parameters.items.len - 1) try self.write(", ");
         }
         try self.write(") ");
 
@@ -515,9 +515,9 @@ fn functionDefinition(
         // function's return type is `const` qualified.
         try self.compileType(self.current_return_type.?, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
-        for (function_def.parameters.items, 1..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{});
-            if (i < function_def.parameters.items.len) try self.write(", ");
+        for (function_def.parameters.items, 0..) |parameter, i| {
+            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{ .binding_mut = true });
+            if (i < function_def.parameters.items.len - 1) try self.write(", ");
         }
         try self.write(");\n");
     }
@@ -527,13 +527,13 @@ fn functionDefinition(
         // function's return type is `const` qualified.
         try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
-        for (function_def.parameters.items, 1..) |parameter, i| {
+        for (function_def.parameters.items, 0..) |parameter, i| {
             try self.compileVariableSignature(
                 parameter.name,
                 try .fromAst(self, parameter.type),
                 .{ .binding_mut = parameter.is_mut },
             );
-            if (i < function_def.parameters.items.len) try self.write(", ");
+            if (i < function_def.parameters.items.len - 1) try self.write(", ");
 
             try self.registerSymbol(parameter.name, .{
                 .symbol = .{
