@@ -43,6 +43,7 @@ export default grammar({
     [$.catch_expression],
     [$.catch_expression, $.index_expression],
     [$.catch_expression, $.generic_expression],
+    [$.type, $.member_type],
   ],
 
   rules: {
@@ -335,8 +336,11 @@ export default grammar({
       $.array_type,
       $.slice_type,
       $.error_union,
-      $.function_type
+      $.function_type,
+      $.member_type,
     ),
+
+    member_type: $ => seq($.ident_type, ".", $.ident_type),
 
     ident_type: $ => alias($.ident, $.ident_type),
 

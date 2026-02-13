@@ -1603,6 +1603,21 @@
     }
   },
   {
+    "type": "member_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ident_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "number_literal",
     "named": true,
     "fields": {},
@@ -2091,6 +2106,10 @@
         },
         {
           "type": "ident_type",
+          "named": true
+        },
+        {
+          "type": "member_type",
           "named": true
         },
         {

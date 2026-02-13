@@ -1781,6 +1781,27 @@
         {
           "type": "SYMBOL",
           "name": "function_type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "member_type"
+        }
+      ]
+    },
+    "member_type": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "ident_type"
+        },
+        {
+          "type": "STRING",
+          "value": "."
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ident_type"
         }
       ]
     },
@@ -4403,6 +4424,10 @@
     [
       "catch_expression",
       "generic_expression"
+    ],
+    [
+      "type",
+      "member_type"
     ]
   ],
   "precedences": [],

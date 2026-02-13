@@ -338,6 +338,36 @@ pub const Type = union(enum) {
                 },
             },
             .inferred => unreachable,
+            .member => |member| b: switch (try fromAst(compiler, member.parent.*)) {
+                inline .@"struct", .@"union" => |s, tag| if (s.subtypes.get(member.member_name)) |subtype_wrapper| {
+                    const subtype_type: Type = switch (subtype_wrapper.type) {
+                        .@"struct" => |p| .{ .@"struct" = p },
+                        .@"union" => |p| .{ .@"union" = p },
+                        .@"enum" => |p| .{ .@"enum" = p },
+                    };
+                    const ptr = try compiler.alloc.create(Type);
+                    ptr.* = subtype_type;
+                    return .{ .type = ptr };
+                } else if (s.variables.get(member.member_name)) |v|
+                    v.type
+                else
+                    errors.undeclaredProperty(@unionInit(Type, @tagName(tag), s), member.member_name, member.pos),
+                .@"enum" => |e| if (e.getProperty(member.member_name)) |property| switch (property) {
+                    .variable => |v| v.type,
+                    .member => .{ .@"enum" = e },
+                    .method => |method| Type.Function.fromMethod(.@"enum", method, e.module),
+                } else errors.undeclaredProperty(.{ .@"enum" = e }, member.member_name, member.pos),
+                .module => |module| if (module.symbols.get(member.member_name)) |symbol|
+                    symbol.type
+                else
+                    errors.undeclaredProperty(.{ .module = module }, member.member_name, member.pos),
+                .reference => |ref| continue :b ref.inner.*,
+                .type => |type_ptr| if (type_ptr == null)
+                    errors.illegalMemberExpression(.{ .type = null }, member.pos)
+                else
+                    continue :b type_ptr.?.*,
+                else => |other| errors.illegalMemberExpression(other, member.pos),
+            },
         };
     }
 

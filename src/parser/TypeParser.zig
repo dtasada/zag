@@ -36,7 +36,7 @@ fn led(self: *Self, kind: Lexer.TokenKind, bp: BindingPower, led_fn: LedHandler)
 }
 
 pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
-    var self = Self{
+    var self: Self = .{
         .parent_parser = parent_parser,
         .bp_lookup = .init(alloc),
         .nud_lookup = .init(alloc),
@@ -52,6 +52,7 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
     try self.nud(.@"(", parseGroupType);
     try self.led(.@"!", .logical, parseErrorType);
     try self.led(.@"<", .call, parseGenericType);
+    try self.led(.@".", .member, parseMemberType);
     return self;
 }
 
@@ -256,6 +257,27 @@ pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
     try self.parent_parser.expect(self.parent_parser.advance(), .@")", "group expression", ")");
 
     return @"type";
+}
+
+pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+    const pos = self.parent_parser.currentPosition();
+    const member_name = try self.parent_parser.expect(
+        self.parent_parser.advance(),
+        .ident,
+        "member type",
+        "member name",
+    );
+
+    const lhs_ptr = try alloc.create(ast.Type);
+    lhs_ptr.* = lhs;
+
+    return .{
+        .member = .{
+            .pos = pos,
+            .parent = lhs_ptr,
+            .member_name = member_name,
+        },
+    };
 }
 
 inline fn getHandler(

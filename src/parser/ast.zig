@@ -440,6 +440,12 @@ pub const Type = union(enum) {
         arguments: ArgumentList,
     };
 
+    const Member = struct {
+        pos: utils.Position,
+        parent: *const Type,
+        member_name: []const u8,
+    };
+
     inferred: struct { pos: utils.Position },
     symbol: struct { pos: utils.Position, symbol: []const u8 },
     optional: struct { pos: utils.Position, inner: *const Type },
@@ -450,6 +456,7 @@ pub const Type = union(enum) {
     function: Function,
     generic: Generic,
     variadic: struct { pos: utils.Position },
+    member: Member,
 
     pub inline fn getPosition(self: Type) utils.Position {
         return switch (self) {

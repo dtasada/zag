@@ -3,43 +3,41 @@ import c;
 
 import raylib as rl;
 
-fn main() void {
-    let string = "some_string";
-    let cstring: &c_char = "some_string";
+struct Player {
+    position: rl.Vector2,
+    color: rl.Color,
 
+    pub fn init() Player {
+        return Player {
+            position: rl.Vector2 { x: 640, y: 360 },
+            color: rl.Color { r: 255, g: 0, b: 0, a: 255 },
+        };
+    }
+
+    fn update(self: &mut Player) void {
+        rl.DrawCircleV(self.position, 20.0, self.color);
+
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_W))) self.position.y -= 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_A))) self.position.x -= 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_S))) self.position.y += 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_D))) self.position.x += 6;
+    }
+}
+
+fn main() void {
     rl.InitWindow(1280, 720, "Hello world!");
     defer rl.CloseWindow();
 
     rl.SetTargetFPS(60);
 
-    let mut pos = rl.Vector2 { x: 360, y: 0 };
-    let mut vel = 0;
-
-    let red = rl.Color { r: 255, g: 0, b: 0, a: 255 };
-    let green = rl.Color { r: 0, g: 255, b: 0, a: 255 };
-    let line_height = 600;
-    let ball_radius = 40.0;
+    let mut player = Player.init();
 
     while (!rl.WindowShouldClose()) {
-        pos.y += vel;
-        vel += 1;
-
-        if (pos.y + ball_radius >= line_height) vel = -vel;
-
         rl.BeginDrawing();
         defer rl.EndDrawing();
 
         rl.ClearBackground(rl.Color { r: 0, g: 0, b: 0, a: 255 });
 
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_A))) pos.x -= 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_D))) pos.x += 6;
-
-        rl.DrawCircleV(pos, ball_radius, red);
-        rl.DrawLineEx(
-            rl.Vector2 { x: 0, y: line_height },
-            rl.Vector2 { x: 1280, y: line_height },
-            2.0,
-            green,
-        );
+        player.update();
     }
 }
