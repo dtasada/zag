@@ -1131,7 +1131,14 @@ pub const Type = union(enum) {
             ),
             .reference => |reference| continue :b reference.inner.*,
             .module => |module| if (module.symbols.get(member.member_name)) |symbol| {
-                return symbol.type;
+                return switch (symbol.type) {
+                    .@"struct", .@"union", .@"enum" => wrap: {
+                        const ptr = try compiler.alloc.create(Type);
+                        ptr.* = symbol.type;
+                        break :wrap .{ .type = ptr };
+                    },
+                    else => symbol.type,
+                };
             } else return utils.printErr(
                 error.UndeclaredProperty,
                 "comperr: Module '{s}' has no member '{s}' ({f})\n",

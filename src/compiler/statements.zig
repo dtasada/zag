@@ -590,4 +590,15 @@ fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
         if (i < statement.module_name.items.len - 1) try self.write("/");
     }
     try self.write(".zag.h\"\n");
+
+    const saved_section = self.current_section;
+    self.switchSection(.header_includes);
+    defer self.switchSection(saved_section);
+
+    try self.write("#include \"");
+    for (statement.module_name.items, 0..) |part, i| {
+        try self.write(part);
+        if (i < statement.module_name.items.len - 1) try self.write("/");
+    }
+    try self.write(".zag.h\"\n");
 }
