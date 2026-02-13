@@ -46,7 +46,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
             try self.registerSymbol(btd.name, .{ .type = t }, .{});
 
             const saved_section = self.current_section;
-            self.switchSection(.header_forward_decls);
+            self.switchSection(.header_type_defs);
             defer self.switchSection(saved_section);
 
             try self.print("typedef {s} {s} {s};\n", .{ @tagName(btd.type), btd.name, btd.name });
@@ -290,11 +290,21 @@ fn variableDefinition(
     const mangled_name = opts.inner_name orelse try self.mangle(v.variable_name);
 
     if (final_type == .type) {
+        const saved_section = self.current_section;
+        self.switchSection(.header_type_defs);
+        defer self.switchSection(saved_section);
+
+        const inner_type = final_type.type.?.*;
         try self.write("typedef ");
-        try expressions.compile(self, &v.assigned_value, .{ .binding_mut = true });
-        try self.print(" {s}", .{mangled_name});
+        if (inner_type == .function) {
+            try self.compileVariableSignature(mangled_name, inner_type, .{ .binding_mut = true });
+        } else {
+            try self.compileType(inner_type, .{ .binding_mut = true });
+            try self.print(" {s}", .{mangled_name});
+        }
         try self.write(";\n");
-        try self.registerSymbol(v.variable_name, .{ .type = final_type }, .{});
+        try self.zag_header_contents.put(inner_type, mangled_name);
+        try self.registerSymbol(v.variable_name, .{ .type = inner_type }, .{ .inner_name = mangled_name });
     } else {
         try self.registerSymbol(v.variable_name, .{
             .symbol = .{

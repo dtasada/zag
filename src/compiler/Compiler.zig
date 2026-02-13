@@ -269,14 +269,14 @@ pub fn emit(self: *Self) CompilerError!void {
         try statements.compile(self, statement);
 
     for (self.input.items) |*statement| switch (statement.*) {
-        .struct_declaration, .union_declaration, .enum_declaration => try statements.compile(self, statement),
+        .struct_declaration, .union_declaration, .enum_declaration, .binding_type_declaration => try statements.compile(self, statement),
         else => {},
     };
 
     // Pass 3: Code (Functions, Variables, etc.)
     self.switchSection(.source_function_impls);
     for (self.input.items) |*statement| switch (statement.*) {
-        .import, .struct_declaration, .union_declaration, .enum_declaration => {},
+        .import, .struct_declaration, .union_declaration, .enum_declaration, .binding_type_declaration => {},
         else => try statements.compile(self, statement),
     };
 
@@ -322,8 +322,8 @@ fn writeOutputFiles(self: *Self) !void {
     try header_file_writer.interface.print("#ifndef {s}\n#define {s}\n\n", .{ guard_name, guard_name });
     try header_file_writer.interface.writeAll("#include <zag.h>\n\n");
     try header_file_writer.interface.writeAll(self.sections.get(.header_includes).buffer.items);
-    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).buffer.items);
     try header_file_writer.interface.writeAll("\n#endif\n");
     try header_file_writer.interface.flush();
