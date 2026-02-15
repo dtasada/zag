@@ -1308,6 +1308,19 @@ pub const Type = union(enum) {
                 },
 
                 inline .@"struct", .@"union" => |ct| {
+                    for (ctx.visited.items) |visit| {
+                        if (visit.@"0" == @as(*const anyopaque, @ptrCast(ct.members))) {
+                            // Recursive type detected. Just hash the name to avoid infinite loop.
+                            h.update(ct.name);
+                            return h.final();
+                        }
+                    }
+
+                    // No risk of `append` failing because `visited` is a fixed-size buffer
+                    // and we'd stack overflow before we fill it.
+                    ctx.visited.appendAssumeCapacity(.{ @as(*const anyopaque, @ptrCast(ct.members)), @as(*const anyopaque, @ptrCast(ct.members)) });
+                    defer _ = ctx.visited.pop();
+
                     h.update(ct.name);
 
                     // members (order-independent)
@@ -1339,6 +1352,19 @@ pub const Type = union(enum) {
                     }
                 },
                 .@"enum" => |ct| {
+                    for (ctx.visited.items) |visit| {
+                        if (visit.@"0" == @as(*const anyopaque, @ptrCast(ct.members))) {
+                            // Recursive type detected. Just hash the name to avoid infinite loop.
+                            h.update(ct.name);
+                            return h.final();
+                        }
+                    }
+
+                    // No risk of `append` failing because `visited` is a fixed-size buffer
+                    // and we'd stack overflow before we fill it.
+                    ctx.visited.appendAssumeCapacity(.{ @as(*const anyopaque, @ptrCast(ct.members)), @as(*const anyopaque, @ptrCast(ct.members)) });
+                    defer _ = ctx.visited.pop();
+
                     h.update(ct.name);
 
                     // members (order-independent)

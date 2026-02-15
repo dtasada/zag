@@ -2,15 +2,6 @@
 pub struct Vector2 {
     x: f32,                // Vector x component
     y: f32,                // Vector y component
-
-    pub fn init(x, y: f32) Vector2 -> Vector2 { x: x, y: y }
-    pub fn zero() Vector2 -> Vector2.init(0, 0)
-    pub fn one() Vector2 -> Vector2.init(1, 1)
-    pub fn add(v1, v2: Vector2) Vector2 -> Vector2.init(v1.x + v2.x, v1.y + v2.y)
-    pub fn add_value(v: Vector2, add: f32) Vector2 -> Vector2.init(v.x + add, v.y + add)
-    pub fn subtract(v1, v2: Vector2) Vector2 -> Vector2.init(v1.x - v2.x, v1.y - v2.y)
-    pub fn subtract_value(v: Vector2, sub: f32) Vector2 -> Vector2.init(v.x - sub, v.y - sub)
-    pub fn length(v: Vector2) f32 -> std.sqrt<f32>(v.x*v.x + v.y*v.y)
 }
 
 // Vector3, 3 components

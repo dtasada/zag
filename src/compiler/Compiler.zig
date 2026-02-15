@@ -660,7 +660,7 @@ pub fn compileBlock(
     } else if (opts.return_implicit_success) |ris| {
         try self.write("return (");
         try self.compileType(ris, .{});
-        try self.write("){ .is_success = true, .payload = { .success = 0 } };\n");
+        try self.write("){ .is_success = true, .payload.success = 0 };\n");
     }
 
     self.indent_level -= 1;

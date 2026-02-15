@@ -51,15 +51,15 @@ pub fn compile(
                 const error_union_type_name = self.zag_header_contents.get(expected_type).?;
 
                 if (received_type.check(error_union.success.*)) {
-                    try self.print("({s}){{ .is_success = true, .payload = {{ .success = ", .{error_union_type_name});
+                    try self.print("({s}){{ .is_success = true, .payload.success = ", .{error_union_type_name});
                     try compile(self, expression, .{});
-                    try self.write(" } }");
+                    try self.write(" }");
                 } else if (received_type.check(error_union.failure.*)) {
-                    try self.print("({s}){{ .is_success = false, .payload = {{ .failure = ", .{error_union_type_name});
+                    try self.print("({s}){{ .is_success = false, .payload.failure = ", .{error_union_type_name});
                     try compile(self, expression, .{});
-                    try self.write(" } }");
+                    try self.write(" }");
                 } else if (error_union.success.* == .void and received_type == .i32) {
-                    try self.print("({s}){{ .is_success = true, .payload = {{ .success = 0 }} }}", .{error_union_type_name});
+                    try self.print("({s}){{ .is_success = true, .payload.success = 0 }}", .{error_union_type_name});
                 } else unreachable;
             },
             .reference => |ref| if (received_type == .slice and
@@ -204,7 +204,7 @@ pub fn compile(
             try compile(self, t.@"try", .{});
             try self.print(";\nif (!{s}.is_success) return (", .{temp_name});
             try self.compileType(self.current_return_type.?, .{});
-            try self.print("){{ .is_success = false, .payload = {{ .failure = {s}.payload.failure }} }};\n", .{temp_name});
+            try self.print("){{ .is_success = false, .payload.failure = {s}.payload.failure }};\n", .{temp_name});
 
             self.currentSection().pos = self.currentWriter().items.len;
 

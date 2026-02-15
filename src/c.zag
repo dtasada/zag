@@ -8,6 +8,7 @@ pub bind fn memcpy(dst: &mut void, src: &void, len: usize) &mut void;
 pub bind fn memmove(dst: &mut void, src: &void, len: usize) &mut void;
 
 pub bind fn pow(a: f64, b: f64) f64;
+pub bind fn sqrt(x: f64) f64;
 
 pub bind fn stpcpy(dst: &mut c_char, src: &c_char) &mut c_char;
 pub bind fn strcat(s1: &mut c_char, s2: &c_char) &mut c_char;

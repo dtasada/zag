@@ -68,6 +68,7 @@ export default grammar({
       $.continue_statement,
       $.block,
       $.defer_statement,
+      $.block_eval,
     ),
 
     expression_statement: $ => seq($.expression, ";"),

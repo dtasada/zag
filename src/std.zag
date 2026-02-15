@@ -1,7 +1,8 @@
 import c;
 
-pub fn min<T>(a, b: T) T -> return if (a > b) b else a;
-pub fn max<T>(a, b: T) T -> return if (a > b) a else b;
+pub fn min<T>(a, b: T) T -> if (a > b) b else a
+pub fn max<T>(a, b: T) T -> if (a > b) a else b
+pub fn sqrt<T>(x: T) T -> c.sqrt(x)
 
 pub fn alloc<T>() !&mut T {
     let ptr = c.malloc(sizeof<T>());

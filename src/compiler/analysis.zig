@@ -16,7 +16,7 @@ pub fn blockReturns(block: ast.Block) bool {
 
 pub fn statementReturns(statement: ast.Statement) bool {
     return switch (statement) {
-        .@"return" => true,
+        .@"return", .block_eval => true,
 
         .@"if" => |if_stmt| blk: {
             if (if_stmt.@"else") |else_stmt| {

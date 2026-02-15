@@ -1,7 +1,7 @@
 import std;
 import c;
 
-import raylib as rl;
+import raylibc as rl;
 
 struct Player {
     position: rl.Vector2,
