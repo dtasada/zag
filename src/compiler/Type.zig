@@ -680,7 +680,7 @@ pub const Type = union(enum) {
                 if (!rhs.check(lhs)) return utils.printErr(
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression: '{f}' {s} '{f}' ({f}).\n",
-                    .{ lhs, @tagName(binary.op), rhs, binary.lhs.getPosition() },
+                    .{ lhs, @tagName(binary.op), rhs, binary.pos },
                     .red,
                 );
 
@@ -746,7 +746,7 @@ pub const Type = union(enum) {
 
                 return expected;
             } else return errors.ifExpressionMustContainElseClause(@"if".pos),
-            .index => |index| switch (try Type.infer(compiler, index.lhs.*)) {
+            .index => |index| switch (try infer(compiler, index.lhs.*)) {
                 .array => |array| array.inner.*,
                 .slice => |slice| slice.inner.*,
                 else => |other| utils.printErr(
@@ -827,7 +827,9 @@ pub const Type = union(enum) {
             .variable_definition => |vd| try self.registerSymbol(vd.variable_name, .{
                 .symbol = .{ .type = try .infer(self, vd.assigned_value) },
             }, .{}),
-            .block_eval => |expr| return try .infer(self, expr),
+            .block_eval => |expr| {
+                return try .infer(self, expr);
+            },
             else => {},
         };
 

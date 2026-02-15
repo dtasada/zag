@@ -130,9 +130,13 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
 
     // literals & symbols
     try self.nud(.int, expressions.primary);
+    try self.bp_lookup.put(.int, .primary);
     try self.nud(.float, expressions.primary);
+    try self.bp_lookup.put(.float, .primary);
     try self.nud(.ident, expressions.primary);
+    try self.bp_lookup.put(.ident, .primary);
     try self.nud(.string, expressions.primary);
+    try self.bp_lookup.put(.string, .primary);
     try self.nud(.@"-", expressions.prefix);
     try self.nud(.@"!", expressions.prefix);
     try self.nud(.@"(", expressions.group);
@@ -220,7 +224,6 @@ pub inline fn previousToken(self: *const Self) Lexer.Token {
 /// A token which has a NUD handler means it expects nothing to its left
 /// Common examples of this type of token are prefix & unary expressions.
 fn nud(self: *Self, kind: Lexer.TokenKind, nud_fn: NudHandler) !void {
-    try self.bp_lookup.put(kind, .primary);
     try self.nud_lookup.put(kind, nud_fn);
 }
 

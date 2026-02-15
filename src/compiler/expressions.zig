@@ -647,14 +647,15 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
 }
 
 fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
-    const lhs_t = try Type.infer(self, expr.lhs.*);
-    const rhs_t = try Type.infer(self, expr.rhs.*);
-    if (!lhs_t.isNumeric() or !rhs_t.isNumeric()) return utils.printErr(
-        error.IllegalExpression,
-        "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
-        .{ lhs_t, @tagName(expr.op), rhs_t, expr.pos },
-        .red,
-    );
+    const lhs_t: Type = try .infer(self, expr.lhs.*);
+    const rhs_t: Type = try .infer(self, expr.rhs.*);
+    if ((!lhs_t.isNumeric() or !rhs_t.isNumeric()) and (lhs_t != .bool or rhs_t != .bool))
+        return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
+            .{ lhs_t, @tagName(expr.op), rhs_t, expr.pos },
+            .red,
+        );
 
     switch (expr.op) {
         .@"^" => if (self.solveComptimeExpression(.{ .binary = expr })) |comptime_expr| {

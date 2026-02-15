@@ -83,6 +83,10 @@
         {
           "type": "SYMBOL",
           "name": "defer_statement"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
         }
       ]
     },
@@ -4428,6 +4432,18 @@
     [
       "type",
       "member_type"
+    ],
+    [
+      "_statement",
+      "index_expression"
+    ],
+    [
+      "slice_type",
+      "array_instantiation_expression"
+    ],
+    [
+      "array_type",
+      "array_instantiation_expression"
     ]
   ],
   "precedences": [],

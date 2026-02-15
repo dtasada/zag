@@ -1,16 +1,127 @@
+import std;
+
+const EPSILON = 0.000001;
+
 // Vector2, 2 components
 pub struct Vector2 {
     x: f32,                // Vector x component
     y: f32,                // Vector y component
 
     pub fn init(x, y: f32) Vector2 -> Vector2 { x: x, y: y }
+    // Vector with components value 0.0f
     pub fn zero() Vector2 -> Vector2.init(0, 0)
+    // Vector with components value 1.0f
     pub fn one() Vector2 -> Vector2.init(1, 1)
+    // Add two vectors (v1 + v2)
     pub fn add(v1, v2: Vector2) Vector2 -> Vector2.init(v1.x + v2.x, v1.y + v2.y)
+    // Add vector and float value
     pub fn add_value(v: Vector2, add: f32) Vector2 -> Vector2.init(v.x + add, v.y + add)
+    // Subtract two vectors (v1 - v2)
     pub fn subtract(v1, v2: Vector2) Vector2 -> Vector2.init(v1.x - v2.x, v1.y - v2.y)
+    // Subtract vector by float value
     pub fn subtract_value(v: Vector2, sub: f32) Vector2 -> Vector2.init(v.x - sub, v.y - sub)
-    pub fn length(v: Vector2) f32 -> std.sqrt<f32>(v.x*v.x + v.y*v.y)
+    // Calculate vector length
+    pub fn length(v: Vector2) f32 -> std.sqrt<f32>(v.length_sqr())
+    // Calculate vector square length
+    pub fn length_sqr(v: Vector2) f32 -> v.x*v.x + v.y*v.y
+    // Calculate two vectors dot product
+    pub fn dot_product(v1, v2: Vector2) f32 -> v1.x*v2.x + v1.y*v2.y
+    // Calculate two vectors cross product
+    pub fn cross_product(v1, v2: Vector2) f32 -> v1.x*v2.y - v1.y*v2.x
+    // Calculate distance between two vectors
+    pub fn distance(v1, v2: Vector2) f32 -> std.sqrt<f32>(v1.distance_sqr(v2))
+    // Calculate square distance between two vectors
+    pub fn distance_sqr(v1, v2: Vector2) f32 -> (v1.x - v2.x)*(v1.x - v2.x) + (v1.y - v2.y)*(v1.y - v2.y)
+    // Calculate the signed angle from v1 to v2, relative to the origin (0, 0)
+    // NOTE: Coordinate system convention: positive X right, positive Y down
+    // positive angles appear clockwise, and negative angles appear counterclockwise
+    pub fn angle(v1, v2: Vector2) f32 -> std.atan2<f32>(v1.x*v2.y - v1.y*v2.x, v1.x*v2.x + v1.y*v2.y)
+    // Calculate angle defined by a two vectors line
+    // NOTE: Parameters need to be normalized
+    // Current implementation should be aligned with glm::angle
+    pub fn line_angle(start, end: Vector2) f32 -> std.atan2<f32>(end.y - start.y, end.x - start.x)
+    // Scale vector (multiply by value)
+    pub fn scale(v: Vector2, scale: f32) Vector2 -> Vector2.init(v.x*scale, v.y*scale)
+    // Multiply vector by vector
+    pub fn multiply(v1, v2: Vector2) Vector2 -> Vector2.init(v1.x*v2.x, v1.y*v2.y)
+    // Negate vector2
+    pub fn negate(v: Vector2) Vector2 -> Vector2.init(-v.x, -v.y)
+    // Divide vector by vector
+    pub fn divide(v1, v2: Vector2) Vector2 -> Vector2.init(v1.x/v2.x, v1.y/v2.y)
+    // Normalize provided vector
+    pub fn normalize(v: Vector2) Vector2 -> if (v.length() > 0) v.scale(1.0 / v.length()) else v
+    // Transforms a Vector2 by a given Matrix
+    pub fn transform(v: Vector2, mat: Matrix) Vector2 -> Vector2.init(
+        mat.m0*v.x + mat.m4*v.y + mat.m12,
+        mat.m1*v.x + mat.m5*v.y + mat.m13,
+    )
+    // Calculate linear interpolation between two vectors
+    pub fn lerp(v1, v2: Vector2, amount: f32) Vector2 -> Vector2.init(
+        v1.x + amount*(v2.x - v1.x),
+        v1.y + amount*(v2.y - v1.y),
+    )
+    // Calculate reflected vector to normal
+    pub fn reflect(v, normal: Vector2) Vector2 {
+        let dot_product = v.dot_product(normal); // Dot product
+
+        return Vector2.init(
+            v.x - (2.0*normal.x)*dot_product,
+            v.y - (2.0*normal.y)*dot_product,
+        );
+    }
+    // Get min value for each pair of components
+    pub fn min(v1, v2: Vector2) Vector2 -> Vector2.init(std.min<f32>(v1.x, v2.x), std.min<f32>(v1.y, v2.y))
+    // Get max value for each pair of components
+    pub fn max(v1, v2: Vector2) Vector2 -> Vector2.init(std.max<f32>(v1.x, v2.x), std.max<f32>(v1.y, v2.y))
+    // Rotate vector by angle
+    pub fn rotate(v: Vector2, angle: f32) Vector2 {
+        let cosres = std.cos<f32>(angle);
+        let sinres = std.sin<f32>(angle);
+
+        return Vector2.init(
+            v.x*cosres - v.y*sinres,
+            v.x*sinres + v.y*cosres,
+        );
+    }
+    // Move Vector towards target
+    pub fn Vector2MoveTowards(v, target: Vector2, maxDistance: f32) Vector2 {
+        let dx = target.x - v.x;
+        let dy = target.y - v.y;
+        let value = (dx*dx) + (dy*dy);
+
+        if ((value == 0) or ((maxDistance >= 0) and (value <= maxDistance*maxDistance))) return target;
+
+        let dist = std.sqrt<f32>(value);
+
+        return Vector2.init(
+            v.x + dx/dist*maxDistance,
+            v.y + dy/dist*maxDistance,
+        );
+    }
+    // Invert the give nvector
+    pub fn invert(v: Vector2) Vector2 -> Vector2.init(1.0/v.x, 1.0/v.y)
+    // Clamp the components of the vector between
+    // min and max values specified by the given vectors
+    pub fn clamp(v, min, max: Vector2) Vector2 -> Vector2.init(
+        std.max<f32>(max.x, std.max<f32>(min.x, v.x)),
+        std.max<f32>(max.y, std.max<f32>(min.y, v.y)),
+    )
+    // Clamp the magnitude of the vector between two min and max values
+    pub fn clamp_value(v: Vector2, min, max: f32) Vector2 ->
+        if ((v.x*v.x) + (v.y*v.y) > 0.0) {
+            let length = v.length();
+
+            let scale = if (length < min) min/length
+                else if (length > max) max/length
+                else 1;
+
+            Vector2.init(v.x*scale, v.y*scale)
+        } else v
+
+    // Check whether two given vectors are almost equal
+    pub fn eq(p, q: Vector2) bool ->
+        ((std.abs<f32>(p.x - q.x)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.x), std.abs<f32>(q.x))))) and
+            ((std.abs<f32>(p.y - q.y)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.y), std.abs<f32>(q.y)))))
 }
 
 // Vector3, 3 components

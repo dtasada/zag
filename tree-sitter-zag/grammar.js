@@ -44,6 +44,9 @@ export default grammar({
     [$.catch_expression, $.index_expression],
     [$.catch_expression, $.generic_expression],
     [$.type, $.member_type],
+    [$._statement, $.index_expression],
+    [$.slice_type, $.array_instantiation_expression],
+    [$.array_type, $.array_instantiation_expression],
   ],
 
   rules: {
@@ -68,7 +71,7 @@ export default grammar({
       $.continue_statement,
       $.block,
       $.defer_statement,
-      $.block_eval,
+      $.expression,
     ),
 
     expression_statement: $ => seq($.expression, ";"),

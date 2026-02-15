@@ -319,6 +319,10 @@
           "named": true
         },
         {
+          "type": "expression",
+          "named": true
+        },
+        {
           "type": "expression_statement",
           "named": true
         },
@@ -526,6 +530,10 @@
         },
         {
           "type": "enum_declaration",
+          "named": true
+        },
+        {
+          "type": "expression",
           "named": true
         },
         {
@@ -868,6 +876,10 @@
             "named": true
           },
           {
+            "type": "expression",
+            "named": true
+          },
+          {
             "type": "expression_statement",
             "named": true
           },
@@ -1020,6 +1032,10 @@
         },
         {
           "type": "enum_declaration",
+          "named": true
+        },
+        {
+          "type": "expression",
           "named": true
         },
         {
@@ -1291,6 +1307,10 @@
             "named": true
           },
           {
+            "type": "expression",
+            "named": true
+          },
+          {
             "type": "expression_statement",
             "named": true
           },
@@ -1390,6 +1410,10 @@
           },
           {
             "type": "enum_declaration",
+            "named": true
+          },
+          {
+            "type": "expression",
             "named": true
           },
           {
@@ -1839,6 +1863,10 @@
         },
         {
           "type": "enum_declaration",
+          "named": true
+        },
+        {
+          "type": "expression",
           "named": true
         },
         {
@@ -2327,6 +2355,10 @@
           },
           {
             "type": "enum_declaration",
+            "named": true
+          },
+          {
+            "type": "expression",
             "named": true
           },
           {
