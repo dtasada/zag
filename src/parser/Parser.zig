@@ -110,7 +110,7 @@ pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
     try self.led(.@"or", .logical, expressions.binary);
 
     // relational
-    try self.led(.@"<", .relational, expressions.ambiguousLessThan);
+    try self.led(.@"<", .primary, expressions.ambiguousLessThan);
     try self.led(.@"<=", .relational, expressions.binary);
     try self.led(.@">", .relational, expressions.binary);
     try self.led(.@">=", .relational, expressions.binary);

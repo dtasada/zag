@@ -571,9 +571,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     }
 
     // Register
-    // We need to duplicate the path key because it will be freed
-    const key = try self.alloc.dupe(u8, full_path);
-    try self.module_registry.put(key, mod);
+    try self.module_registry.put(full_path, mod);
 
     return mod;
 }

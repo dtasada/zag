@@ -827,9 +827,7 @@ pub const Type = union(enum) {
             .variable_definition => |vd| try self.registerSymbol(vd.variable_name, .{
                 .symbol = .{ .type = try .infer(self, vd.assigned_value) },
             }, .{}),
-            .block_eval => |expr| {
-                return try .infer(self, expr);
-            },
+            .block_eval => |expr| return try .infer(self, expr),
             else => {},
         };
 
