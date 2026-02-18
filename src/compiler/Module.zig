@@ -15,19 +15,25 @@ pub const Symbol = struct {
 name: []const u8,
 
 symbols: *std.StringHashMap(Symbol),
+imports: *std.StringHashMap(Self),
 
 pub fn init(alloc: std.mem.Allocator, name: []const u8) !Self {
     const symbols = try alloc.create(std.StringHashMap(Symbol));
     symbols.* = .init(alloc);
 
+    const imports = try alloc.create(std.StringHashMap(Self));
+    imports.* = .init(alloc);
+
     return .{
         .name = name,
         .symbols = symbols,
+        .imports = imports,
     };
 }
 
 pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
     self.symbols.deinit();
+    self.imports.deinit();
     if (self.source_buffer) |s| alloc.free(s);
     alloc.free(self.source_path);
 }

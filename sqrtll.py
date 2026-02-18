@@ -1,0 +1,4 @@
+ll = []
+
+def index(i):
+

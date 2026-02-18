@@ -7,7 +7,7 @@ pub fn atan2<T>(y, x: T) T -> c.atan2(y, x)
 pub fn cos<T>(x: T) T -> c.cos(x)
 pub fn sin<T>(x: T) T -> c.sin(x)
 pub fn tan<T>(x: T) T -> c.tan(x)
-pub fn abs<T>(x: T) T -> if (a >= 0) a else -a
+pub fn abs<T>(x: T) T -> if (x >= 0) x else -x
 
 pub fn alloc<T>() !&mut T {
     let ptr = c.malloc(sizeof<T>());

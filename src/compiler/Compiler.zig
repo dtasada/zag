@@ -90,6 +90,8 @@ current_return_type: ?Type = null,
 /// Maps a pending generic type instantiation to its inner name.
 pending_instantiations: std.ArrayList(GenericInstantiation),
 
+imported_modules: std.StringHashMap(Module),
+
 const GenericInstantiation = struct {
     inner_name: []const u8,
     args: []const Value,
@@ -227,6 +229,7 @@ pub fn init(
         .output_path = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}),
         .module_header_path = try std.fmt.allocPrint(alloc, "{s}.h", .{file_path}),
         .zag_header_path = try alloc.dupe(u8, "zag/zag.h"),
+        .imported_modules = .init(alloc),
     };
 
     return self;
@@ -243,6 +246,7 @@ pub fn deinit(self: *Self) void {
 
     self.scopes.deinit(self.alloc);
     self.pending_instantiations.deinit(self.alloc);
+    self.imported_modules.deinit();
 }
 
 /// Prints 4 spaces for each indent level into whichever file handle `self.writer` is pointing to
@@ -269,14 +273,25 @@ pub fn emit(self: *Self) CompilerError!void {
         try statements.compile(self, statement);
 
     for (self.input.items) |*statement| switch (statement.*) {
-        .struct_declaration, .union_declaration, .enum_declaration, .binding_type_declaration => try statements.compile(self, statement),
+        .struct_declaration,
+        .union_declaration,
+        .enum_declaration,
+        .binding_type_declaration,
+        .variable_definition,
+        => try statements.compile(self, statement),
         else => {},
     };
 
     // Pass 3: Code (Functions, Variables, etc.)
     self.switchSection(.source_function_impls);
     for (self.input.items) |*statement| switch (statement.*) {
-        .import, .struct_declaration, .union_declaration, .enum_declaration, .binding_type_declaration => {},
+        .import,
+        .struct_declaration,
+        .union_declaration,
+        .enum_declaration,
+        .binding_type_declaration,
+        .variable_definition,
+        => {},
         else => try statements.compile(self, statement),
     };
 
@@ -432,7 +447,12 @@ pub fn analyze(self: *Self) CompilerError!void {
 
     for (self.input.items) |*statement| {
         switch (statement.*) {
-            .import => |*import_stmt| _ = try self.processImport(import_stmt),
+            .import => |*import_stmt| {
+                const mod = try self.processImport(import_stmt);
+                const name = import_stmt.alias orelse import_stmt.module_name.getLast();
+                try self.registerSymbol(name, .{ .module = mod }, .{});
+                try self.imported_modules.put(name, mod);
+            },
             .function_definition => |*func| {
                 var t = try Type.fromAst(self, func.getType());
                 t.function.definition = func;
@@ -569,6 +589,10 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
         }
         try mod.symbols.put(entry.key_ptr.*, sym);
     }
+
+    var imp_it = child_compiler.imported_modules.iterator();
+    while (imp_it.next()) |entry|
+        try mod.imports.put(entry.key_ptr.*, entry.value_ptr.*);
 
     // Register
     try self.module_registry.put(full_path, mod);
@@ -830,6 +854,7 @@ pub fn compileVariableSignature(
 }
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
+    errdefer std.debug.dumpCurrentStackTrace(null);
     return switch (expression) {
         .int => |int| .{ .i64 = int.int },
         .uint => |uint| .{ .u64 = uint.uint },
@@ -900,6 +925,10 @@ fn solveGenerics(self: *Self) !void {
                 .is_mut = false,
                 .is_defined = true,
             } });
+
+        var imp_it = instantiation.module.imports.iterator();
+        while (imp_it.next()) |entry|
+            try self.registerSymbol(entry.key_ptr.*, .{ .module = entry.value_ptr.* }, .{});
 
         switch (instantiation.t) {
             inline .@"struct", .@"union" => |s, tag| {

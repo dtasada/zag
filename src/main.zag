@@ -24,6 +24,22 @@ struct Player {
     }
 }
 
+struct Zombie {
+    position: rl.Vector2,
+    color: rl.Color,
+
+    pub fn init(x: f32, y: f32) Zombie {
+        return Zombie {
+            position: rl.Vector2 { x: x, y: y },
+            color: rl.Color { r: 255, g: 0, b: 0, a: 255 },
+        };
+    }
+
+    fn update(self: &mut Zombie) void {
+        rl.DrawCircleV(self.position, 20.0, self.color);
+    }
+}
+
 fn main() void {
     rl.InitWindow(1280, 720, "Hello world!");
     defer rl.CloseWindow();
@@ -32,11 +48,16 @@ fn main() void {
 
     let mut player = Player.init(640, 360);
 
+    // let mut zombies = std.ArrayList<Zombie>.init();
+    // defer zombies.deinit();
+
     while (!rl.WindowShouldClose()) {
         rl.BeginDrawing();
         defer rl.EndDrawing();
 
         rl.ClearBackground(rl.Color { r: 0, g: 0, b: 0, a: 255 });
+
+        // for (zombies.items) |zombie| zombie.update();
 
         player.update();
     }

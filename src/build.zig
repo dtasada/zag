@@ -185,7 +185,15 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const cmd_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "/usr/bin/cc", "-o", main_obj },
         files.items,
-        &.{ @"-Iinclude", "-Wall", "-Wextra", "-Wno-parentheses-equality", "-Wno-sign-compare", "-lraylib" },
+        &.{
+            @"-Iinclude",
+            "-Wall",
+            "-Wextra",
+            "-Wno-parentheses-equality",
+            "-Wno-sign-compare",
+            "-Wno-logical-op-parentheses",
+            "-lraylib",
+        },
     });
     defer alloc.free(cmd_args);
 

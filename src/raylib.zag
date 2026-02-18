@@ -84,7 +84,7 @@ pub struct Vector2 {
         );
     }
     // Move Vector towards target
-    pub fn Vector2MoveTowards(v, target: Vector2, maxDistance: f32) Vector2 {
+    pub fn move_towards(v, target: Vector2, maxDistance: f32) Vector2 {
         let dx = target.x - v.x;
         let dy = target.y - v.y;
         let value = (dx*dx) + (dy*dy);
