@@ -79,9 +79,6 @@ zag_header_contents: std.HashMap(
     std.hash_map.default_max_load_percentage,
 ),
 
-/// Keeps track of how many spaces should be printed when formatting code.
-indent_level: usize = 0,
-
 /// Stack of scopes.
 scopes: std.ArrayList(Scope) = .empty,
 
@@ -247,12 +244,6 @@ pub fn deinit(self: *Self) void {
     self.scopes.deinit(self.alloc);
     self.pending_instantiations.deinit(self.alloc);
     self.imported_modules.deinit();
-}
-
-/// Prints 4 spaces for each indent level into whichever file handle `self.writer` is pointing to
-/// at the moment.
-pub inline fn indent(self: *Self) CompilerError!void {
-    for (0..self.indent_level) |_| try self.write("    ");
 }
 
 /// Entry point for the compiler. Compiles AST into C code.
@@ -621,12 +612,9 @@ pub fn compileBlock(
 
     try self.write("{\n");
 
-    self.indent_level += 1;
-
     if (opts.capture) |capture| {
         const inner_type = (try Type.infer(self, capture.condition.*)).optional.*;
 
-        try self.indent();
         try self.compileVariableSignature(capture.name, inner_type, .{});
         try self.write(" = (");
         try expressions.compile(self, capture.condition, .{});
@@ -642,7 +630,6 @@ pub fn compileBlock(
             else => unreachable,
         };
 
-        try self.indent();
         try self.compileVariableSignature(iterator.capture_name, inner_type, .{});
         try self.write(" = (");
         try expressions.compile(self, iterator.iter_expr, .{});
@@ -659,10 +646,7 @@ pub fn compileBlock(
             return_expr = r.@"return";
             break;
         },
-        else => {
-            try self.indent();
-            try statements.compile(self, statement);
-        },
+        else => try statements.compile(self, statement),
     };
 
     if (return_expr) |e| {
@@ -685,9 +669,6 @@ pub fn compileBlock(
         try self.write("){ .is_success = true, .payload.success = 0 };\n");
     }
 
-    self.indent_level -= 1;
-
-    try self.indent();
     try self.write("}\n");
 }
 
@@ -893,6 +874,7 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
         },
+        .member => .{ .type = try .infer(self, expression) },
         else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
 }

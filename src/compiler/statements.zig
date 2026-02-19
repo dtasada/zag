@@ -79,8 +79,7 @@ fn compoundTypeDeclaration(
     }
 
     const saved_section = self.current_section;
-
-    self.switchSection(if (type_decl.is_pub) .header_type_defs else .source_type_impls);
+    self.switchSection(.header_type_defs);
     defer self.switchSection(saved_section);
 
     const inner_name = try self.getInnerName(type_decl.name);
@@ -91,7 +90,7 @@ fn compoundTypeDeclaration(
 
     self.switchSection(.header_forward_decls);
     try self.print("typedef {s} {s} {s};\n", .{ structure_type, inner_name, inner_name });
-    self.switchSection(if (type_decl.is_pub) .header_type_defs else .source_type_impls);
+    self.switchSection(.header_type_defs);
 
     for (type_decl.subtypes.items) |subtype| switch (subtype) {
         inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
@@ -102,11 +101,9 @@ fn compoundTypeDeclaration(
         const tag_enum = compound_type.tag_type.?.@"enum";
 
         try self.print("typedef enum {s} {{\n", .{tag_enum.inner_name});
-        self.indent_level += 1;
 
         var members = tag_enum.members.iterator();
         while (members.next()) |member| {
-            try self.indent();
             try self.print("__zag_{s}_{s} = {},\n", .{
                 tag_enum.inner_name,
                 member.key_ptr.*,
@@ -114,55 +111,43 @@ fn compoundTypeDeclaration(
             });
         }
 
-        self.indent_level -= 1;
         try self.print("}} {s};\n\n", .{tag_enum.inner_name});
     }
 
     try self.print("typedef {s} {s} {{\n", .{ structure_type, inner_name });
 
-    self.indent_level += 1;
-
     var members = compound_type.members.iterator();
     if (T == .@"union") {
-        try self.indent();
         try self.print("{s} tag;\n", .{compound_type.tag_type.?.@"enum".inner_name});
-        try self.indent();
         try self.write("union {\n");
-        self.indent_level += 1;
     }
 
-    while (members.next()) |member| {
-        try self.indent();
-        switch (T) {
-            .@"struct" => {
-                try self.compileVariableSignature(
-                    member.key_ptr.*,
-                    member.value_ptr.*.*,
-                    .{ .binding_mut = true }, // struct members shouldn't be const.
-                );
-                try self.write(";\n");
-            },
-            .@"union" => {
-                var t = member.value_ptr.*.*;
-                if (t == .void) t = .u8;
-                try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
-                try self.write(";\n");
-            },
-            .@"enum" => try self.print("{s}_{s} = {d},\n", .{
-                inner_name,
+    while (members.next()) |member| switch (T) {
+        .@"struct" => {
+            try self.compileVariableSignature(
                 member.key_ptr.*,
-                member.value_ptr.*,
-            }),
-        }
-    }
+                member.value_ptr.*.*,
+                .{ .binding_mut = true }, // struct members shouldn't be const.
+            );
+            try self.write(";\n");
+        },
+        .@"union" => {
+            var t = member.value_ptr.*.*;
+            if (t == .void) t = .u8;
+            try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
+            try self.write(";\n");
+        },
+        .@"enum" => try self.print("{s}_{s} = {d},\n", .{
+            inner_name,
+            member.key_ptr.*,
+            member.value_ptr.*,
+        }),
+    };
 
     if (T == .@"union") {
-        self.indent_level -= 1;
-        try self.indent();
         try self.write("} payload;\n");
     }
 
-    self.indent_level -= 1;
     try self.print("}} {s};\n\n", .{inner_name});
 
     for (type_decl.variables.items) |variable|
@@ -472,7 +457,6 @@ fn conditional(
 
     switch (T) {
         .@"if" => if (statement.@"else") |@"else"| {
-            try self.indent();
             try self.write("else ");
             try compile(self, @"else");
         },

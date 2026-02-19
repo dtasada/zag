@@ -396,7 +396,7 @@ pub const Type = union(enum) {
             .function => |f| f.generic_params,
             else => return utils.printErr(
                 error.TypeNotGeneric,
-                "comperr: Type {f} is not generic ({f})\n",
+                "comperr: Type '{f}' is not generic ({f})\n",
                 .{ base_type, pos },
                 .red,
             ),
@@ -768,8 +768,8 @@ pub const Type = union(enum) {
             },
             .generic => |generic| b: {
                 var base_type = try infer(compiler, generic.lhs.*);
-                if (base_type == .type) {
-                    base_type = (try compiler.solveComptimeExpression(generic.lhs.*)).type;
+                while (base_type == .type) {
+                    if (base_type.type) |inner| base_type = inner.* else break;
                 }
 
                 const t = try compiler.alloc.create(Self);

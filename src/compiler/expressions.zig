@@ -381,12 +381,10 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
             try self.write("switch ((");
             try compile(self, m.condition, .{});
             try self.write(").tag) {\n");
-            self.indent_level += 1;
 
             for (m.cases.items) |case| {
                 switch (case.condition) {
                     .opts => |cases| for (cases.items) |c| {
-                        try self.indent();
                         try self.write("case ");
                         switch (c) {
                             .ident => |ident| {
@@ -407,56 +405,34 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
                         }
                         try self.write(":\n");
                     },
-                    .@"else" => {
-                        try self.indent();
-                        try self.write("default:\n");
-                    },
+                    .@"else" => try self.write("default:\n"),
                 }
-                self.indent_level += 1;
 
-                try self.indent();
                 try statements.compile(self, &case.result);
-                try self.indent();
                 try self.write("break;\n");
-
-                self.indent_level -= 1;
             }
 
-            self.indent_level -= 1;
-            try self.indent();
             try self.write("}");
         },
         .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize, .c_char, .c_int, .bool => {
             try self.write("switch (");
             try compile(self, m.condition, .{});
             try self.write(") {\n");
-            self.indent_level += 1;
 
             for (m.cases.items) |case| {
                 switch (case.condition) {
                     .opts => |opts| for (opts.items) |opt| {
-                        try self.indent();
                         try self.write("case ");
                         try compile(self, &opt, .{});
                         try self.write(":\n");
                     },
-                    .@"else" => {
-                        try self.indent();
-                        try self.write("default:\n");
-                    },
+                    .@"else" => try self.write("default:\n"),
                 }
-                self.indent_level += 1;
 
-                try self.indent();
                 try statements.compile(self, &case.result);
-                try self.indent();
                 try self.write("break;\n");
-
-                self.indent_level -= 1;
             }
 
-            self.indent_level -= 1;
-            try self.indent();
             try self.write("}");
         },
         else => |other| return utils.printErr(
@@ -472,18 +448,14 @@ fn structInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiat
     try self.write("(");
     try self.compileType(.{ .@"struct" = t }, .{});
     try self.write("){\n");
-    self.indent_level += 1;
 
     var members = struct_inst.members.iterator();
     while (members.next()) |m| {
-        try self.indent();
         try self.print(".{s} = ", .{m.key_ptr.*});
         try compile(self, m.value_ptr, .{ .is_variable_declaration = true });
         try self.write(",\n");
     }
 
-    self.indent_level -= 1;
-    try self.indent();
     try self.write("}");
 }
 
