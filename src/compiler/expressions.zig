@@ -673,9 +673,24 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 
     self.currentSection().pos = self.currentWriter().items.len;
 
+    const lhs: Type = try .infer(self, comp.left.*);
+    if (!lhs.isNumeric() and lhs != .bool) return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Comparison expression between non-numeric types is illegal. Received '{f}' ({f}).\n",
+        .{ lhs, comp.left.getPosition() },
+        .red,
+    );
     try compile(self, comp.left, .{});
 
     for (comp.comparisons.items, 0..) |item, i| {
+        const rhs_t: Type = try .infer(self, item.right.*);
+        if (!rhs_t.isNumeric() and rhs_t != .bool) return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Comparison expression between non-numeric types is illegal. Received '{f}' ({f}).\n",
+            .{ rhs_t, item.right.getPosition() },
+            .red,
+        );
+
         if (i > 0) try self.print("_{} ", .{variables.items[i - 1]});
         try self.print(" {s} _{}", .{ @tagName(item.op), variables.items[i] });
         if (i < comp.comparisons.items.len - 1) try self.write(" &&");

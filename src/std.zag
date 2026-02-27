@@ -109,39 +109,39 @@ pub struct ArrayList<T> {
             free_slice<T>(self.items[..self.capacity]);
     }
 
-    pub fn contains(self: &ArrayList<T>, item: T) bool {
-        for (self.items) |i| {
-            if (item == i) return true;
-        }
+    // pub fn contains(self: &ArrayList<T>, item: T) bool {
+    //     for (self.items) |i| {
+    //         if (item == i) return true;
+    //     }
 
-        return false;
-    }
+    //     return false;
+    // }
 
-    pub fn eq(self: &ArrayList<T>, rhs: &ArrayList<T>) bool {
-        if (self.items.len != rhs.items.len) return false;
-        for (0..self.items.len) |i| {
-            if (self.items[i] != rhs.items[i]) return false;
-        }
-        return true;
-    }
+    // pub fn eq(self: &ArrayList<T>, rhs: &ArrayList<T>) bool {
+    //     if (self.items.len != rhs.items.len) return false;
+    //     for (0..self.items.len) |i| {
+    //         if (self.items[i] != rhs.items[i]) return false;
+    //     }
+    //     return true;
+    // }
 
-    pub fn index_of(self: &ArrayList<T>, item: T) !usize {
-        for (0..self.items.len) |i| {
-            if (self.items[i] == item) return i;
-        }
+    // pub fn index_of(self: &ArrayList<T>, item: T) !usize {
+    //     for (0..self.items.len) |i| {
+    //         if (self.items[i] == item) return i;
+    //     }
 
-        return c_null;
-    }
+    //     return c_null;
+    // }
 
-    pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
-        if (self.items.len == 0) return c_null;
+    // pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
+    //     if (self.items.len == 0) return c_null;
 
-        for (self.items.len - 1 ..= 0) |i| {
-            if (self.items[i] == item) return i;
-        }
+    //     for (self.items.len - 1 ..= 0) |i| {
+    //         if (self.items[i] == item) return i;
+    //     }
 
-        return c_null;
-    }
+    //     return c_null;
+    // }
 
     pub fn remove(self: &mut ArrayList<T>, index: usize) !void {
         if (index >= self.items.len) return c_null;

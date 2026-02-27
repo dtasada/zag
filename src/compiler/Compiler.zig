@@ -702,7 +702,7 @@ pub fn compileType(
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 const saved_section = self.current_section;
-                self.switchSection(.header_primitives);
+                self.switchSection(.header_type_defs);
                 defer self.switchSection(saved_section);
 
                 try self.write("typedef struct {\n");
