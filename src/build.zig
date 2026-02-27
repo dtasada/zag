@@ -182,6 +182,16 @@ pub fn compile(alloc: std.mem.Allocator) !void {
         }
     }
 
+    const clang_format_args = try std.mem.concat(alloc, []const u8, &.{
+        &.{ "clang-format", "-i" },
+        files.items,
+    });
+    defer alloc.free(clang_format_args);
+    _ = try std.process.Child.run(.{
+        .allocator = alloc,
+        .argv = clang_format_args,
+    });
+
     const cmd_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "/usr/bin/cc", "-o", main_obj },
         files.items,
@@ -222,16 +232,6 @@ pub fn compile(alloc: std.mem.Allocator) !void {
 
     if (stdout.len != 0) utils.print("C compiler output:\n{s}\n", .{stdout}, .white);
     if (stderr.len != 0) utils.print("C compiler error output:\n{s}\n", .{stderr}, .red);
-
-    const clang_format_args = try std.mem.concat(alloc, []const u8, &.{
-        &.{ "clang-format", "-i" },
-        files.items,
-    });
-    defer alloc.free(clang_format_args);
-    _ = try std.process.Child.run(.{
-        .allocator = alloc,
-        .argv = clang_format_args,
-    });
 
     return checkResult(error.CompilationError, result);
 }

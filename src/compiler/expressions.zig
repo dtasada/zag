@@ -171,8 +171,7 @@ pub fn compile(
             try self.write("((");
             try compile(self, @"if".condition, .{});
             try self.write(")");
-            if (condition_type == .optional)
-                try self.write(".is_some");
+            if (condition_type == .optional) try self.write(".is_some");
             try self.write(" ? ");
 
             try compile(self, @"if".body, .{});
@@ -638,6 +637,7 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
             try self.write(")");
         },
         else => {
+            try self.write("(");
             try compile(self, expr.lhs, .{});
             try self.print(" {s} ", .{switch (expr.op) {
                 .@"and", .but => "&&",
@@ -645,6 +645,7 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
                 else => |op| @tagName(op),
             }});
             try compile(self, expr.rhs, .{});
+            try self.write(")");
         },
     }
 }

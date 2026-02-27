@@ -191,7 +191,7 @@ fn compoundTypeDeclaration(
             try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
             for (method.parameters.items, 0..) |parameter_type, i| {
-                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{});
+                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{ .binding_mut = parameter_type.is_mut });
                 if (i < method.parameters.items.len - 1) try self.write(", ");
             }
             try self.write(");\n");
@@ -203,8 +203,8 @@ fn compoundTypeDeclaration(
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
         for (method.parameters.items, 0..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
-            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type } }, .{});
-            try self.compileVariableSignature(parameter.name, param_type, .{});
+            try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type, .is_mut = parameter.is_mut } }, .{});
+            try self.compileVariableSignature(parameter.name, param_type, .{ .binding_mut = parameter.is_mut });
             if (i < method.parameters.items.len - 1) try self.write(", ");
         }
         try self.write(") ");
