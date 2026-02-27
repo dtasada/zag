@@ -348,11 +348,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     const iterator = try expressions.parse(self, .default, .{});
     try self.expect(self.advance(), .@")", "for statement iterator", ")");
 
-    const capture = if (self.expect(self.advance(), .@"|", "for statement capture", "|")) |_| b: {
-        const capture = try self.expect(self.advance(), .ident, "for statement capture", "for statement capture identifier");
-        try self.expect(self.advance(), .@"|", "for statement capture", "|");
-        break :b capture;
-    } else |_| null;
+    const capture = try self.parseCapture();
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
@@ -364,7 +360,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
         .@"for" = .{
             .pos = pos,
             .iterator = iterator,
-            .capture = if (capture == null or std.mem.eql(u8, capture.?, "_")) null else capture,
+            .capture = capture,
             .body = body,
         },
     };
@@ -393,15 +389,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
     try self.expect(self.advance(), .@")", context, ")");
 
-    const capture: ?[]const u8 = switch (self.currentToken()) {
-        .@"|" => blk: {
-            _ = self.advance(); // consume opening pipe
-            const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
-            try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
-            break :blk if (std.mem.eql(u8, capture_name, "_")) null else capture_name;
-        },
-        else => null,
-    };
+    const capture = try self.parseCapture();
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")

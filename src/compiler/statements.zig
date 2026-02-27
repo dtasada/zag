@@ -347,7 +347,7 @@ fn conditional(
             return utils.printErr(
                 error.IllegalExpression,
                 "comperr: {s} statement contains capture '{s}' but condition is not an optional ({f}).\n",
-                .{ @tagName(T), capture, statement.pos },
+                .{ @tagName(T), capture.name, statement.pos },
                 .red,
             );
 
@@ -364,7 +364,9 @@ fn conditional(
         },
         .@"for" => switch (statement.iterator) {
             .range => |range| {
-                capture_ident = statement.capture orelse
+                capture_ident = if (statement.capture) |c|
+                    c.name
+                else
                     try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
                 try self.compileVariableSignature(capture_ident, try .infer(self, range.start.*), .{ .binding_mut = true });
@@ -402,7 +404,7 @@ fn conditional(
                 try self.print("{s}-- ", .{capture_ident});
 
                 if (statement.capture) |capture|
-                    try self.registerSymbol(capture, .{ .symbol = .{ .type = .usize } }, .{});
+                    try self.registerSymbol(capture.name, .{ .symbol = .{ .type = .usize } }, .{});
             },
             else => |other| {
                 capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
@@ -442,14 +444,14 @@ fn conditional(
             .@"for" => .{
                 .iterator = if (statement.capture != null and statement.iterator != .range) .{
                     .iter_expr = &statement.iterator,
-                    .capture_name = statement.capture.?,
+                    .capture = statement.capture.?,
                     .index = capture_ident,
                 } else null,
             },
             else => .{
                 .capture = if (statement.capture) |c| .{
                     .condition = &statement.condition,
-                    .name = c,
+                    .capture = c,
                 } else null,
             },
         },

@@ -274,15 +274,7 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
 
     try self.expect(self.advance(), .@")", "if expression", ")");
 
-    const capture: ?[]const u8 = switch (self.currentToken()) {
-        .@"|" => blk: {
-            _ = self.advance(); // consume opening pipe
-            const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
-            try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
-            break :blk capture_name;
-        },
-        else => null,
-    };
+    const capture = try self.parseCapture();
 
     const body = try self.alloc.create(ast.Expression);
     body.* = if (self.currentToken() == .@"{")

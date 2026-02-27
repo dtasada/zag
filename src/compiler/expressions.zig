@@ -159,7 +159,7 @@ pub fn compile(
                 };
 
                 try self.pushScope();
-                try self.registerSymbol(capture, .{ .symbol = .{ .type = capture_type } }, .{});
+                try self.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
             }
 
             const body_type: Type = try .infer(self, @"if".body.*);

@@ -201,7 +201,7 @@ pub const Expression = union(enum) {
     const If = struct {
         pos: utils.Position,
         condition: *const Expression,
-        capture: ?[]const u8 = null,
+        capture: ?utils.Capture,
         body: *const Expression,
         @"else": ?*const Expression = null,
     };
@@ -251,7 +251,7 @@ pub const Statement = union(enum) {
     pub const For = struct {
         pos: utils.Position,
         iterator: ast.Expression,
-        capture: ?[]const u8,
+        capture: ?utils.Capture,
         body: *const Statement,
     };
 
@@ -280,7 +280,7 @@ pub const Statement = union(enum) {
     pub const If = struct {
         pos: utils.Position,
         condition: ast.Expression,
-        capture: ?[]const u8 = null,
+        capture: ?utils.Capture,
         body: *const Statement,
         @"else": ?*const Statement = null,
     };
@@ -356,7 +356,7 @@ pub const Statement = union(enum) {
     pub const While = struct {
         pos: utils.Position,
         condition: ast.Expression,
-        capture: ?[]const u8 = null,
+        capture: ?utils.Capture,
         body: *const Statement,
     };
 

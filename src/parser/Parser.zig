@@ -474,6 +474,29 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
     return params;
 }
 
+pub fn parseCapture(self: *Self) !?utils.Capture {
+    return switch (self.currentToken()) {
+        .@"|" => b: {
+            _ = self.advance(); // consume opening pipe
+            const capture_takes_ref = if (self.currentToken() == .@"&") blk: {
+                _ = self.advance();
+                break :blk true;
+            } else false;
+            const capture_ref_is_mut = if (capture_takes_ref and self.currentToken() == .mut) blk: {
+                _ = self.advance();
+                break :blk true;
+            } else false;
+            const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
+            try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
+            break :b if (std.mem.eql(u8, capture_name, "_")) null else .{
+                .name = capture_name,
+                .takes_ref = if (capture_takes_ref) .{ .some = capture_ref_is_mut } else .none,
+            };
+        },
+        else => null,
+    };
+}
+
 pub inline fn expectSemicolon(self: *Self, context: []const u8) !void {
     if (self.expect_semicolon) try self.expect(self.advance(), .@";", context, ";");
 }

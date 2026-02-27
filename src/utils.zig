@@ -1,5 +1,13 @@
 const std = @import("std");
 
+pub const Capture = struct {
+    name: []const u8,
+    takes_ref: union(enum) {
+        none,
+        some: bool,
+    },
+};
+
 pub const CompoundTypeTag = enum {
     @"struct",
     @"enum",

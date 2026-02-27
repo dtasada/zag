@@ -734,7 +734,7 @@ pub const Type = union(enum) {
                         else => |other| other,
                     };
 
-                    try compiler.registerSymbol(capture, .{ .symbol = .{ .type = capture_type } }, .{});
+                    try compiler.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
                 }
 
                 const expected: Type = try infer(compiler, @"if".body.*);

@@ -599,12 +599,12 @@ pub fn compileBlock(
     opts: struct {
         capture: ?struct {
             condition: *const ast.Expression,
-            name: []const u8,
+            capture: utils.Capture,
         } = null,
         iterator: ?struct {
             iter_expr: *const ast.Expression,
-            capture_name: []const u8,
             index: []const u8,
+            capture: utils.Capture,
         } = null,
         return_implicit_success: ?Type = null,
     },
@@ -615,31 +615,46 @@ pub fn compileBlock(
     try self.write("{\n");
 
     if (opts.capture) |capture| {
-        const inner_type = (try Type.infer(self, capture.condition.*)).optional.*;
+        const inner_type: Type = if (capture.capture.takes_ref == .some) .{
+            .reference = .{
+                .is_mut = capture.capture.takes_ref.some,
+                .inner = (try Type.infer(self, capture.condition.*)).optional,
+            },
+        } else (try Type.infer(self, capture.condition.*)).optional.*;
 
-        try self.compileVariableSignature(capture.name, inner_type, .{});
-        try self.write(" = (");
+        try self.compileVariableSignature(capture.capture.name, inner_type, .{
+            .binding_mut = capture.capture.takes_ref == .some and capture.capture.takes_ref.some,
+        });
+        try self.print(" = {s}(", .{if (capture.capture.takes_ref == .some) "&" else ""});
         try expressions.compile(self, capture.condition, .{});
         try self.write(").payload;\n");
 
-        try self.registerSymbol(capture.name, .{ .symbol = .{ .type = inner_type } }, .{});
+        try self.registerSymbol(capture.capture.name, .{ .symbol = .{ .type = inner_type } }, .{});
     }
 
     if (opts.iterator) |iterator| {
         const t: Type = try .infer(self, iterator.iter_expr.*);
-        const inner_type = switch (t) {
+        const inner_type: Type = if (iterator.capture.takes_ref == .some) .{
+            .reference = .{
+                .is_mut = iterator.capture.takes_ref.some,
+                .inner = switch (t) {
+                    inline .array, .slice => |ti| ti.inner,
+                    else => unreachable,
+                },
+            },
+        } else switch (t) {
             inline .array, .slice => |ti| ti.inner.*,
             else => unreachable,
         };
 
-        try self.compileVariableSignature(iterator.capture_name, inner_type, .{});
-        try self.write(" = (");
+        try self.compileVariableSignature(iterator.capture.name, inner_type, .{ .binding_mut = iterator.capture.takes_ref == .some and iterator.capture.takes_ref.some });
+        try self.print(" = {s}(", .{if (iterator.capture.takes_ref == .some) "&" else ""});
         try expressions.compile(self, iterator.iter_expr, .{});
         try self.write(")");
         if (t == .slice) try self.write(".ptr");
         try self.print("[{s}];\n", .{iterator.index});
 
-        try self.registerSymbol(iterator.capture_name, .{ .symbol = .{ .type = inner_type } }, .{});
+        try self.registerSymbol(iterator.capture.name, .{ .symbol = .{ .type = inner_type } }, .{});
     }
 
     var return_expr: ?ast.Expression = null;
