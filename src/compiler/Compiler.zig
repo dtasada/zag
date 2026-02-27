@@ -837,7 +837,6 @@ pub fn compileVariableSignature(
 }
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
-    errdefer std.debug.dumpCurrentStackTrace(null);
     return switch (expression) {
         .int => |int| .{ .i64 = int.int },
         .uint => |uint| .{ .u64 = uint.uint },
@@ -1183,7 +1182,6 @@ pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
     return switch (try self.getScopeItem(symbol)) {
         .symbol => |s| s.is_mut,
         else => {
-            std.debug.dumpCurrentStackTrace(null);
             return utils.printErr(
                 error.SymbolNotVariable,
                 "Compiler error: Symbol '{s}' is not a variable.\n",

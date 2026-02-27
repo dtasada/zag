@@ -319,7 +319,6 @@ pub inline fn getHandler(
     }.get(token)) |handler| handler else return if (opts.silent_error)
         error.HandlerDoesNotExist
     else {
-        std.debug.dumpCurrentStackTrace(null);
         return utils.printErr(
             error.HandlerDoesNotExist,
             "Parser error: Syntax error at {f}.\n",

@@ -53,17 +53,34 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
                         .comparisons = comparisons,
                     },
                 };
-            } else {
-                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .empty;
-                try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
-                return .{
-                    .comparison = .{
-                        .pos = pos,
-                        .left = lhs,
-                        .comparisons = comparisons,
-                    },
-                };
             }
+
+            if (lhs.* == .binary) {
+                switch (lhs.binary.op) {
+                    .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
+                        var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .empty;
+                        try comparisons.append(self.alloc, .{ .op = lhs.binary.op, .right = lhs.binary.rhs });
+                        try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
+                        return .{
+                            .comparison = .{
+                                .pos = lhs.getPosition(),
+                                .left = lhs.binary.lhs,
+                                .comparisons = comparisons,
+                            },
+                        };
+                    },
+                    else => {},
+                }
+            }
+
+            return .{
+                .binary = .{
+                    .pos = pos,
+                    .lhs = lhs,
+                    .op = op,
+                    .rhs = new_rhs,
+                },
+            };
         },
         else => return .{
             .binary = .{
