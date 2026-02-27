@@ -237,15 +237,13 @@ pub fn compile(
 }
 
 fn block(self: *Self, blk: ast.Expression.Block) !void {
-    self.currentSection().pos = self.currentSection().current_statement;
+    try self.write("({\n");
+    try self.pushScope();
 
     try self.compileType(try .inferBlock(self, blk), .{ .binding_mut = true });
     const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&blk))});
-
     try self.print(" {s};\n", .{temp_name});
 
-    try self.pushScope();
-    try self.write("{\n");
     var received_eval = false;
     for (blk.block.items) |*stmt| {
         switch (stmt.*) {
@@ -265,11 +263,10 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
             else => try statements.compile(self, stmt),
         }
     }
-    try self.write("}\n");
-    self.popScope();
 
-    self.currentSection().pos = self.currentWriter().items.len;
     try self.write(temp_name);
+    try self.write(";\n})");
+    self.popScope();
 }
 
 fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {

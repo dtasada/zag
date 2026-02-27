@@ -534,7 +534,6 @@ fn functionDefinition(
             );
             if (i < function_def.parameters.items.len - 1) try self.write(", ");
 
-            std.debug.print("parameter.name: {s}, is_mut: {}\n", .{ parameter.name, parameter.is_mut });
             try self.registerSymbol(parameter.name, .{
                 .symbol = .{
                     .type = try .fromAst(self, parameter.type),
