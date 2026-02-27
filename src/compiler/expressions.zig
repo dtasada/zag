@@ -175,10 +175,8 @@ pub fn compile(
                 try self.write(".is_some");
             try self.write(" ? ");
 
-            if (@"if".capture) |_| {
-                try compile(self, @"if".body, .{});
-                self.popScope();
-            } else try compile(self, @"if".body, .{});
+            try compile(self, @"if".body, .{});
+            if (@"if".capture) |_| self.popScope();
 
             try self.write(" : ");
             try compile(self, @"else", .{});

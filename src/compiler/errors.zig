@@ -94,7 +94,6 @@ pub fn argumentCountMismatch(
 }
 
 pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UnknownSymbol,
         "comperr: Unknown symbol '{s}' at {f}.\n",
@@ -140,6 +139,7 @@ pub fn genericArgumentCountMismatch(expected: usize, received: usize, pos: utils
 }
 
 pub fn badMutability(position: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.BadMutability,
         "comperr: Assignment expression on immutable binding ({f}).\n",

@@ -122,6 +122,25 @@ pub struct Vector2 {
     pub fn eq(p, q: Vector2) bool ->
         ((std.abs<f32>(p.x - q.x)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.x), std.abs<f32>(q.x))))) and
             ((std.abs<f32>(p.y - q.y)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.y), std.abs<f32>(q.y)))))
+
+    // Compute the direction of a refracted ray
+    // v: normalized direction of the incoming ray
+    // n: normalized normal vector of the interface of two optical media
+    // r: ratio of the refractive index of the medium from where the ray comes
+    // to the refractive index of the medium on the other side of the surface
+    pub fn refract(mut important_vector: Vector2, n: Vector2, r: f32) Vector2 {
+        let dot = important_vector.x*n.x + important_vector.y*n.y;
+        let mut d = 1.0 - r*r*(1.0 - dot*dot);
+
+        return if (d >= 0.0) {
+            d = std.sqrt<f32>(d);
+            important_vector.x = r*important_vector.x - (r*dot + d)*n.x;
+            important_vector.y = r*important_vector.y - (r*dot + d)*n.y;
+
+            important_vector
+        } else Vector2.zero();
+    }
+
 }
 
 // Vector3, 3 components

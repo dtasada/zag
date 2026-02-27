@@ -348,7 +348,6 @@ pub fn scan(self: *Self) CompilerError!void {
     for (self.input.items) |*statement| switch (statement.*) {
         .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }, .{}),
         .struct_declaration => |*struct_decl| {
-            std.debug.print("registering symbol {s}\n", .{struct_decl.name});
             try self.registerSymbol(
                 struct_decl.name,
                 .{ .type = .{ .@"struct" = try Type.Struct.init(self, struct_decl.name, try self.mangle(struct_decl.name), null) } },
@@ -1200,14 +1199,12 @@ pub fn getScopeItem(self: *const Self, symbol: []const u8) !ScopeItem {
 pub fn getSymbolMutability(self: *const Self, symbol: []const u8) !bool {
     return switch (try self.getScopeItem(symbol)) {
         .symbol => |s| s.is_mut,
-        else => {
-            return utils.printErr(
-                error.SymbolNotVariable,
-                "Compiler error: Symbol '{s}' is not a variable.\n",
-                .{symbol},
-                .red,
-            );
-        },
+        else => return utils.printErr(
+            error.SymbolNotVariable,
+            "Compiler error: Symbol '{s}' is not a variable.\n",
+            .{symbol},
+            .red,
+        ),
     };
 }
 

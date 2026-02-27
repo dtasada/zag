@@ -474,6 +474,9 @@ fn functionDefinition(
     else
         ast.Statement.FunctionDefinition,
 ) CompilerError!void {
+    if (std.mem.eql(u8, function_def.name, "refract")) {
+        std.debug.print("compiling refract\n", .{});
+    }
     const inner_name = if (binding_function) function_def.name else try self.mangle(function_def.name);
 
     if (self.getSymbolDefined(function_def.name)) |sd| {
@@ -531,6 +534,7 @@ fn functionDefinition(
             );
             if (i < function_def.parameters.items.len - 1) try self.write(", ");
 
+            std.debug.print("parameter.name: {s}, is_mut: {}\n", .{ parameter.name, parameter.is_mut });
             try self.registerSymbol(parameter.name, .{
                 .symbol = .{
                     .type = try .fromAst(self, parameter.type),
