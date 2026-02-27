@@ -347,11 +347,14 @@ pub fn mangle(self: *const Self, name: []const u8) ![]const u8 {
 pub fn scan(self: *Self) CompilerError!void {
     for (self.input.items) |*statement| switch (statement.*) {
         .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }, .{}),
-        .struct_declaration => |*struct_decl| try self.registerSymbol(
-            struct_decl.name,
-            .{ .type = .{ .@"struct" = try Type.Struct.init(self, struct_decl.name, try self.mangle(struct_decl.name), null) } },
-            .{ .inner_name = try self.mangle(struct_decl.name), .is_defined = false },
-        ),
+        .struct_declaration => |*struct_decl| {
+            std.debug.print("registering symbol {s}\n", .{struct_decl.name});
+            try self.registerSymbol(
+                struct_decl.name,
+                .{ .type = .{ .@"struct" = try Type.Struct.init(self, struct_decl.name, try self.mangle(struct_decl.name), null) } },
+                .{ .inner_name = try self.mangle(struct_decl.name), .is_defined = false },
+            );
+        },
         .union_declaration => |*union_decl| try self.registerSymbol(
             union_decl.name,
             .{ .type = .{ .@"union" = try Type.Union.init(self, union_decl.name, try self.mangle(union_decl.name), null) } },
@@ -437,6 +440,7 @@ pub fn analyze(self: *Self) CompilerError!void {
     defer self.popScope();
 
     try self.registerConstants();
+    try self.scan();
 
     for (self.input.items) |*statement| {
         switch (statement.*) {

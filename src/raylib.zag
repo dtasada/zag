@@ -153,6 +153,13 @@ pub struct Color {
     g: u8,        // Color green value
     b: u8,        // Color blue value
     a: u8,        // Color alpha value
+
+    pub fn init(r, g, b, a: u8) Color -> Color {
+        r: r,
+        g: g,
+        b: b,
+        a: a,
+    }
 }
 
 // Rectangle, 4 components
