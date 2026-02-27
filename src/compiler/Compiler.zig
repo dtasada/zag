@@ -29,6 +29,7 @@ const Section = struct {
         header_type_defs,
         header_function_decls,
         header_guard_end,
+        header_primitives,
 
         // Source sections (for .c files)
         source_includes,
@@ -42,7 +43,6 @@ const Section = struct {
 
     pos: usize = 0,
     current_statement: usize = 0,
-    current_type: usize = 0,
     buffer: std.ArrayList(u8) = .empty,
 };
 
@@ -329,8 +329,9 @@ fn writeOutputFiles(self: *Self) !void {
     try header_file_writer.interface.print("#ifndef {s}\n#define {s}\n\n", .{ guard_name, guard_name });
     try header_file_writer.interface.writeAll("#include <zag.h>\n\n");
     try header_file_writer.interface.writeAll(self.sections.get(.header_includes).buffer.items);
-    try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_primitives).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).buffer.items);
     try header_file_writer.interface.writeAll("\n#endif\n");
     try header_file_writer.interface.flush();
@@ -701,7 +702,7 @@ pub fn compileType(
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 const saved_section = self.current_section;
-                self.switchSection(.header_type_defs);
+                self.switchSection(.header_primitives);
                 defer self.switchSection(saved_section);
 
                 try self.write("typedef struct {\n");
@@ -719,7 +720,7 @@ pub fn compileType(
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 const saved_section = self.current_section;
-                self.switchSection(.header_type_defs);
+                self.switchSection(.header_primitives);
                 defer self.switchSection(saved_section);
 
                 try self.write("typedef struct {\n");
@@ -745,7 +746,7 @@ pub fn compileType(
             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 const saved_section = self.current_section;
-                self.switchSection(.header_type_defs);
+                self.switchSection(.header_primitives);
                 defer self.switchSection(saved_section);
 
                 try self.write("typedef struct {\n");

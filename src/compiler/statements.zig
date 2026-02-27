@@ -502,7 +502,7 @@ fn functionDefinition(
 
     if (binding_function or function_def.is_pub) {
         const saved_section = self.current_section;
-        self.switchSection(.header_forward_decls);
+        self.switchSection(.header_function_decls);
         defer self.switchSection(saved_section);
 
         // we'll set the type of the function return type to be mutable because cc warns when a
