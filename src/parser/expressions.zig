@@ -135,15 +135,17 @@ pub fn assignment(self: *Self, lhs: *const ast.Expression, bp: BindingPower) Par
 pub fn member(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     const pos = self.currentPosition();
     _ = self.advance(); // consume dot
-    const member_name = try self.expect(self.advance(), .ident, "member expression", "member name");
-
-    return .{
-        .member = .{
-            .pos = pos,
-            .parent = lhs,
-            .member_name = member_name,
+    switch (self.currentToken()) {
+        .ident => |ident| {
+            _ = self.advance();
+            return .{ .member = .{ .pos = pos, .parent = lhs, .member_name = ident } };
         },
-    };
+        .@"*" => {
+            _ = self.advance();
+            return .{ .dereference = .{ .pos = pos, .parent = lhs } };
+        },
+        else => |other| return self.unexpectedToken("member expression", "member name or dereference", other),
+    }
 }
 
 pub fn prefix(self: *Self) ParserError!ast.Expression {

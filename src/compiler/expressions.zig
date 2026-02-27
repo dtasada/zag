@@ -232,6 +232,11 @@ pub fn compile(
             try compile(self, c.rhs, .{ .expected_type = inner });
             try self.write("))");
         },
+        .dereference => |deref| {
+            try self.write("*(");
+            try compile(self, deref.parent, .{});
+            try self.write(")");
+        },
         .bad_node => unreachable,
     }
 }

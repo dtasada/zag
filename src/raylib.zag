@@ -186,7 +186,7 @@ pub struct Vector3 {
         if (std.abs<f32>(v.z) < min) cardinalAxis = Vector3.init(0, 0, 1);
 
         // Cross product between vectors
-        return Vector3.init(v, cardinalAxis);
+        return v.cross_product(cardinalAxis);
     }
     // Calculate vector length
     pub fn length(v: Vector3) f32 -> std.sqrt<f32>(v.length_sqr())
@@ -203,273 +203,642 @@ pub struct Vector3 {
     // Negate provided vector (invert direction)
     pub fn negate(v: Vector3) Vector3 -> Vector3.init(-v.x, -v.y, -v.z)
     // Divide vector by vector
-    pub fn divide(v1, v2: Vector3) Vector3 -> rl.Vector3(v1.x/v2.x, v1.y/v2.y, v1.z/v2.z)
+    pub fn divide(v1, v2: Vector3) Vector3 -> Vector3.init(v1.x/v2.x, v1.y/v2.y, v1.z/v2.z)
     // Normalize provided vector
-    pub fn normalize(v: Vector3) Vector3 -> if (length == 0.0) v else result.scale(1.0/v.length())
+    pub fn normalize(v: Vector3) Vector3 -> if (v.length_sqr() > 0) v.scale(1.0 / v.length()) else v
     //Calculate the projection of the vector v1 on to v2
     pub fn project(v1, v2: Vector3) Vector3 {
         let v1dv2 = v1.dot_product(v2);
         let v2dv2 = v2.dot_product(v2);
         let mag = v1dv2/v2dv2;
-        return Vector3.init(v2.x*mag, v2.y*mag, v2.z*mag);
+        return v2.scale(mag);
     }
     //Calculate the rejection of the vector v1 on to v2
     pub fn reject(v1, v2: Vector3) Vector3 {
-        let v1dv2 = v1.dot_product(v2);
-        let v2dv2 = v2.dot_product(v2);
-        let mag = v1dv2/v2dv2;
-        return Vector3.init(
-            v1.x - (v2.x*mag),
-            v1.y - (v2.y*mag),
-            v1.z - (v2.z*mag),
-        );
+        return v1.subtract(v1.project(v2));
     }
     // Orthonormalize provided vectors
     // Makes vectors normalized and orthogonal to each other
     // Gram-Schmidt function implementation
-    // pub fn ortho_normalize(v1, v2: &mut Vector3) {
-    //     let length = 0.0;
-    //     let ilength = 0.0;
-
-    //     let v1 = v1.normalize();
-    //     let vn1 = v1.cross_product(v2);
-    //     let v = vn1.normalize();
-    //     let vn2 = vn1.cross_product(v1);
-
-    //     v2.* = vn2;
-    // }
+    pub fn ortho_normalize(mut v1: &mut Vector3, mut v2: &mut Vector3) void {
+        v1.* = v1.normalize();
+        let vn1 = v1.cross_product(v2.*);
+        v2.* = vn1.normalize();
+    }
 
     // Transforms a Vector3 by a given Matrix
     pub fn transform(v: Vector3, mat: Matrix) Vector3 -> Vector3.init(
         mat.m0*v.x + mat.m4*v.y + mat.m8*v.z + mat.m12,
         mat.m1*v.x + mat.m5*v.y + mat.m9*v.z + mat.m13,
         mat.m2*v.x + mat.m6*v.y + mat.m10*v.z + mat.m14,
-    );
+    )
 
     // Transform a vector by quaternion rotation
     pub fn rotate_by_quaternion(v: Vector3, q: Quaternion) Vector3 -> Vector3.init(
-        v.x*(q.x*q.x + q.w*q.w - q.y*q.y - q.z*q.z) + v.y*(2*q.x*q.y - 2*q.w*q.z) + v.z*(2*q.x*q.z + 2*q.w*q.y),
-        v.x*(2*q.w*q.z + 2*q.x*q.y) + v.y*(q.w*q.w - q.x*q.x + q.y*q.y - q.z*q.z) + v.z*(-2*q.w*q.x + 2*q.y*q.z),
-        v.x*(-2*q.w*q.y + 2*q.x*q.z) + v.y*(2*q.w*q.x + 2*q.y*q.z)+ v.z*(q.w*q.w - q.x*q.x - q.y*q.y + q.z*q.z),
+        v.x*(q.x*q.x + q.w*q.w - q.y*q.y - q.z*q.z) + v.y*(2.0*q.x*q.y - 2.0*q.w*q.z) + v.z*(2.0*q.x*q.z + 2.0*q.w*q.y),
+        v.x*(2.0*q.w*q.z + 2.0*q.x*q.y) + v.y*(q.w*q.w - q.x*q.x + q.y*q.y - q.z*q.z) + v.z*(-2.0*q.w*q.x + 2.0*q.y*q.z),
+        v.x*(-2.0*q.w*q.y + 2.0*q.x*q.z) + v.y*(2.0*q.w*q.x + 2.0*q.y*q.z)+ v.z*(q.w*q.w - q.x*q.x - q.y*q.y + q.z*q.z),
     )
 
-
     // Rotates a vector around an axis
-    RMAPI Vector3 Vector3RotateByAxisAngle(Vector3 v, Vector3 axis, float angle)
-    {
+    pub fn rotate_by_axis_angle(v: Vector3, axis: Vector3, angle: f32) Vector3 {
         // Using Euler-Rodrigues Formula
         // Ref.: https://en.wikipedia.org/w/index.php?title=Euler%E2%80%93Rodrigues_formula
 
-        Vector3 result = v;
+        let mut result = v;
+        let axis = axis.normalize();
 
-        // Vector3Normalize(axis);
-        float length = sqrtf(axis.x*axis.x + axis.y*axis.y + axis.z*axis.z);
-        if (length == 0.0f) length = 1.0f;
-        float ilength = 1.0f/length;
-        axis.x *= ilength;
-        axis.y *= ilength;
-        axis.z *= ilength;
+        let mut mut_angle = angle / 2.0;
+        let mut a = std.sin<f32>(mut_angle);
+        let b = axis.x*a;
+        let c = axis.y*a;
+        let d = axis.z*a;
+        a = std.cos<f32>(mut_angle);
+        let w = Vector3.init(b, c, d);
 
-        angle /= 2.0f;
-        float a = sinf(angle);
-        float b = axis.x*a;
-        float c = axis.y*a;
-        float d = axis.z*a;
-        a = cosf(angle);
-        Vector3 w = { b, c, d };
+        let wv = w.cross_product(v);
+        let wwv = w.cross_product(wv);
 
-        // Vector3CrossProduct(w, v)
-        Vector3 wv = { w.y*v.z - w.z*v.y, w.z*v.x - w.x*v.z, w.x*v.y - w.y*v.x };
-
-        // Vector3CrossProduct(w, wv)
-        Vector3 wwv = { w.y*wv.z - w.z*wv.y, w.z*wv.x - w.x*wv.z, w.x*wv.y - w.y*wv.x };
-
-        // Vector3Scale(wv, 2*a)
-        a *= 2;
-        wv.x *= a;
-        wv.y *= a;
-        wv.z *= a;
-
-        // Vector3Scale(wwv, 2)
-        wwv.x *= 2;
-        wwv.y *= 2;
-        wwv.z *= 2;
-
-        result.x += wv.x;
-        result.y += wv.y;
-        result.z += wv.z;
-
-        result.x += wwv.x;
-        result.y += wwv.y;
-        result.z += wwv.z;
+        result = result.add(wv.scale(2.0 * a));
+        result = result.add(wwv.scale(2.0));
 
         return result;
     }
 
     // Move Vector towards target
-    RMAPI Vector3 Vector3MoveTowards(Vector3 v, Vector3 target, float maxDistance)
-    {
-        Vector3 result = { 0 };
+    pub fn move_towards(v, target: Vector3, maxDistance: f32) Vector3 {
+        let dx = target.x - v.x;
+        let dy = target.y - v.y;
+        let dz = target.z - v.z;
+        let value = (dx*dx) + (dy*dy) + (dz*dz);
 
-        float dx = target.x - v.x;
-        float dy = target.y - v.y;
-        float dz = target.z - v.z;
-        float value = (dx*dx) + (dy*dy) + (dz*dz);
+        if ((value == 0) or ((maxDistance >= 0) and (value <= maxDistance*maxDistance))) return target;
 
-        if ((value == 0) || ((maxDistance >= 0) && (value <= maxDistance*maxDistance))) return target;
+        let dist = std.sqrt<f32>(value);
 
-        float dist = sqrtf(value);
-
-        result.x = v.x + dx/dist*maxDistance;
-        result.y = v.y + dy/dist*maxDistance;
-        result.z = v.z + dz/dist*maxDistance;
-
-        return result;
+        return Vector3.init(
+            v.x + dx/dist*maxDistance,
+            v.y + dy/dist*maxDistance,
+            v.z + dz/dist*maxDistance,
+        );
     }
 
     // Calculate linear interpolation between two vectors
-    RMAPI Vector3 Vector3Lerp(Vector3 v1, Vector3 v2, float amount)
-    {
-        Vector3 result = { 0 };
-
-        result.x = v1.x + amount*(v2.x - v1.x);
-        result.y = v1.y + amount*(v2.y - v1.y);
-        result.z = v1.z + amount*(v2.z - v1.z);
-
-        return result;
-    }
+    pub fn lerp(v1, v2: Vector3, amount: f32) Vector3 -> Vector3.init(
+        v1.x + amount*(v2.x - v1.x),
+        v1.y + amount*(v2.y - v1.y),
+        v1.z + amount*(v2.z - v1.z),
+    )
 
     // Calculate cubic hermite interpolation between two vectors and their tangents
     // as described in the GLTF 2.0 specification: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#interpolation-cubic
-    RMAPI Vector3 Vector3CubicHermite(Vector3 v1, Vector3 tangent1, Vector3 v2, Vector3 tangent2, float amount)
-    {
-        Vector3 result = { 0 };
+    pub fn cubic_hermite(v1, tangent1, v2, tangent2: Vector3, amount: f32) Vector3 {
+        let amountPow2 = amount*amount;
+        let amountPow3 = amount*amount*amount;
 
-        float amountPow2 = amount*amount;
-        float amountPow3 = amount*amount*amount;
+        let h1 = 2.0*amountPow3 - 3.0*amountPow2 + 1.0;
+        let h2 = amountPow3 - 2.0*amountPow2 + amount;
+        let h3 = -2.0*amountPow3 + 3.0*amountPow2;
+        let h4 = amountPow3 - amountPow2;
 
-        result.x = (2*amountPow3 - 3*amountPow2 + 1)*v1.x + (amountPow3 - 2*amountPow2 + amount)*tangent1.x + (-2*amountPow3 + 3*amountPow2)*v2.x + (amountPow3 - amountPow2)*tangent2.x;
-        result.y = (2*amountPow3 - 3*amountPow2 + 1)*v1.y + (amountPow3 - 2*amountPow2 + amount)*tangent1.y + (-2*amountPow3 + 3*amountPow2)*v2.y + (amountPow3 - amountPow2)*tangent2.y;
-        result.z = (2*amountPow3 - 3*amountPow2 + 1)*v1.z + (amountPow3 - 2*amountPow2 + amount)*tangent1.z + (-2*amountPow3 + 3*amountPow2)*v2.z + (amountPow3 - amountPow2)*tangent2.z;
-
-        return result;
+        return Vector3.init(
+            h1*v1.x + h2*tangent1.x + h3*v2.x + h4*tangent2.x,
+            h1*v1.y + h2*tangent1.y + h3*v2.y + h4*tangent2.y,
+            h1*v1.z + h2*tangent1.z + h3*v2.z + h4*tangent2.z,
+        );
     }
 
     // Calculate reflected vector to normal
-    RMAPI Vector3 Vector3Reflect(Vector3 v, Vector3 normal)
-    {
-        Vector3 result = { 0 };
-
+    pub fn reflect(v, normal: Vector3) Vector3 {
         // I is the original vector
         // N is the normal of the incident plane
         // R = I - (2*N*(DotProduct[I, N]))
 
-        float dotProduct = (v.x*normal.x + v.y*normal.y + v.z*normal.z);
+        let dotProduct = v.dot_product(normal);
 
-        result.x = v.x - (2.0f*normal.x)*dotProduct;
-        result.y = v.y - (2.0f*normal.y)*dotProduct;
-        result.z = v.z - (2.0f*normal.z)*dotProduct;
-
-        return result;
+        return Vector3.init(
+            v.x - (2.0*normal.x)*dotProduct,
+            v.y - (2.0*normal.y)*dotProduct,
+            v.z - (2.0*normal.z)*dotProduct,
+        );
     }
 
     // Get min value for each pair of components
-    RMAPI Vector3 Vector3Min(Vector3 v1, Vector3 v2)
-    {
-        Vector3 result = { 0 };
-
-        result.x = fminf(v1.x, v2.x);
-        result.y = fminf(v1.y, v2.y);
-        result.z = fminf(v1.z, v2.z);
-
-        return result;
-    }
+    pub fn min(v1, v2: Vector3) Vector3 -> Vector3.init(std.min<f32>(v1.x, v2.x), std.min<f32>(v1.y, v2.y), std.min<f32>(v1.z, v2.z))
 
     // Get max value for each pair of components
-    RMAPI Vector3 Vector3Max(Vector3 v1, Vector3 v2)
-    {
-        Vector3 result = { 0 };
-
-        result.x = fmaxf(v1.x, v2.x);
-        result.y = fmaxf(v1.y, v2.y);
-        result.z = fmaxf(v1.z, v2.z);
-
-        return result;
-    }
+    pub fn max(v1, v2: Vector3) Vector3 -> Vector3.init(std.max<f32>(v1.x, v2.x), std.max<f32>(v1.y, v2.y), std.max<f32>(v1.z, v2.z))
 
     // Compute barycenter coordinates (u, v, w) for point p with respect to triangle (a, b, c)
     // NOTE: Assumes P is on the plane of the triangle
-    RMAPI Vector3 Vector3Barycenter(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
-    {
-        Vector3 result = { 0 };
+    pub fn barycenter(p, a, b, c: Vector3) Vector3 {
+        let v0 = b.subtract(a);
+        let v1 = c.subtract(a);
+        let v2 = p.subtract(a);
+        let d00 = v0.dot_product(v0);
+        let d01 = v0.dot_product(v1);
+        let d11 = v1.dot_product(v1);
+        let d20 = v2.dot_product(v0);
+        let d21 = v2.dot_product(v1);
 
-        Vector3 v0 = { b.x - a.x, b.y - a.y, b.z - a.z };   // Vector3Subtract(b, a)
-        Vector3 v1 = { c.x - a.x, c.y - a.y, c.z - a.z };   // Vector3Subtract(c, a)
-        Vector3 v2 = { p.x - a.x, p.y - a.y, p.z - a.z };   // Vector3Subtract(p, a)
-        float d00 = (v0.x*v0.x + v0.y*v0.y + v0.z*v0.z);    // Vector3DotProduct(v0, v0)
-        float d01 = (v0.x*v1.x + v0.y*v1.y + v0.z*v1.z);    // Vector3DotProduct(v0, v1)
-        float d11 = (v1.x*v1.x + v1.y*v1.y + v1.z*v1.z);    // Vector3DotProduct(v1, v1)
-        float d20 = (v2.x*v0.x + v2.y*v0.y + v2.z*v0.z);    // Vector3DotProduct(v2, v0)
-        float d21 = (v2.x*v1.x + v2.y*v1.y + v2.z*v1.z);    // Vector3DotProduct(v2, v1)
+        let denom = d00*d11 - d01*d01;
 
-        float denom = d00*d11 - d01*d01;
+        let v = (d11*d20 - d01*d21)/denom;
+        let w = (d00*d21 - d01*d20)/denom;
+        let u = 1.0 - (w + v);
 
-        result.y = (d11*d20 - d01*d21)/denom;
-        result.z = (d00*d21 - d01*d20)/denom;
-        result.x = 1.0f - (result.z + result.y);
-
-        return result;
+        return Vector3.init(u, v, w);
     }
 
     // Projects a Vector3 from screen space into object space
-    // NOTE: Self-contained function, no other raymath functions are called
-    RMAPI Vector3 Vector3Unproject(Vector3 source, Matrix projection, Matrix view)
-    {
-        Vector3 result = { 0 };
+    pub fn unproject(source: Vector3, projection, view: Matrix) Vector3 {
+        let matViewProjInv = view.multiply(projection).invert();
+        let quat = Vector4.init(source.x, source.y, source.z, 1.0);
+        let qtransformed = quat.transform(matViewProjInv);
 
-        // Calculate unprojected matrix (multiply view matrix by projection matrix) and invert it
-        Matrix matViewProj = {      // MatrixMultiply(view, projection);
-            view.m0*projection.m0 + view.m1*projection.m4 + view.m2*projection.m8 + view.m3*projection.m12,
-            view.m0*projection.m1 + view.m1*projection.m5 + view.m2*projection.m9 + view.m3*projection.m13,
-            view.m0*projection.m2 + view.m1*projection.m6 + view.m2*projection.m10 + view.m3*projection.m14,
-            view.m0*projection.m3 + view.m1*projection.m7 + view.m2*projection.m11 + view.m3*projection.m15,
-            view.m4*projection.m0 + view.m5*projection.m4 + view.m6*projection.m8 + view.m7*projection.m12,
-            view.m4*projection.m1 + view.m5*projection.m5 + view.m6*projection.m9 + view.m7*projection.m13,
-            view.m4*projection.m2 + view.m5*projection.m6 + view.m6*projection.m10 + view.m7*projection.m14,
-            view.m4*projection.m3 + view.m5*projection.m7 + view.m6*projection.m11 + view.m7*projection.m15,
-            view.m8*projection.m0 + view.m9*projection.m4 + view.m10*projection.m8 + view.m11*projection.m12,
-            view.m8*projection.m1 + view.m9*projection.m5 + view.m10*projection.m9 + view.m11*projection.m13,
-            view.m8*projection.m2 + view.m9*projection.m6 + view.m10*projection.m10 + view.m11*projection.m14,
-            view.m8*projection.m3 + view.m9*projection.m7 + view.m10*projection.m11 + view.m11*projection.m15,
-            view.m12*projection.m0 + view.m13*projection.m4 + view.m14*projection.m8 + view.m15*projection.m12,
-            view.m12*projection.m1 + view.m13*projection.m5 + view.m14*projection.m9 + view.m15*projection.m13,
-            view.m12*projection.m2 + view.m13*projection.m6 + view.m14*projection.m10 + view.m15*projection.m14,
-            view.m12*projection.m3 + view.m13*projection.m7 + view.m14*projection.m11 + view.m15*projection.m15 };
+        // Normalized world points in vectors
+        return Vector3.init(
+            qtransformed.x/qtransformed.w,
+            qtransformed.y/qtransformed.w,
+            qtransformed.z/qtransformed.w,
+        );
+    }
 
-        // Calculate inverted matrix -> MatrixInvert(matViewProj);
-        // Cache the matrix values (speed optimization)
-        float a00 = matViewProj.m0, a01 = matViewProj.m1, a02 = matViewProj.m2, a03 = matViewProj.m3;
-        float a10 = matViewProj.m4, a11 = matViewProj.m5, a12 = matViewProj.m6, a13 = matViewProj.m7;
-        float a20 = matViewProj.m8, a21 = matViewProj.m9, a22 = matViewProj.m10, a23 = matViewProj.m11;
-        float a30 = matViewProj.m12, a31 = matViewProj.m13, a32 = matViewProj.m14, a33 = matViewProj.m15;
+    // Get Vector3 as float array
+    pub fn to_float_v(v: Vector3) [3]f32 {
+        return [_]f32{v.x, v.y, v.z};
+    }
 
-        float b00 = a00*a11 - a01*a10;
-        float b01 = a00*a12 - a02*a10;
-        float b02 = a00*a13 - a03*a10;
-        float b03 = a01*a12 - a02*a11;
-        float b04 = a01*a13 - a03*a11;
-        float b05 = a02*a13 - a03*a12;
-        float b06 = a20*a31 - a21*a30;
-        float b07 = a20*a32 - a22*a30;
-        float b08 = a20*a33 - a23*a30;
-        float b09 = a21*a32 - a22*a31;
-        float b10 = a21*a33 - a23*a31;
-        float b11 = a22*a33 - a23*a32;
+    // Invert the given vector
+    pub fn invert(v: Vector3) Vector3 -> Vector3.init(1.0/v.x, 1.0/v.y, 1.0/v.z)
 
-        // Calculate the invert determinant (inlined to avoid double-caching)
-        float invDet = 1.0f/(b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06);
+    // Clamp the components of the vector between
+    // min and max values specified by the given vectors
+    pub fn clamp(v, min, max: Vector3) Vector3 -> Vector3.init(
+        std.max<f32>(max.x, std.max<f32>(min.x, v.x)),
+        std.max<f32>(max.y, std.max<f32>(min.y, v.y)),
+        std.max<f32>(max.z, std.max<f32>(min.z, v.z)),
+    )
 
-        Matrix matViewProjInv = {
+    // Clamp the magnitude of the vector between two values
+    pub fn clamp_value(v: Vector3, min, max: f32) Vector3 {
+        let length = v.length_sqr();
+        if (length > 0.0) {
+            let length = std.sqrt<f32>(length);
+            let scale = if (length < min) min/length
+                else if (length > max) max/length
+                else 1.0;
+            return v.scale(scale);
+        }
+        return v;
+    }
+
+    // Check whether two given vectors are almost equal
+    pub fn eq(p, q: Vector3) bool ->
+        ((std.abs<f32>(p.x - q.x)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.x), std.abs<f32>(q.x))))) and
+        ((std.abs<f32>(p.y - q.y)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.y), std.abs<f32>(q.y))))) and
+        ((std.abs<f32>(p.z - q.z)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.z), std.abs<f32>(q.z)))))
+
+    // Compute the direction of a refracted ray
+    // v: normalized direction of the incoming ray
+    // n: normalized normal vector of the interface of two optical media
+    // r: ratio of the refractive index of the medium from where the ray comes
+    // to the refractive index of the medium on the other side of the surface
+    pub fn refract(v, n: Vector3, r: f32) Vector3 {
+        let dot = v.dot_product(n);
+        let d = 1.0 - r*r*(1.0 - dot*dot);
+
+        if (d >= 0.0) {
+            let d = std.sqrt<f32>(d);
+            return n.scale(r*dot + d).negate().add(v.scale(r));
+        }
+
+        return Vector3.zero();
+    }
+
+}
+
+// Vector4, 4 components
+pub struct Vector4 {
+    x: f32,                // Vector x component
+    y: f32,                // Vector y component
+    z: f32,                // Vector z component
+    w: f32,                // Vector w component
+
+    pub fn init(x, y, z, w: f32) Vector4 -> Vector4 { x: x, y: y, z: z, w: w }
+    // Vector with components value 0.0f
+    pub fn zero() Vector4 -> Vector4.init(0, 0, 0, 0)
+    // Vector with components value 1.0f
+    pub fn one() Vector4 -> Vector4.init(1, 1, 1, 1)
+    // Add two vectors
+    pub fn add(v1, v2: Vector4) Vector4 -> Vector4.init(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z, v1.w + v2.w)
+    // Add vector and float value
+    pub fn add_value(v: Vector4, add: f32) Vector4 -> Vector4.init(v.x + add, v.y + add, v.z + add, v.w + add)
+    // Subtract two vectors
+    pub fn subtract(v1, v2: Vector4) Vector4 -> Vector4.init(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z, v1.w - v2.w)
+    // Subtract vector by float value
+    pub fn subtract_value(v: Vector4, sub: f32) Vector4 -> Vector4.init(v.x - sub, v.y - sub, v.z - sub, v.w - sub)
+    // Calculate vector length
+    pub fn length(v: Vector4) f32 -> std.sqrt<f32>(v.length_sqr())
+    // Calculate vector square length
+    pub fn length_sqr(v: Vector4) f32 -> v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w
+    // Calculate two vectors dot product
+    pub fn dot_product(v1, v2: Vector4) f32 -> v1.x*v2.x + v1.y*v2.y + v1.z*v2.z + v1.w*v2.w
+    // Calculate distance between two vectors
+    pub fn distance(v1, v2: Vector4) f32 -> std.sqrt<f32>(v1.distance_sqr(v2))
+    // Calculate square distance between two vectors
+    pub fn distance_sqr(v1, v2: Vector4) f32 {
+        let dx = v1.x - v2.x;
+        let dy = v1.y - v2.y;
+        let dz = v1.z - v2.z;
+        let dw = v1.w - v2.w;
+        return dx*dx + dy*dy + dz*dz + dw*dw;
+    }
+    // Scale vector (multiply by value)
+    pub fn scale(v: Vector4, scale: f32) Vector4 -> Vector4.init(v.x*scale, v.y*scale, v.z*scale, v.w*scale)
+    // Multiply vector by vector
+    pub fn multiply(v1, v2: Vector4) Vector4 -> Vector4.init(v1.x*v2.x, v1.y*v2.y, v1.z*v2.z, v1.w*v2.w)
+    // Negate vector
+    pub fn negate(v: Vector4) Vector4 -> Vector4.init(-v.x, -v.y, -v.z, -v.w)
+    // Divide vector by vector
+    pub fn divide(v1, v2: Vector4) Vector4 -> Vector4.init(v1.x/v2.x, v1.y/v2.y, v1.z/v2.z, v1.w/v2.w)
+    // Normalize provided vector
+    pub fn normalize(v: Vector4) Vector4 -> if (v.length_sqr() > 0) v.scale(1.0 / v.length()) else v
+    // Get min value for each pair of components
+    pub fn min(v1, v2: Vector4) Vector4 -> Vector4.init(std.min<f32>(v1.x, v2.x), std.min<f32>(v1.y, v2.y), std.min<f32>(v1.z, v2.z), std.min<f32>(v1.w, v2.w))
+    // Get max value for each pair of components
+    pub fn max(v1, v2: Vector4) Vector4 -> Vector4.init(std.max<f32>(v1.x, v2.x), std.max<f32>(v1.y, v2.y), std.max<f32>(v1.z, v2.z), std.max<f32>(v1.w, v2.w))
+    // Calculate linear interpolation between two vectors
+    pub fn lerp(v1, v2: Vector4, amount: f32) Vector4 -> Vector4.init(
+        v1.x + amount*(v2.x - v1.x),
+        v1.y + amount*(v2.y - v1.y),
+        v1.z + amount*(v2.z - v1.z),
+        v1.w + amount*(v2.w - v1.w),
+    )
+    // Move Vector towards target
+    pub fn move_towards(v, target: Vector4, maxDistance: f32) Vector4 {
+        let dx = target.x - v.x;
+        let dy = target.y - v.y;
+        let dz = target.z - v.z;
+        let dw = target.w - v.w;
+        let value = (dx*dx) + (dy*dy) + (dz*dz) + (dw*dw);
+
+        if ((value == 0) or ((maxDistance >= 0) and (value <= maxDistance*maxDistance))) return target;
+
+        let dist = std.sqrt<f32>(value);
+
+        return Vector4.init(
+            v.x + dx/dist*maxDistance,
+            v.y + dy/dist*maxDistance,
+            v.z + dz/dist*maxDistance,
+            v.w + dw/dist*maxDistance,
+        );
+    }
+    // Invert the given vector
+    pub fn invert(v: Vector4) Vector4 -> Vector4.init(1.0/v.x, 1.0/v.y, 1.0/v.z, 1.0/v.w)
+    // Check whether two given vectors are almost equal
+    pub fn eq(p, q: Vector4) bool ->
+        ((std.abs<f32>(p.x - q.x)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.x), std.abs<f32>(q.x))))) and
+        ((std.abs<f32>(p.y - q.y)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.y), std.abs<f32>(q.y))))) and
+        ((std.abs<f32>(p.z - q.z)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.z), std.abs<f32>(q.z))))) and
+        ((std.abs<f32>(p.w - q.w)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.w), std.abs<f32>(q.w)))))
+
+    pub fn transform(v: Vector4, mat: Matrix) Vector4 -> Vector4.init(
+        mat.m0*v.x + mat.m4*v.y + mat.m8*v.z + mat.m12*v.w,
+        mat.m1*v.x + mat.m5*v.y + mat.m9*v.z + mat.m13*v.w,
+        mat.m2*v.x + mat.m6*v.y + mat.m10*v.z + mat.m14*v.w,
+        mat.m3*v.x + mat.m7*v.y + mat.m11*v.z + mat.m15*v.w,
+    )
+}
+
+// Quaternion, 4 components (Vector4 alias)
+pub struct Quaternion {
+    x, y, z, w: f32,
+
+    pub fn zero() Quaternion -> Quaternion.init(0, 0, 0, 0)
+    pub fn init(x, y, z, w: f32) Quaternion -> Quaternion { x:x, y:y, z:z, w:w }
+    pub fn add(q1, q2: Quaternion) Quaternion -> Quaternion.init(q1.x + q2.x, q1.y + q2.y, q1.z + q2.z, q1.w + q2.w)
+    pub fn add_value(q: Quaternion, add: f32) Quaternion -> Quaternion.init(q.x + add, q.y + add, q.z + add, q.w + add)
+    pub fn subtract(q1, q2: Quaternion) Quaternion -> Quaternion.init(q1.x - q2.x, q1.y - q2.y, q1.z - q2.z, q1.w - q2.w)
+    pub fn subtract_value(q: Quaternion, sub: f32) Quaternion -> Quaternion.init(q.x - sub, q.y - sub, q.z - sub, q.w - sub)
+    pub fn identity() Quaternion -> Quaternion.init(0.0, 0.0, 0.0, 1.0)
+    pub fn length(q: Quaternion) f32 -> std.sqrt<f32>(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w)
+    
+    pub fn normalize(q: Quaternion) Quaternion {
+        let length = q.length();
+        if (length == 0.0) return q;
+        let ilength = 1.0 / length;
+        return Quaternion.init(q.x*ilength, q.y*ilength, q.z*ilength, q.w*ilength);
+    }
+    
+    pub fn invert(q: Quaternion) Quaternion {
+        let mut result = q;
+        let lengthSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+        if (lengthSq != 0.0) {
+            let invLength = 1.0 / lengthSq;
+            result.x *= -invLength;
+            result.y *= -invLength;
+            result.z *= -invLength;
+            result.w *= invLength;
+        }
+        return result;
+    }
+
+    pub fn multiply(q1, q2: Quaternion) Quaternion -> Quaternion.init(
+        q1.x * q2.w + q1.w * q2.x + q1.y * q2.z - q1.z * q2.y,
+        q1.y * q2.w + q1.w * q2.y + q1.z * q2.x - q1.x * q2.z,
+        q1.z * q2.w + q1.w * q2.z + q1.x * q2.y - q1.y * q2.x,
+        q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z
+    )
+    
+    pub fn scale(q: Quaternion, mul: f32) Quaternion -> Quaternion.init(q.x * mul, q.y * mul, q.z * mul, q.w * mul)
+    
+    pub fn divide(q1, q2: Quaternion) Quaternion -> Quaternion.init(q1.x / q2.x, q1.y / q2.y, q1.z / q2.z, q1.w / q2.w)
+    
+    pub fn lerp(q1, q2: Quaternion, amount: f32) Quaternion -> Quaternion.init(
+        q1.x + amount * (q2.x - q1.x),
+        q1.y + amount * (q2.y - q1.y),
+        q1.z + amount * (q2.z - q1.z),
+        q1.w + amount * (q2.w - q1.w)
+    )
+
+    pub fn nlerp(q1, q2: Quaternion, amount: f32) Quaternion -> q1.lerp(q2, amount).normalize()
+
+    pub fn slerp(q1, q2: Quaternion, amount: f32) Quaternion {
+        let mut cosHalfTheta = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+        let mut q2 = q2;
+
+        if (cosHalfTheta < 0) {
+            q2.x = -q2.x; q2.y = -q2.y; q2.z = -q2.z; q2.w = -q2.w;
+            cosHalfTheta = -cosHalfTheta;
+        }
+
+        if (std.abs(cosHalfTheta) >= 1.0) return q1;
+        if (cosHalfTheta > 0.95) return q1.nlerp(q2, amount);
+        
+        let halfTheta = std.acos(cosHalfTheta);
+        let sinHalfTheta = std.sqrt(1.0 - cosHalfTheta*cosHalfTheta);
+
+        if (std.abs(sinHalfTheta) < EPSILON) {
+            return Quaternion.init(
+                (q1.x*0.5 + q2.x*0.5),
+                (q1.y*0.5 + q2.y*0.5),
+                (q1.z*0.5 + q2.z*0.5),
+                (q1.w*0.5 + q2.w*0.5)
+            );
+        }
+        
+        let ratioA = std.sin((1.0 - amount) * halfTheta) / sinHalfTheta;
+        let ratioB = std.sin(amount * halfTheta) / sinHalfTheta;
+
+        return Quaternion.init(
+            (q1.x * ratioA + q2.x * ratioB),
+            (q1.y * ratioA + q2.y * ratioB),
+            (q1.z * ratioA + q2.z * ratioB),
+            (q1.w * ratioA + q2.w * ratioB)
+        );
+    }
+    
+    pub fn cubic_hermite_spline(q1, outTangent1, q2, inTangent2: Quaternion, t: f32) Quaternion {
+        let t2  = t * t;
+        let t3  = t2 * t;
+        let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+        let h10 = t3 - 2.0 * t2 + t;
+        let h01 = -2.0 * t3 + 3.0 * t2;
+        let h11 = t3 - t2;
+
+        let p0 = q1.scale(h00);
+        let m0 = outTangent1.scale(h10);
+        let p1 = q2.scale(h01);
+        let m1 = inTangent2.scale(h11);
+
+        let mut result = p0.add(m0);
+        result = result.add(p1);
+        result = result.add(m1);
+        return result.normalize();
+    }
+
+    pub fn from_vector3_to_vector3(from, to: Vector3) Quaternion {
+        let cos2Theta = from.dot_product(to);
+        let cross = from.cross_product(to);
+
+        let result = Quaternion.init(cross.x, cross.y, cross.z, std.sqrt(cross.length_sqr() + cos2Theta*cos2Theta) + cos2Theta);
+        return result.normalize();
+    }
+    
+    pub fn from_matrix(mat: Matrix) Quaternion {
+        let mut result = Quaternion.zero();
+        let fourWSquaredMinus1 = mat.m0 + mat.m5 + mat.m10;
+        let fourXSquaredMinus1 = mat.m0 - mat.m5 - mat.m10;
+        let fourYSquaredMinus1 = mat.m5 - mat.m0 - mat.m10;
+        let fourZSquaredMinus1 = mat.m10 - mat.m0 - mat.m5;
+
+        let mut biggestIndex = 0;
+        let mut fourBiggestSquaredMinus1 = fourWSquaredMinus1;
+        if (fourXSquaredMinus1 > fourBiggestSquaredMinus1) {
+            fourBiggestSquaredMinus1 = fourXSquaredMinus1;
+            biggestIndex = 1;
+        }
+
+        if (fourYSquaredMinus1 > fourBiggestSquaredMinus1) {
+            fourBiggestSquaredMinus1 = fourYSquaredMinus1;
+            biggestIndex = 2;
+        }
+
+        if (fourZSquaredMinus1 > fourBiggestSquaredMinus1) {
+            fourBiggestSquaredMinus1 = fourZSquaredMinus1;
+            biggestIndex = 3;
+        }
+
+        let biggestVal = std.sqrt(fourBiggestSquaredMinus1 + 1.0) * 0.5;
+        let mult = 0.25 / biggestVal;
+
+        match (biggestIndex) {
+            0 -> {
+                result.w = biggestVal;
+                result.x = (mat.m6 - mat.m9) * mult;
+                result.y = (mat.m8 - mat.m2) * mult;
+                result.z = (mat.m1 - mat.m4) * mult;
+            },
+            1 -> {
+                result.x = biggestVal;
+                result.w = (mat.m6 - mat.m9) * mult;
+                result.y = (mat.m1 + mat.m4) * mult;
+                result.z = (mat.m8 + mat.m2) * mult;
+            },
+            2 -> {
+                result.y = biggestVal;
+                result.w = (mat.m8 - mat.m2) * mult;
+                result.x = (mat.m1 + mat.m4) * mult;
+                result.z = (mat.m6 + mat.m9) * mult;
+            },
+            3 -> {
+                result.z = biggestVal;
+                result.w = (mat.m1 - mat.m4) * mult;
+                result.x = (mat.m8 + mat.m2) * mult;
+                result.y = (mat.m6 + mat.m9) * mult;
+            },
+        }
+        return result;
+    }
+    
+    pub fn to_matrix(q: Quaternion) Matrix {
+        let a2 = q.x * q.x;
+        let b2 = q.y * q.y;
+        let c2 = q.z * q.z;
+        let ac = q.x * q.z;
+        let ab = q.x * q.y;
+        let bc = q.y * q.z;
+        let ad = q.w * q.x;
+        let bd = q.w * q.y;
+        let cd = q.w * q.z;
+
+        return Matrix.init(
+            1.0 - 2.0 * (b2 + c2), 2.0 * (ab + cd), 2.0 * (ac - bd), 0.0,
+            2.0 * (ab - cd), 1.0 - 2.0 * (a2 + c2), 2.0 * (bc + ad), 0.0,
+            2.0 * (ac + bd), 2.0 * (bc - ad), 1.0 - 2.0 * (a2 + b2), 0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
+    }
+
+    pub fn from_axis_angle(axis: Vector3, angle: f32) Quaternion {
+        if (axis.length_sqr() == 0.0) return Quaternion.identity();
+        
+        let mut result = Quaternion.identity();
+        let angle = angle * 0.5;
+        let axis = axis.normalize();
+        let sinres = std.sin(angle);
+
+        result.x = axis.x * sinres;
+        result.y = axis.y * sinres;
+        result.z = axis.z * sinres;
+        result.w = std.cos(angle);
+
+        return result.normalize();
+    }
+    
+    pub fn to_axis_angle(q: Quaternion, outAxis: &mut Vector3, outAngle: &mut f32) void {
+        let mut q = q;
+        if (std.abs(q.w) > 1.0) q = q.normalize();
+
+        outAngle.* = 2.0 * std.acos(q.w);
+        let den = std.sqrt(1.0 - q.w*q.w);
+
+        if (den > EPSILON) {
+            outAxis.x = q.x / den;
+            outAxis.y = q.y / den;
+            outAxis.z = q.z / den;
+        } else {
+            outAxis.x = 1.0;
+        }
+    }
+    
+    pub fn from_euler(pitch, yaw, roll: f32) Quaternion {
+        let x0 = std.cos(pitch * 0.5);
+        let x1 = std.sin(pitch * 0.5);
+        let y0 = std.cos(yaw * 0.5);
+        let y1 = std.sin(yaw * 0.5);
+        let z0 = std.cos(roll * 0.5);
+        let z1 = std.sin(roll * 0.5);
+
+        return Quaternion.init(
+            x1 * y0 * z0 - x0 * y1 * z1,
+            x0 * y1 * z0 + x1 * y0 * z1,
+            x0 * y0 * z1 - x1 * y1 * z0,
+            x0 * y0 * z0 + x1 * y1 * z1
+        );
+    }
+    
+    pub fn to_euler(q: Quaternion) Vector3 {
+        let x0 = 2.0 * (q.w * q.x + q.y * q.z);
+        let x1 = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
+        let x = std.atan2(x0, x1);
+
+        let mut y0 = 2.0 * (q.w * q.y - q.z * q.x);
+        y0 = if (y0 > 1.0) 1.0 else y0;
+        y0 = if (y0 < -1.0) -1.0 else y0;
+        let y = std.asin(y0);
+
+        let z0 = 2.0 * (q.w * q.z + q.x * q.y);
+        let z1 = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+        let z = std.atan2(z0, z1);
+
+        return Vector3.init(x, y, z);
+    }
+    
+    pub fn transform(q: Quaternion, mat: Matrix) Quaternion -> Quaternion.init(
+        mat.m0 * q.x + mat.m4 * q.y + mat.m8 * q.z + mat.m12 * q.w,
+        mat.m1 * q.x + mat.m5 * q.y + mat.m9 * q.z + mat.m13 * q.w,
+        mat.m2 * q.x + mat.m6 * q.y + mat.m10 * q.z + mat.m14 * q.w,
+        mat.m3 * q.x + mat.m7 * q.y + mat.m11 * q.z + mat.m15 * q.w
+    )
+    
+    pub fn eq(p, q: Quaternion) bool ->
+        (((std.abs(p.x - q.x)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.x), std.abs(q.x))))) and
+        ((std.abs(p.y - q.y)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.y), std.abs(q.y))))) and
+        ((std.abs(p.z - q.z)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.z), std.abs(q.z))))) and
+        ((std.abs(p.w - q.w)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.w), std.abs(q.w)))))) or
+        (((std.abs(p.x + q.x)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.x), std.abs(q.x))))) and
+        ((std.abs(p.y + q.y)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.y), std.abs(q.y))))) and
+        ((std.abs(p.z + q.z)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.z), std.abs(q.z))))) and
+        ((std.abs(p.w + q.w)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.w), std.abs(q.w))))))
+    
+    pub fn to_vector4(q: Quaternion) Vector4 -> Vector4.init(q.x, q.y, q.z, q.w)
+    pub fn from_vector4(v: Vector4) Quaternion -> Quaternion.init(v.x, v.y, v.z, v.w)
+}
+
+// Matrix, 4x4 components, column major, OpenGL style, right-handed
+pub struct Matrix {
+    m0, m4, m8, m12: f32,  // Matrix first row (4 components)
+    m1, m5, m9, m13: f32,  // Matrix second row (4 components)
+    m2, m6, m10, m14: f32, // Matrix third row (4 components)
+    m3, m7, m11, m15: f32, // Matrix fourth row (4 components)
+
+    pub fn init(m0, m4, m8, m12, m1, m5, m9, m13, m2, m6, m10, m14, m3, m7, m11, m15: f32) Matrix -> Matrix {
+        m0: m0, m4: m4, m8: m8, m12: m12,
+        m1: m1, m5: m5, m9: m9, m13: m13,
+        m2: m2, m6: m6, m10: m10, m14: m14,
+        m3: m3, m7: m7, m11: m11, m15: m15,
+    }
+
+    pub fn determinant(mat: Matrix) f32 {
+        return (mat.m0 * ((mat.m5 * (mat.m10 * mat.m15 - mat.m11 * mat.m14) - mat.m9 * (mat.m6 * mat.m15 - mat.m7 * mat.m14) + mat.m13 * (mat.m6 * mat.m11 - mat.m7 * mat.m10))) -
+                mat.m4 * ((mat.m1 * (mat.m10 * mat.m15 - mat.m11 * mat.m14) - mat.m9 * (mat.m2 * mat.m15 - mat.m3 * mat.m14) + mat.m13 * (mat.m2 * mat.m11 - mat.m3 * mat.m10))) +
+                mat.m8 * ((mat.m1 * (mat.m6 * mat.m15 - mat.m7 * mat.m14) - mat.m5 * (mat.m2 * mat.m15 - mat.m3 * mat.m14) + mat.m13 * (mat.m2 * mat.m7 - mat.m3 * mat.m6))) -
+                mat.m12 * ((mat.m1 * (mat.m6 * mat.m11 - mat.m7 * mat.m10) - mat.m5 * (mat.m2 * m11 - mat.m3 * mat.m10) + mat.m9 * (mat.m2 * mat.m7 - mat.m3 * mat.m6))));
+    }
+
+    pub fn trace(mat: Matrix) f32 -> mat.m0 + mat.m5 + mat.m10 + mat.m15
+
+    pub fn transpose(mat: Matrix) Matrix -> Matrix.init(
+        mat.m0, mat.m4, mat.m8, mat.m12,
+        mat.m1, mat.m5, mat.m9, mat.m13,
+        mat.m2, mat.m6, mat.m10, mat.m14,
+        mat.m3, mat.m7, mat.m11, mat.m15
+    )
+
+    pub fn invert(mat: Matrix) Matrix {
+        let a00 = mat.m0; let a01 = mat.m1; let a02 = mat.m2; let a03 = mat.m3;
+        let a10 = mat.m4; let a11 = mat.m5; let a12 = mat.m6; let a13 = mat.m7;
+        let a20 = mat.m8; let a21 = mat.m9; let a22 = mat.m10; let a23 = mat.m11;
+        let a30 = mat.m12; let a31 = mat.m13; let a32 = mat.m14; let a33 = mat.m15;
+
+        let b00 = a00*a11 - a01*a10;
+        let b01 = a00*a12 - a02*a10;
+        let b02 = a00*a13 - a03*a10;
+        let b03 = a01*a12 - a02*a11;
+        let b04 = a01*a13 - a03*a11;
+        let b05 = a02*a13 - a03*a12;
+        let b06 = a20*a31 - a21*a30;
+        let b07 = a20*a32 - a22*a30;
+        let b08 = a20*a33 - a23*a30;
+        let b09 = a21*a32 - a22*a31;
+        let b10 = a21*a33 - a23*a31;
+        let b11 = a22*a33 - a23*a32;
+
+        let invDet = 1.0/(b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06);
+
+        return Matrix.init(
             (a11*b11 - a12*b10 + a13*b09)*invDet,
             (-a01*b11 + a02*b10 - a03*b09)*invDet,
             (a31*b05 - a32*b04 + a33*b03)*invDet,
@@ -485,294 +854,235 @@ pub struct Vector3 {
             (-a10*b09 + a11*b07 - a12*b06)*invDet,
             (a00*b09 - a01*b07 + a02*b06)*invDet,
             (-a30*b03 + a31*b01 - a32*b00)*invDet,
-            (a20*b03 - a21*b01 + a22*b00)*invDet };
-
-        // Create quaternion from source point
-        Quaternion quat = { source.x, source.y, source.z, 1.0f };
-
-        // Multiply quat point by unprojecte matrix
-        Quaternion qtransformed = {     // QuaternionTransform(quat, matViewProjInv)
-            matViewProjInv.m0*quat.x + matViewProjInv.m4*quat.y + matViewProjInv.m8*quat.z + matViewProjInv.m12*quat.w,
-            matViewProjInv.m1*quat.x + matViewProjInv.m5*quat.y + matViewProjInv.m9*quat.z + matViewProjInv.m13*quat.w,
-            matViewProjInv.m2*quat.x + matViewProjInv.m6*quat.y + matViewProjInv.m10*quat.z + matViewProjInv.m14*quat.w,
-            matViewProjInv.m3*quat.x + matViewProjInv.m7*quat.y + matViewProjInv.m11*quat.z + matViewProjInv.m15*quat.w };
-
-        // Normalized world points in vectors
-        result.x = qtransformed.x/qtransformed.w;
-        result.y = qtransformed.y/qtransformed.w;
-        result.z = qtransformed.z/qtransformed.w;
-
-        return result;
+            (a20*b03 - a21*b01 + a22*b00)*invDet
+        );
     }
 
-    // Get Vector3 as float array
-    RMAPI float3 Vector3ToFloatV(Vector3 v)
-    {
-        float3 buffer = { 0 };
+    pub fn identity() Matrix -> Matrix.init(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    )
 
-        buffer.v[0] = v.x;
-        buffer.v[1] = v.y;
-        buffer.v[2] = v.z;
+    pub fn add(left, right: Matrix) Matrix -> Matrix.init(
+        left.m0 + right.m0, left.m1 + right.m1, left.m2 + right.m2, left.m3 + right.m3,
+        left.m4 + right.m4, left.m5 + right.m5, left.m6 + right.m6, left.m7 + right.m7,
+        left.m8 + right.m8, left.m9 + right.m9, left.m10 + right.m10, left.m11 + right.m11,
+        left.m12 + right.m12, left.m13 + right.m13, left.m14 + right.m14, left.m15 + right.m15
+    )
 
-        return buffer;
+    pub fn subtract(left, right: Matrix) Matrix -> Matrix.init(
+        left.m0 - right.m0, left.m1 - right.m1, left.m2 - right.m2, left.m3 - right.m3,
+        left.m4 - right.m4, left.m5 - right.m5, left.m6 - right.m6, left.m7 - right.m7,
+        left.m8 - right.m8, left.m9 - right.m9, left.m10 - right.m10, left.m11 - right.m11,
+        left.m12 - right.m12, left.m13 - right.m13, left.m14 - right.m14, left.m15 - right.m15
+    )
+
+    pub fn multiply(left, right: Matrix) Matrix -> Matrix.init(
+        left.m0*right.m0 + left.m1*right.m4 + left.m2*right.m8 + left.m3*right.m12,
+        left.m0*right.m1 + left.m1*right.m5 + left.m2*right.m9 + left.m3*right.m13,
+        left.m0*right.m2 + left.m1*right.m6 + left.m2*right.m10 + left.m3*right.m14,
+        left.m0*right.m3 + left.m1*right.m7 + left.m2*right.m11 + left.m3*right.m15,
+        left.m4*right.m0 + left.m5*right.m4 + left.m6*right.m8 + left.m7*right.m12,
+        left.m4*right.m1 + left.m5*right.m5 + left.m6*right.m9 + left.m7*right.m13,
+        left.m4*right.m2 + left.m5*right.m6 + left.m6*right.m10 + left.m7*right.m14,
+        left.m4*right.m3 + left.m5*right.m7 + left.m6*right.m11 + left.m7*right.m15,
+        left.m8*right.m0 + left.m9*right.m4 + left.m10*right.m8 + left.m11*right.m12,
+        left.m8*right.m1 + left.m9*right.m5 + left.m10*right.m9 + left.m11*right.m13,
+        left.m8*right.m2 + left.m9*right.m6 + left.m10*right.m10 + left.m11*right.m14,
+        left.m8*right.m3 + left.m9*right.m7 + left.m10*right.m11 + left.m11*right.m15,
+        left.m12*right.m0 + left.m13*right.m4 + left.m14*right.m8 + left.m15*right.m12,
+        left.m12*right.m1 + left.m13*right.m5 + left.m14*right.m9 + left.m15*right.m13,
+        left.m12*right.m2 + left.m13*right.m6 + left.m14*right.m10 + left.m15*right.m14,
+        left.m12*right.m3 + left.m13*right.m7 + left.m14*right.m11 + left.m15*right.m15
+    )
+
+    pub fn translate(x, y, z: f32) Matrix -> Matrix.init(
+        1.0, 0.0, 0.0, x,
+        0.0, 1.0, 0.0, y,
+        0.0, 0.0, 1.0, z,
+        0.0, 0.0, 0.0, 1.0
+    )
+
+    // NOTE: Angle should be provided in radians
+    pub fn rotate(axis: Vector3, angle: f32) Matrix {
+        let axis = axis.normalize();
+
+        let sinres = std.sin<f32>(angle);
+        let cosres = std.cos<f32>(angle);
+        let t = 1.0 - cosres;
+
+        let x = axis.x;
+        let y = axis.y;
+        let z = axis.z;
+
+        return Matrix.init(
+            x * x * t + cosres, y * x * t + z * sinres, z * x * t - y * sinres, 0.0,
+            x * y * t - z * sinres, y * y * t + cosres, z * y * t + x * sinres, 0.0,
+            x * z * t + y * sinres, y * z * t - x * sinres, z * z * t + cosres, 0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
     }
 
-    // Invert the given vector
-    RMAPI Vector3 Vector3Invert(Vector3 v)
-    {
-        Vector3 result = { 1.0f/v.x, 1.0f/v.y, 1.0f/v.z };
-
-        return result;
+    // NOTE: Angle must be provided in radians
+    pub fn rotate_x(angle: f32) Matrix {
+        let cosres = std.cos<f32>(angle);
+        let sinres = std.sin<f32>(angle);
+        return Matrix.init(
+            1.0, 0.0, 0.0, 0.0,
+            0.0, cosres, sinres, 0.0,
+            0.0, -sinres, cosres, 0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
     }
 
-    // Clamp the components of the vector between
-    // min and max values specified by the given vectors
-    RMAPI Vector3 Vector3Clamp(Vector3 v, Vector3 min, Vector3 max)
-    {
-        Vector3 result = { 0 };
-
-        result.x = fminf(max.x, fmaxf(min.x, v.x));
-        result.y = fminf(max.y, fmaxf(min.y, v.y));
-        result.z = fminf(max.z, fmaxf(min.z, v.z));
-
-        return result;
+    // NOTE: Angle must be provided in radians
+    pub fn rotate_y(angle: f32) Matrix {
+        let cosres = std.cos<f32>(angle);
+        let sinres = std.sin<f32>(angle);
+        return Matrix.init(
+            cosres, 0.0, -sinres, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            sinres, 0.0, cosres, 0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
     }
 
-    // Clamp the magnitude of the vector between two values
-    RMAPI Vector3 Vector3ClampValue(Vector3 v, float min, float max)
-    {
-        Vector3 result = v;
-
-        float length = (v.x*v.x) + (v.y*v.y) + (v.z*v.z);
-        if (length > 0.0f)
-        {
-            length = sqrtf(length);
-
-            float scale = 1;    // By default, 1 as the neutral element.
-            if (length < min)
-            {
-                scale = min/length;
-            }
-            else if (length > max)
-            {
-                scale = max/length;
-            }
-
-            result.x = v.x*scale;
-            result.y = v.y*scale;
-            result.z = v.z*scale;
-        }
-
-        return result;
+    // NOTE: Angle must be provided in radians
+    pub fn rotate_z(angle: f32) Matrix {
+        let cosres = std.cos<f32>(angle);
+        let sinres = std.sin<f32>(angle);
+        return Matrix.init(
+            cosres, sinres, 0.0, 0.0,
+            -sinres, cosres, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
     }
 
-    // Check whether two given vectors are almost equal
-    RMAPI int Vector3Equals(Vector3 p, Vector3 q)
-    {
-#if !defined(EPSILON)
-        #define EPSILON 0.000001f
-#endif
+    // NOTE: Angle must be provided in radians
+    pub fn rotate_xyz(angle: Vector3) Matrix {
+        let cosz = std.cos<f32>(-angle.z);
+        let sinz = std.sin<f32>(-angle.z);
+        let cosy = std.cos<f32>(-angle.y);
+        let siny = std.sin<f32>(-angle.y);
+        let cosx = std.cos<f32>(-angle.x);
+        let sinx = std.sin<f32>(-angle.x);
 
-        int result = ((fabsf(p.x - q.x)) <= (EPSILON*fmaxf(1.0f, fmaxf(fabsf(p.x), fabsf(q.x))))) &&
-                     ((fabsf(p.y - q.y)) <= (EPSILON*fmaxf(1.0f, fmaxf(fabsf(p.y), fabsf(q.y))))) &&
-                     ((fabsf(p.z - q.z)) <= (EPSILON*fmaxf(1.0f, fmaxf(fabsf(p.z), fabsf(q.z)))));
-
-        return result;
+        return Matrix.init(
+            cosz * cosy,
+            (cosz * siny * sinx) - (sinz * cosx),
+            (cosz * siny * cosx) + (sinz * sinx),
+            0.0,
+            sinz * cosy,
+            (sinz * siny * sinx) + (cosz * cosx),
+            (sinz * siny * cosx) - (cosz * sinx),
+            0.0,
+            -siny,
+            cosy * sinx,
+            cosy * cosx,
+            0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
     }
 
-    // Compute the direction of a refracted ray
-    // v: normalized direction of the incoming ray
-    // n: normalized normal vector of the interface of two optical media
-    // r: ratio of the refractive index of the medium from where the ray comes
-    // to the refractive index of the medium on the other side of the surface
-    RMAPI Vector3 Vector3Refract(Vector3 v, Vector3 n, float r)
-    {
-        Vector3 result = { 0 };
+    // NOTE: Angle must be provided in radians
+    pub fn rotate_zyx(angle: Vector3) Matrix {
+        let cz = std.cos<f32>(angle.z);
+        let sz = std.sin<f32>(angle.z);
+        let cy = std.cos<f32>(angle.y);
+        let sy = std.sin<f32>(angle.y);
+        let cx = std.cos<f32>(angle.x);
+        let sx = std.sin<f32>(angle.x);
 
-        float dot = v.x*n.x + v.y*n.y + v.z*n.z;
-        float d = 1.0f - r*r*(1.0f - dot*dot);
-
-        if (d >= 0.0f)
-        {
-            d = sqrtf(d);
-            v.x = r*v.x - (r*dot + d)*n.x;
-            v.y = r*v.y - (r*dot + d)*n.y;
-            v.z = r*v.z - (r*dot + d)*n.z;
-
-            result = v;
-        }
-
-        return result;
+        return Matrix.init(
+            cz * cy,
+            cy * sz,
+            -sy,
+            0.0,
+            cz * sy * sx - cx * sz,
+            cz * cx + sz * sy * sx,
+            cy * sx,
+            0.0,
+            sz * sx + cz * cx * sy,
+            cx * sz * sy - cz * sx,
+            cy * cx,
+            0.0,
+            0.0, 0.0, 0.0, 1.0
+        );
     }
 
-}
+    pub fn scale(x, y, z: f32) Matrix -> Matrix.init(
+        x,   0.0, 0.0, 0.0,
+        0.0, y,   0.0, 0.0,
+        0.0, 0.0, z,   0.0,
+        0.0, 0.0, 0.0, 1.0
+    )
 
-// Vector4, 4 components
-pub struct Vector4 {
-    x: f32,                // Vector x component
-    y: f32,                // Vector y component
-    z: f32,                // Vector z component
-    w: f32,                // Vector w component
-}
-const Quaternion = Vector4;
+    pub fn frustum(left, right, bottom, top, near, far: f64) Matrix {
+        let rl = cast<f32>(right - left);
+        let tb = cast<f32>(top - bottom);
+        let fn_ = cast<f32>(far - near);
+        let near2 = cast<f32>(near * 2.0);
 
-// Matrix, 4x4 components, column major, OpenGL style, right-handed
-pub struct Matrix {
-    m0, m4, m8, m12: f32,  // Matrix first row (4 components)
-    m1, m5, m9, m13: f32,  // Matrix second row (4 components)
-    m2, m6, m10, m14: f32, // Matrix third row (4 components)
-    m3, m7, m11, m15: f32, // Matrix fourth row (4 components)
-}
-
-// Color, 4 components, R8G8B8A8 (32bit)
-pub struct Color {
-    r: u8,        // Color red value
-    g: u8,        // Color green value
-    b: u8,        // Color blue value
-    a: u8,        // Color alpha value
-
-    pub fn init(r, g, b, a: u8) Color -> Color {
-        r: r,
-        g: g,
-        b: b,
-        a: a,
+        return Matrix.init(
+            near2 / rl, 0.0, cast<f32>((right + left) / rl), 0.0,
+            0.0, near2 / tb, cast<f32>((top + bottom) / tb), 0.0,
+            0.0, 0.0, -cast<f32>((far + near) / fn_), -cast<f32>((far * near * 2.0) / fn_),
+            0.0, 0.0, -1.0, 0.0
+        );
     }
-}
 
-// Rectangle, 4 components
-pub struct Rectangle {
-    x: f32,                // Rectangle top-left corner position x
-    y: f32,                // Rectangle top-left corner position y
-    width: f32,            // Rectangle width
-    height: f32,           // Rectangle height
-}
+    // NOTE: Fovy angle must be provided in radians
+    pub fn perspective(fovY, aspect, near, far: f64) Matrix {
+        let top = near * std.tan(fovY * 0.5);
+        let bottom = -top;
+        let right = top * aspect;
+        let left = -right;
+        return Matrix.frustum(left, right, bottom, top, near, far);
+    }
 
-// Image, pixel data stored in CPU memory (RAM)
-pub struct Image {
-    data: &mut void,             // Image raw data
-    width: i32,              // Image base width
-    height: i32,             // Image base height
-    mipmaps: i32,            // Mipmap levels, 1 by default
-    format: i32,             // Data format (PixelFormat type)
-}
+    pub fn ortho(left, right, bottom, top, near, far: f64) Matrix {
+        let rl = cast<f32>(right - left);
+        let tb = cast<f32>(top - bottom);
+        let fn_ = cast<f32>(far - near);
 
-// Texture, tex data stored in GPU memory (VRAM)
-pub struct Texture {
-    id: u32,       // OpenGL texture id
-    width: i32,              // Texture base width
-    height: i32,             // Texture base height
-    mipmaps: i32,            // Mipmap levels, 1 by default
-    format: i32,             // Data format (PixelFormat type)
-}
+        return Matrix.init(
+            2.0 / rl, 0.0, 0.0, -cast<f32>((left + right) / rl),
+            0.0, 2.0 / tb, 0.0, -cast<f32>((top + bottom) / tb),
+            0.0, 0.0, -2.0 / fn_, -cast<f32>((far + near) / fn_),
+            0.0, 0.0, 0.0, 1.0
+        );
+    }
 
-// RenderTexture, fbo for texture rendering
-pub struct RenderTexture {
-    id: u32,        // OpenGL framebuffer object id
-    texture: Texture,        // Color buffer attachment texture
-    depth: Texture,          // Depth buffer attachment texture
-}
+    pub fn look_at(eye, target, up: Vector3) Matrix {
+        let vz = eye.subtract(target).normalize();
+        let vx = up.cross_product(vz).normalize();
+        let vy = vz.cross_product(vx);
 
-const RenderTexture2D = RenderTexture;
+        return Matrix.init(
+            vx.x, vx.y, vx.z, -vx.dot_product(eye),
+            vy.x, vy.y, vy.z, -vy.dot_product(eye),
+            vz.x, vz.y, vz.z, -vz.dot_product(eye),
+            0.0, 0.0, 0.0, 1.0
+        );
+    }
 
-// NPatchInfo, n-patch layout info
-pub struct NPatchInfo {
-    source: Rectangle,       // Texture source rectangle
-    left: i32,               // Left border offset
-    top: i32,                // Top border offset
-    right: i32,              // Right border offset
-    bottom: i32,             // Bottom border offset
-    layout: i32,             // Layout of the n-patch: 3x3, 1x3 or 3x1
-}
-
-// GlyphInfo, font characters glyphs info
-pub struct GlyphInfo {
-    value: i32,              // Character value (Unicode)
-    offsetX: i32,            // Character offset X when drawing
-    offsetY: i32,            // Character offset Y when drawing
-    advanceX: i32,           // Character advance position X
-    image: Image,            // Character image data
-}
-
-// Font, font texture and GlyphInfo array data
-pub struct Font {
-    baseSize: i32,           // Base size (default chars height)
-    glyphCount: i32,         // Number of glyph characters
-    glyphPadding: i32,       // Padding around the glyph characters
-    texture: Texture,      // Texture atlas containing the glyphs
-    recs: &mut Rectangle,        // Rectangles in texture for the glyphs
-    glyphs: &mut GlyphInfo,      // Glyphs info data
-}
-
-// Camera, defines position/orientation in 3d space
-pub struct Camera3D {
-    position: Vector3,       // Camera position
-    target: Vector3,         // Camera target it looks-at
-    up: Vector3,             // Camera up vector (rotation over its axis)
-    fovy: f32,             // Camera field-of-view aperture in Y (degrees) in perspective, used as near plane height in world units in orthographic
-    projection: i32,         // Camera projection: CAMERA_PERSPECTIVE or CAMERA_ORTHOGRAPHIC
-}
-
-const Camera = Camera3D;
-
-// Camera2D, defines position/orientation in 2d space
-pub struct Camera2D {
-    offset: Vector2,         // Camera offset (screen space offset from window origin)
-    target: Vector2,         // Camera target (world space target point that is mapped to screen space offset)
-    rotation: f32,         // Camera rotation in degrees (pivots around target)
-    zoom: f32,             // Camera zoom (scaling around target), must not be set to 0, set to 1.0f for no scale
-}
-
-// Mesh, vertex data and vao/vbo
-pub struct Mesh {
-    vertexCount: i32,        // Number of vertices stored in arrays
-    triangleCount: i32,      // Number of triangles stored (indexed or not)
-
-    // Vertex attributes data
-    vertices: &mut f32,        // Vertex position (XYZ - 3 components per vertex) (shader-location = 0)
-    texcoords: &mut f32,       // Vertex texture coordinates (UV - 2 components per vertex) (shader-location = 1)
-    texcoords2: &mut f32,      // Vertex texture second coordinates (UV - 2 components per vertex) (shader-location = 5)
-    normals: &mut f32,         // Vertex normals (XYZ - 3 components per vertex) (shader-location = 2)
-    tangents: &mut f32,        // Vertex tangents (XYZW - 4 components per vertex) (shader-location = 4)
-    colors: &mut u8,      // Vertex colors (RGBA - 4 components per vertex) (shader-location = 3)
-    indices: &mut u16,    // Vertex indices (in case vertex data comes indexed)
-
-    // Animation vertex data
-    animVertices: &mut f32,    // Animated vertex positions (after bones transformations)
-    animNormals: &mut f32,     // Animated normals (after bones transformations)
-    boneIds: &mut u8, // Vertex bone ids, max 255 bone ids up to 4 bones influence by vertex (skinning) (shader-location = 6)
-    boneWeights: &mut f32,     // Vertex bone weight up to 4 bones influence by vertex (skinning) (shader-location = 7)
-    boneMatrices: &mut Matrix,   // Bones animated transformation matrices
-    boneCount: i32,          // Number of bones
-
-    // OpenGL identifiers
-    vaoId: u32,     // OpenGL Vertex Array Object id
-    vboId: &mut u32,    // OpenGL Vertex Buffer Objects id (default vertex data)
-}
-
-// Shader
-pub struct Shader {
-    id: u32,        // Shader program id
-    locs: &mut u32,              // Shader locations array (RL_MAX_SHADER_LOCATIONS)
-}
-
-// MaterialMap
-pub struct MaterialMap {
-    texture: Texture,      // Material map texture
-    color: Color,            // Material map color
-    value: f32,            // Material map value
-}
-
-// Material, includes shader and maps
-pub struct Material {
-    shader: Shader,          // Material shader
-    maps: &mut MaterialMap,      // Material maps array (MAX_MATERIAL_MAPS)
-    params: [4]f32,        // Material generic parameters (if required)
+    pub fn to_float_v(mat: Matrix) [16]f32 {
+        return [_]f32{
+            mat.m0, mat.m1, mat.m2, mat.m3,
+            mat.m4, mat.m5, mat.m6, mat.m7,
+            mat.m8, mat.m9, mat.m10, mat.m11,
+            mat.m12, mat.m13, mat.m14, mat.m15,
+        };
+    }
 }
 
 // Transform, vertex transformation data
 pub struct Transform {
     translation: Vector3,    // Translation
-    rotation: Vector4,    // Rotation
+    rotation: Quaternion,    // Rotation
     scale: Vector3,          // Scale
 }
 
@@ -909,422 +1219,194 @@ pub struct AutomationEventList {
     events: &mut AutomationEvent,        // Events entries
 }
 
-//----------------------------------------------------------------------------------
-// Enumerators Definition
-//----------------------------------------------------------------------------------
-// System/Window config flags
-// NOTE: Every bit registers one state (use it with bit masks)
-// By default all flags are set to 0
 pub enum ConfigFlags {
-    FLAG_VSYNC_HINT         = 0x00000040,   // Set to try enabling V-Sync on GPU
-    FLAG_FULLSCREEN_MODE    = 0x00000002,   // Set to run program in fullscreen
-    FLAG_WINDOW_RESIZABLE   = 0x00000004,   // Set to allow resizable window
-    FLAG_WINDOW_UNDECORATED = 0x00000008,   // Set to disable window decoration (frame and buttons)
-    FLAG_WINDOW_HIDDEN      = 0x00000080,   // Set to hide window
-    FLAG_WINDOW_MINIMIZED   = 0x00000200,   // Set to minimize window (iconify)
-    FLAG_WINDOW_MAXIMIZED   = 0x00000400,   // Set to maximize window (expanded to monitor)
-    FLAG_WINDOW_UNFOCUSED   = 0x00000800,   // Set to window non focused
-    FLAG_WINDOW_TOPMOST     = 0x00001000,   // Set to window always on top
-    FLAG_WINDOW_ALWAYS_RUN  = 0x00000100,   // Set to allow windows running while minimized
-    FLAG_WINDOW_TRANSPARENT = 0x00000010,   // Set to allow transparent framebuffer
-    FLAG_WINDOW_HIGHDPI     = 0x00002000,   // Set to support HighDPI
-    FLAG_WINDOW_MOUSE_PASSTHROUGH = 0x00004000, // Set to support mouse passthrough, only supported when FLAG_WINDOW_UNDECORATED
-    FLAG_BORDERLESS_WINDOWED_MODE = 0x00008000, // Set to run program in borderless windowed mode
-    FLAG_MSAA_4X_HINT       = 0x00000020,   // Set to try enabling MSAA 4X
-    FLAG_INTERLACED_HINT    = 0x00010000    // Set to try enabling interlaced video format (for V3D)
+    VSYNC_HINT = 0x00000040,
+    FULLSCREEN_MODE = 0x00000002,
+    WINDOW_RESIZABLE = 0x00000004,
+    WINDOW_UNDECORATED = 0x00000008,
+    WINDOW_HIDDEN = 0x00000080,
+    WINDOW_MINIMIZED = 0x00000200,
+    WINDOW_MAXIMIZED = 0x00000400,
+    WINDOW_UNFOCUSED = 0x00000800,
+    WINDOW_TOPMOST = 0x00001000,
+    WINDOW_ALWAYS_RUN = 0x00000100,
+    WINDOW_TRANSPARENT = 0x00000010,
+    WINDOW_HIGHDPI = 0x00002000,
+    WINDOW_MOUSE_PASSTHROUGH = 0x00004000,
+    MSAA_4X_HINT = 0x00000020,
+    INTERLACED_HINT = 0x10000000,
 }
 
-// Trace log level
-// NOTE: Organized by priority level
 pub enum TraceLogLevel {
-    LOG_ALL = 0,        // Display all logs
-    LOG_TRACE,          // Trace logging, intended for internal use only
-    LOG_DEBUG,          // Debug logging, used for internal debugging, it should be disabled on release builds
-    LOG_INFO,           // Info logging, used for program execution info
-    LOG_WARNING,        // Warning logging, used on recoverable failures
-    LOG_ERROR,          // Error logging, used on unrecoverable failures
-    LOG_FATAL,          // Fatal logging, used to abort program: exit(EXIT_FAILURE)
-    LOG_NONE            // Disable logging
+    ALL = 0,
+    TRACE,
+    DEBUG,
+    INFO,
+    WARNING,
+    ERROR,
+    FATAL,
+    NONE,
 }
 
-// Keyboard keys (US keyboard layout)
-// NOTE: Use GetKeyPressed() to allow redefining required keys for alternative layouts
-pub enum KeyboardKey {
-    KEY_NULL            = 0,        // Key: NULL, used for no key pressed
-    // Alphanumeric keys
-    KEY_APOSTROPHE      = 39,       // Key: '
-    KEY_COMMA           = 44,       // Key: ,
-    KEY_MINUS           = 45,       // Key: -
-    KEY_PERIOD          = 46,       // Key: .
-    KEY_SLASH           = 47,       // Key: /
-    KEY_ZERO            = 48,       // Key: 0
-    KEY_ONE             = 49,       // Key: 1
-    KEY_TWO             = 50,       // Key: 2
-    KEY_THREE           = 51,       // Key: 3
-    KEY_FOUR            = 52,       // Key: 4
-    KEY_FIVE            = 53,       // Key: 5
-    KEY_SIX             = 54,       // Key: 6
-    KEY_SEVEN           = 55,       // Key: 7
-    KEY_EIGHT           = 56,       // Key: 8
-    KEY_NINE            = 57,       // Key: 9
-    KEY_SEMICOLON       = 59,       // Key: ;
-    KEY_EQUAL           = 61,       // Key: =
-    KEY_A               = 65,       // Key: A | a
-    KEY_B               = 66,       // Key: B | b
-    KEY_C               = 67,       // Key: C | c
-    KEY_D               = 68,       // Key: D | d
-    KEY_E               = 69,       // Key: E | e
-    KEY_F               = 70,       // Key: F | f
-    KEY_G               = 71,       // Key: G | g
-    KEY_H               = 72,       // Key: H | h
-    KEY_I               = 73,       // Key: I | i
-    KEY_J               = 74,       // Key: J | j
-    KEY_K               = 75,       // Key: K | k
-    KEY_L               = 76,       // Key: L | l
-    KEY_M               = 77,       // Key: M | m
-    KEY_N               = 78,       // Key: N | n
-    KEY_O               = 79,       // Key: O | o
-    KEY_P               = 80,       // Key: P | p
-    KEY_Q               = 81,       // Key: Q | q
-    KEY_R               = 82,       // Key: R | r
-    KEY_S               = 83,       // Key: S | s
-    KEY_T               = 84,       // Key: T | t
-    KEY_U               = 85,       // Key: U | u
-    KEY_V               = 86,       // Key: V | v
-    KEY_W               = 87,       // Key: W | w
-    KEY_X               = 88,       // Key: X | x
-    KEY_Y               = 89,       // Key: Y | y
-    KEY_Z               = 90,       // Key: Z | z
-    KEY_LEFT_BRACKET    = 91,       // Key: [
-    KEY_BACKSLASH       = 92,       // Key: '\'
-    KEY_RIGHT_BRACKET   = 93,       // Key: ]
-    KEY_GRAVE           = 96,       // Key: `
-    // Function keys
-    KEY_SPACE           = 32,       // Key: Space
-    KEY_ESCAPE          = 256,      // Key: Esc
-    KEY_ENTER           = 257,      // Key: Enter
-    KEY_TAB             = 258,      // Key: Tab
-    KEY_BACKSPACE       = 259,      // Key: Backspace
-    KEY_INSERT          = 260,      // Key: Ins
-    KEY_DELETE          = 261,      // Key: Del
-    KEY_RIGHT           = 262,      // Key: Cursor right
-    KEY_LEFT            = 263,      // Key: Cursor left
-    KEY_DOWN            = 264,      // Key: Cursor down
-    KEY_UP              = 265,      // Key: Cursor up
-    KEY_PAGE_UP         = 266,      // Key: Page up
-    KEY_PAGE_DOWN       = 267,      // Key: Page down
-    KEY_HOME            = 268,      // Key: Home
-    KEY_END             = 269,      // Key: End
-    KEY_CAPS_LOCK       = 280,      // Key: Caps lock
-    KEY_SCROLL_LOCK     = 281,      // Key: Scroll down
-    KEY_NUM_LOCK        = 282,      // Key: Num lock
-    KEY_PRINT_SCREEN    = 283,      // Key: Print screen
-    KEY_PAUSE           = 284,      // Key: Pause
-    KEY_F1              = 290,      // Key: F1
-    KEY_F2              = 291,      // Key: F2
-    KEY_F3              = 292,      // Key: F3
-    KEY_F4              = 293,      // Key: F4
-    KEY_F5              = 294,      // Key: F5
-    KEY_F6              = 295,      // Key: F6
-    KEY_F7              = 296,      // Key: F7
-    KEY_F8              = 297,      // Key: F8
-    KEY_F9              = 298,      // Key: F9
-    KEY_F10             = 299,      // Key: F10
-    KEY_F11             = 300,      // Key: F11
-    KEY_F12             = 301,      // Key: F12
-    KEY_LEFT_SHIFT      = 340,      // Key: Shift left
-    KEY_LEFT_CONTROL    = 341,      // Key: Control left
-    KEY_LEFT_ALT        = 342,      // Key: Alt left
-    KEY_LEFT_SUPER      = 343,      // Key: Super left
-    KEY_RIGHT_SHIFT     = 344,      // Key: Shift right
-    KEY_RIGHT_CONTROL   = 345,      // Key: Control right
-    KEY_RIGHT_ALT       = 346,      // Key: Alt right
-    KEY_RIGHT_SUPER     = 347,      // Key: Super right
-    KEY_KB_MENU         = 348,      // Key: KB menu
-    // Keypad keys
-    KEY_KP_0            = 320,      // Key: Keypad 0
-    KEY_KP_1            = 321,      // Key: Keypad 1
-    KEY_KP_2            = 322,      // Key: Keypad 2
-    KEY_KP_3            = 323,      // Key: Keypad 3
-    KEY_KP_4            = 324,      // Key: Keypad 4
-    KEY_KP_5            = 325,      // Key: Keypad 5
-    KEY_KP_6            = 326,      // Key: Keypad 6
-    KEY_KP_7            = 327,      // Key: Keypad 7
-    KEY_KP_8            = 328,      // Key: Keypad 8
-    KEY_KP_9            = 329,      // Key: Keypad 9
-    KEY_KP_DECIMAL      = 330,      // Key: Keypad .
-    KEY_KP_DIVIDE       = 331,      // Key: Keypad /
-    KEY_KP_MULTIPLY     = 332,      // Key: Keypad *
-    KEY_KP_SUBTRACT     = 333,      // Key: Keypad -
-    KEY_KP_ADD          = 334,      // Key: Keypad +
-    KEY_KP_ENTER        = 335,      // Key: Keypad Enter
-    KEY_KP_EQUAL        = 336,      // Key: Keypad =
-    // Android key buttons
-    KEY_BACK            = 4,        // Key: Android back button
-    KEY_MENU            = 5,        // Key: Android menu button
-    KEY_VOLUME_UP       = 24,       // Key: Android volume up button
-    KEY_VOLUME_DOWN     = 25        // Key: Android volume down button
+pub enum Key {
+    NULL = 0,
+    // Keyboard Function Keys
+    SPACE = 32,
+    ESCAPE = 256,
+    ENTER = 257,
+    TAB = 258,
+    BACKSPACE = 259,
+    INSERT = 260,
+    DELETE = 261,
+    RIGHT = 262,
+    LEFT = 263,
+    DOWN = 264,
+    UP = 265,
+    PAGE_UP = 266,
+    PAGE_DOWN = 267,
+    HOME = 268,
+    END = 269,
+    CAPS_LOCK = 280,
+    SCROLL_LOCK = 281,
+    NUM_LOCK = 282,
+    PRINT_SCREEN = 283,
+    PAUSE = 284,
+    F1 = 290,
+    F2 = 291,
+    F3 = 292,
+    F4 = 293,
+    F5 = 294,
+    F6 = 295,
+    F7 = 296,
+    F8 = 297,
+    F9 = 298,
+    F10 = 299,
+    F11 = 300,
+    F12 = 301,
+    LEFT_SHIFT = 340,
+    LEFT_CONTROL = 341,
+    LEFT_ALT = 342,
+    LEFT_SUPER = 343,
+    RIGHT_SHIFT = 344,
+    RIGHT_CONTROL = 345,
+    RIGHT_ALT = 346,
+    RIGHT_SUPER = 347,
+    KB_MENU = 348,
+    // Keyboard Alpha Numeric Keys
+    ZERO = 48,
+    ONE = 49,
+    TWO = 50,
+    THREE = 51,
+    FOUR = 52,
+    FIVE = 53,
+    SIX = 54,
+    SEVEN = 55,
+    EIGHT = 56,
+    NINE = 57,
+    A = 65,
+    B = 66,
+    C = 67,
+    D = 68,
+    E = 69,
+    F = 70,
+    G = 71,
+    H = 72,
+    I = 73,
+    J = 74,
+    K = 75,
+    L = 76,
+    M = 77,
+    N = 78,
+    O = 79,
+    P = 80,
+    Q = 81,
+    R = 82,
+    S = 83,
+    T = 84,
+    U = 85,
+    V = 86,
+    W = 87,
+    X = 88,
+    Y = 89,
+    Z = 90,
+
+    // Android Physical Buttons
+    BACK = 4,
+    MENU = 82,
+    VOLUME_UP = 24,
+    VOLUME_DOWN = 25,
 }
 
-// Mouse buttons
 pub enum MouseButton {
-    MOUSE_BUTTON_LEFT    = 0,       // Mouse button left
-    MOUSE_BUTTON_RIGHT   = 1,       // Mouse button right
-    MOUSE_BUTTON_MIDDLE  = 2,       // Mouse button middle (pressed wheel)
-    MOUSE_BUTTON_SIDE    = 3,       // Mouse button side (advanced mouse device)
-    MOUSE_BUTTON_EXTRA   = 4,       // Mouse button extra (advanced mouse device)
-    MOUSE_BUTTON_FORWARD = 5,       // Mouse button forward (advanced mouse device)
-    MOUSE_BUTTON_BACK    = 6,       // Mouse button back (advanced mouse device)
+    LEFT = 0,
+    RIGHT = 1,
+    MIDDLE = 2,
 }
 
-// Mouse cursor
-pub enum MouseCursor {
-    MOUSE_CURSOR_DEFAULT       = 0,     // Default pointer shape
-    MOUSE_CURSOR_ARROW         = 1,     // Arrow shape
-    MOUSE_CURSOR_IBEAM         = 2,     // Text writing cursor shape
-    MOUSE_CURSOR_CROSSHAIR     = 3,     // Cross shape
-    MOUSE_CURSOR_POINTING_HAND = 4,     // Pointing hand cursor
-    MOUSE_CURSOR_RESIZE_EW     = 5,     // Horizontal resize/move arrow shape
-    MOUSE_CURSOR_RESIZE_NS     = 6,     // Vertical resize/move arrow shape
-    MOUSE_CURSOR_RESIZE_NWSE   = 7,     // Top-left to bottom-right diagonal resize/move arrow shape
-    MOUSE_CURSOR_RESIZE_NESW   = 8,     // The top-right to bottom-left diagonal resize/move arrow shape
-    MOUSE_CURSOR_RESIZE_ALL    = 9,     // The omnidirectional resize/move cursor shape
-    MOUSE_CURSOR_NOT_ALLOWED   = 10     // The operation-not-allowed shape
-}
-
-// Gamepad buttons
 pub enum GamepadButton {
-    GAMEPAD_BUTTON_UNKNOWN = 0,         // Unknown button, just for error checking
-    GAMEPAD_BUTTON_LEFT_FACE_UP,        // Gamepad left DPAD up button
-    GAMEPAD_BUTTON_LEFT_FACE_RIGHT,     // Gamepad left DPAD right button
-    GAMEPAD_BUTTON_LEFT_FACE_DOWN,      // Gamepad left DPAD down button
-    GAMEPAD_BUTTON_LEFT_FACE_LEFT,      // Gamepad left DPAD left button
-    GAMEPAD_BUTTON_RIGHT_FACE_UP,       // Gamepad right button up (i.e. PS3: Triangle, Xbox: Y)
-    GAMEPAD_BUTTON_RIGHT_FACE_RIGHT,    // Gamepad right button right (i.e. PS3: Circle, Xbox: B)
-    GAMEPAD_BUTTON_RIGHT_FACE_DOWN,     // Gamepad right button down (i.e. PS3: Cross, Xbox: A)
-    GAMEPAD_BUTTON_RIGHT_FACE_LEFT,     // Gamepad right button left (i.e. PS3: Square, Xbox: X)
-    GAMEPAD_BUTTON_LEFT_TRIGGER_1,      // Gamepad top/back trigger left (first), it could be a trailing button
-    GAMEPAD_BUTTON_LEFT_TRIGGER_2,      // Gamepad top/back trigger left (second), it could be a trailing button
-    GAMEPAD_BUTTON_RIGHT_TRIGGER_1,     // Gamepad top/back trigger right (first), it could be a trailing button
-    GAMEPAD_BUTTON_RIGHT_TRIGGER_2,     // Gamepad top/back trigger right (second), it could be a trailing button
-    GAMEPAD_BUTTON_MIDDLE_LEFT,         // Gamepad center buttons, left one (i.e. PS3: Select)
-    GAMEPAD_BUTTON_MIDDLE,              // Gamepad center buttons, middle one (i.e. PS3: PS, Xbox: XBOX)
-    GAMEPAD_BUTTON_MIDDLE_RIGHT,        // Gamepad center buttons, right one (i.e. PS3: Start)
-    GAMEPAD_BUTTON_LEFT_THUMB,          // Gamepad joystick pressed button left
-    GAMEPAD_BUTTON_RIGHT_THUMB          // Gamepad joystick pressed button right
+    UNKNOWN = 0,
+    LEFT_FACE_UP,
+    LEFT_FACE_RIGHT,
+    LEFT_FACE_DOWN,
+    LEFT_FACE_LEFT,
+    RIGHT_FACE_UP,
+    RIGHT_FACE_RIGHT,
+    RIGHT_FACE_DOWN,
+    RIGHT_FACE_LEFT,
+    LEFT_TRIGGER_1,
+    LEFT_TRIGGER_2,
+    RIGHT_TRIGGER_1,
+    RIGHT_TRIGGER_2,
+    MIDDLE_LEFT,
+    MIDDLE,
+    MIDDLE_RIGHT,
+    LEFT_THUMB,
+    RIGHT_THUMB,
 }
 
-// Gamepad axes
-pub enum GamepadAxis {
-    GAMEPAD_AXIS_LEFT_X        = 0,     // Gamepad left stick X axis
-    GAMEPAD_AXIS_LEFT_Y        = 1,     // Gamepad left stick Y axis
-    GAMEPAD_AXIS_RIGHT_X       = 2,     // Gamepad right stick X axis
-    GAMEPAD_AXIS_RIGHT_Y       = 3,     // Gamepad right stick Y axis
-    GAMEPAD_AXIS_LEFT_TRIGGER  = 4,     // Gamepad back trigger left, pressure level: [1..-1]
-    GAMEPAD_AXIS_RIGHT_TRIGGER = 5      // Gamepad back trigger right, pressure level: [1..-1]
-}
-
-// Material map index
-pub enum MaterialMapIndex {
-    MATERIAL_MAP_ALBEDO = 0,        // Albedo material (same as: MATERIAL_MAP_DIFFUSE)
-    MATERIAL_MAP_METALNESS,         // Metalness material (same as: MATERIAL_MAP_SPECULAR)
-    MATERIAL_MAP_NORMAL,            // Normal material
-    MATERIAL_MAP_ROUGHNESS,         // Roughness material
-    MATERIAL_MAP_OCCLUSION,         // Ambient occlusion material
-    MATERIAL_MAP_EMISSION,          // Emission material
-    MATERIAL_MAP_HEIGHT,            // Heightmap material
-    MATERIAL_MAP_CUBEMAP,           // Cubemap material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
-    MATERIAL_MAP_IRRADIANCE,        // Irradiance material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
-    MATERIAL_MAP_PREFILTER,         // Prefilter material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
-    MATERIAL_MAP_BRDF               // Brdf material
-}
-
-// Shader location index
 pub enum ShaderLocationIndex {
-    SHADER_LOC_VERTEX_POSITION = 0, // Shader location: vertex attribute: position
-    SHADER_LOC_VERTEX_TEXCOORD01,   // Shader location: vertex attribute: texcoord01
-    SHADER_LOC_VERTEX_TEXCOORD02,   // Shader location: vertex attribute: texcoord02
-    SHADER_LOC_VERTEX_NORMAL,       // Shader location: vertex attribute: normal
-    SHADER_LOC_VERTEX_TANGENT,      // Shader location: vertex attribute: tangent
-    SHADER_LOC_VERTEX_COLOR,        // Shader location: vertex attribute: color
-    SHADER_LOC_MATRIX_MVP,          // Shader location: matrix uniform: model-view-projection
-    SHADER_LOC_MATRIX_VIEW,         // Shader location: matrix uniform: view (camera transform)
-    SHADER_LOC_MATRIX_PROJECTION,   // Shader location: matrix uniform: projection
-    SHADER_LOC_MATRIX_MODEL,        // Shader location: matrix uniform: model (transform)
-    SHADER_LOC_MATRIX_NORMAL,       // Shader location: matrix uniform: normal
-    SHADER_LOC_VECTOR_VIEW,         // Shader location: vector uniform: view
-    SHADER_LOC_COLOR_DIFFUSE,       // Shader location: vector uniform: diffuse color
-    SHADER_LOC_COLOR_SPECULAR,      // Shader location: vector uniform: specular color
-    SHADER_LOC_COLOR_AMBIENT,       // Shader location: vector uniform: ambient color
-    SHADER_LOC_MAP_ALBEDO,          // Shader location: sampler2d texture: albedo (same as: SHADER_LOC_MAP_DIFFUSE)
-    SHADER_LOC_MAP_METALNESS,       // Shader location: sampler2d texture: metalness (same as: SHADER_LOC_MAP_SPECULAR)
-    SHADER_LOC_MAP_NORMAL,          // Shader location: sampler2d texture: normal
-    SHADER_LOC_MAP_ROUGHNESS,       // Shader location: sampler2d texture: roughness
-    SHADER_LOC_MAP_OCCLUSION,       // Shader location: sampler2d texture: occlusion
-    SHADER_LOC_MAP_EMISSION,        // Shader location: sampler2d texture: emission
-    SHADER_LOC_MAP_HEIGHT,          // Shader location: sampler2d texture: height
-    SHADER_LOC_MAP_CUBEMAP,         // Shader location: samplerCube texture: cubemap
-    SHADER_LOC_MAP_IRRADIANCE,      // Shader location: samplerCube texture: irradiance
-    SHADER_LOC_MAP_PREFILTER,       // Shader location: samplerCube texture: prefilter
-    SHADER_LOC_MAP_BRDF,            // Shader location: sampler2d texture: brdf
-    SHADER_LOC_VERTEX_BONEIDS,      // Shader location: vertex attribute: boneIds
-    SHADER_LOC_VERTEX_BONEWEIGHTS,  // Shader location: vertex attribute: boneWeights
-    SHADER_LOC_BONE_MATRICES,       // Shader location: array of matrices uniform: boneMatrices
-    SHADER_LOC_VERTEX_INSTANCE_TX   // Shader location: vertex attribute: instanceTransform
+    VERTEX_POSITION = 0,
+    VERTEX_TEXCOORD01,
+    VERTEX_TEXCOORD02,
+    VERTEX_NORMAL,
+    VERTEX_TANGENT,
+    VERTEX_COLOR,
+    MATRIX_MVP,
+    MATRIX_VIEW,
+    MATRIX_PROJECTION,
+    MATRIX_MODEL,
+    MATRIX_NORMAL,
+    VECTOR_VIEW,
+    COLOR_DIFFUSE,
+    COLOR_SPECULAR,
+    COLOR_AMBIENT,
+    MAP_ALBEDO,
+    MAP_METALNESS,
+    MAP_NORMAL,
+    MAP_ROUGHNESS,
+    MAP_OCCLUSION,
+    MAP_EMISSION,
+    MAP_HEIGHT,
+    MAP_CUBEMAP,
+    MAP_IRRADIANCE,
+    MAP_PREFILTER,
+    MAP_BRDF,
 }
 
-// Shader uniform data type
-pub enum ShaderUniformDataType {
-    SHADER_UNIFORM_FLOAT = 0,       // Shader uniform type: float
-    SHADER_UNIFORM_VEC2,            // Shader uniform type: vec2 (2 float)
-    SHADER_UNIFORM_VEC3,            // Shader uniform type: vec3 (3 float)
-    SHADER_UNIFORM_VEC4,            // Shader uniform type: vec4 (4 float)
-    SHADER_UNIFORM_INT,             // Shader uniform type: int
-    SHADER_UNIFORM_IVEC2,           // Shader uniform type: ivec2 (2 int)
-    SHADER_UNIFORM_IVEC3,           // Shader uniform type: ivec3 (3 int)
-    SHADER_UNIFORM_IVEC4,           // Shader uniform type: ivec4 (4 int)
-    SHADER_UNIFORM_UINT,            // Shader uniform type: unsigned int
-    SHADER_UNIFORM_UIVEC2,          // Shader uniform type: uivec2 (2 unsigned int)
-    SHADER_UNIFORM_UIVEC3,          // Shader uniform type: uivec3 (3 unsigned int)
-    SHADER_UNIFORM_UIVEC4,          // Shader uniform type: uivec4 (4 unsigned int)
-    SHADER_UNIFORM_SAMPLER2D        // Shader uniform type: sampler2d
-}
-
-// Shader attribute data types
-pub enum ShaderAttributeDataType {
-    SHADER_ATTRIB_FLOAT = 0,        // Shader attribute type: float
-    SHADER_ATTRIB_VEC2,             // Shader attribute type: vec2 (2 float)
-    SHADER_ATTRIB_VEC3,             // Shader attribute type: vec3 (3 float)
-    SHADER_ATTRIB_VEC4              // Shader attribute type: vec4 (4 float)
-}
-
-// Pixel formats
-// NOTE: Support depends on OpenGL version and platform
-pub enum PixelFormat {
-    PIXELFORMAT_UNCOMPRESSED_GRAYSCALE = 1, // 8 bit per pixel (no alpha)
-    PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA,    // 8*2 bpp (2 channels)
-    PIXELFORMAT_UNCOMPRESSED_R5G6B5,        // 16 bpp
-    PIXELFORMAT_UNCOMPRESSED_R8G8B8,        // 24 bpp
-    PIXELFORMAT_UNCOMPRESSED_R5G5B5A1,      // 16 bpp (1 bit alpha)
-    PIXELFORMAT_UNCOMPRESSED_R4G4B4A4,      // 16 bpp (4 bit alpha)
-    PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,      // 32 bpp
-    PIXELFORMAT_UNCOMPRESSED_R32,           // 32 bpp (1 channel - float)
-    PIXELFORMAT_UNCOMPRESSED_R32G32B32,     // 32*3 bpp (3 channels - float)
-    PIXELFORMAT_UNCOMPRESSED_R32G32B32A32,  // 32*4 bpp (4 channels - float)
-    PIXELFORMAT_UNCOMPRESSED_R16,           // 16 bpp (1 channel - half float)
-    PIXELFORMAT_UNCOMPRESSED_R16G16B16,     // 16*3 bpp (3 channels - half float)
-    PIXELFORMAT_UNCOMPRESSED_R16G16B16A16,  // 16*4 bpp (4 channels - half float)
-    PIXELFORMAT_COMPRESSED_DXT1_RGB,        // 4 bpp (no alpha)
-    PIXELFORMAT_COMPRESSED_DXT1_RGBA,       // 4 bpp (1 bit alpha)
-    PIXELFORMAT_COMPRESSED_DXT3_RGBA,       // 8 bpp
-    PIXELFORMAT_COMPRESSED_DXT5_RGBA,       // 8 bpp
-    PIXELFORMAT_COMPRESSED_ETC1_RGB,        // 4 bpp
-    PIXELFORMAT_COMPRESSED_ETC2_RGB,        // 4 bpp
-    PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA,   // 8 bpp
-    PIXELFORMAT_COMPRESSED_PVRT_RGB,        // 4 bpp
-    PIXELFORMAT_COMPRESSED_PVRT_RGBA,       // 4 bpp
-    PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA,   // 8 bpp
-    PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA    // 2 bpp
-}
-
-// Texture parameters: filter mode
-// NOTE 1: Filtering considers mipmaps if available in the texture
-// NOTE 2: Filter is accordingly set for minification and magnification
-pub enum TextureFilter {
-    TEXTURE_FILTER_POINT = 0,               // No filter, just pixel approximation
-    TEXTURE_FILTER_BILINEAR,                // Linear filtering
-    TEXTURE_FILTER_TRILINEAR,               // Trilinear filtering (linear with mipmaps)
-    TEXTURE_FILTER_ANISOTROPIC_4X,          // Anisotropic filtering 4x
-    TEXTURE_FILTER_ANISOTROPIC_8X,          // Anisotropic filtering 8x
-    TEXTURE_FILTER_ANISOTROPIC_16X,         // Anisotropic filtering 16x
-}
-
-// Texture parameters: wrap mode
-pub enum TextureWrap {
-    TEXTURE_WRAP_REPEAT = 0,                // Repeats texture in tiled mode
-    TEXTURE_WRAP_CLAMP,                     // Clamps texture to edge pixel in tiled mode
-    TEXTURE_WRAP_MIRROR_REPEAT,             // Mirrors and repeats the texture in tiled mode
-    TEXTURE_WRAP_MIRROR_CLAMP               // Mirrors and clamps to border the texture in tiled mode
-}
-
-// Cubemap layouts
-pub enum CubemapLayout {
-    CUBEMAP_LAYOUT_AUTO_DETECT = 0,         // Automatically detect layout type
-    CUBEMAP_LAYOUT_LINE_VERTICAL,           // Layout is defined by a vertical line with faces
-    CUBEMAP_LAYOUT_LINE_HORIZONTAL,         // Layout is defined by a horizontal line with faces
-    CUBEMAP_LAYOUT_CROSS_THREE_BY_FOUR,     // Layout is defined by a 3x4 cross with cubemap faces
-    CUBEMAP_LAYOUT_CROSS_FOUR_BY_THREE     // Layout is defined by a 4x3 cross with cubemap faces
-}
-
-// Font type, defines generation method
-pub enum FontType {
-    FONT_DEFAULT = 0,               // Default font generation, anti-aliased
-    FONT_BITMAP,                    // Bitmap font generation, no anti-aliasing
-    FONT_SDF                        // SDF font generation, requires external shader
-}
-
-// Color blending modes (pre-defined)
-pub enum BlendMode {
-    BLEND_ALPHA = 0,                // Blend textures considering alpha (default)
-    BLEND_ADDITIVE,                 // Blend textures adding colors
-    BLEND_MULTIPLIED,               // Blend textures multiplying colors
-    BLEND_ADD_COLORS,               // Blend textures adding colors (alternative)
-    BLEND_SUBTRACT_COLORS,          // Blend textures subtracting colors (alternative)
-    BLEND_ALPHA_PREMULTIPLY,        // Blend premultiplied textures considering alpha
-    BLEND_CUSTOM,                   // Blend textures using custom src/dst factors (use rlSetBlendFactors())
-    BLEND_CUSTOM_SEPARATE           // Blend textures using custom rgb/alpha separate src/dst factors (use rlSetBlendFactorsSeparate())
-}
-
-// Gesture
-// NOTE: Provided as bit-wise flags to enable only desired gestures
-pub enum Gesture {
-    GESTURE_NONE        = 0,        // No gesture
-    GESTURE_TAP         = 1,        // Tap gesture
-    GESTURE_DOUBLETAP   = 2,        // Double tap gesture
-    GESTURE_HOLD        = 4,        // Hold gesture
-    GESTURE_DRAG        = 8,        // Drag gesture
-    GESTURE_SWIPE_RIGHT = 16,       // Swipe right gesture
-    GESTURE_SWIPE_LEFT  = 32,       // Swipe left gesture
-    GESTURE_SWIPE_UP    = 64,       // Swipe up gesture
-    GESTURE_SWIPE_DOWN  = 128,      // Swipe down gesture
-    GESTURE_PINCH_IN    = 256,      // Pinch in gesture
-    GESTURE_PINCH_OUT   = 512       // Pinch out gesture
-}
-
-// Camera system modes
-pub enum CameraMode {
-    CAMERA_CUSTOM = 0,              // Camera custom, controlled by user (UpdateCamera() does nothing)
-    CAMERA_FREE,                    // Camera free mode
-    CAMERA_ORBITAL,                 // Camera orbital, around target, zoom supported
-    CAMERA_FIRST_PERSON,            // Camera first person
-    CAMERA_THIRD_PERSON             // Camera third person
-}
-
-// Camera projection
-pub enum CameraProjection {
-    CAMERA_PERSPECTIVE = 0,         // Perspective projection
-    CAMERA_ORTHOGRAPHIC             // Orthographic projection
-}
-
-// N-patch layout
 pub enum NPatchLayout {
-    NPATCH_NINE_PATCH = 0,          // Npatch layout: 3x3 tiles
-    NPATCH_THREE_PATCH_VERTICAL,    // Npatch layout: 1x3 tiles
-    NPATCH_THREE_PATCH_HORIZONTAL   // Npatch layout: 3x1 tiles
+    NINE_PATCH = 0,
+    THREE_PATCH_VERTICAL = 1,
+    THREE_PATCH_HORIZONTAL = 2,
 }
 
-// Callbacks to hook some internal functions
-// WARNING: These callbacks are intended for advanced users
-const TraceLogCallback = fn (logLevel: i32, text: &c_char, args...) void; // Logging: Redirect trace log messages
-const LoadFileDataCallback = fn (fileName: &c_char, dataSize: &mut u32) &mut u8; // FileIO: Load binary data
-const SaveFileDataCallback = fn (fileName: &c_char, data: &mut void, dataSize: u32) bool; // FileIO: Save binary data
-const LoadFileTextCallback = fn (fileName: &c_char) &mut u8; // FileIO: Load text data
-const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool; // FileIO: Save text data
+pub const TraceLogCallback = fn(logLevel: i32, text: &u8, args: ...) void;
+pub const LoadFileDataCallback = fn(fileName: &u8, bytesRead: &mut u32) &u8;
+pub const SaveFileDataCallback = fn(fileName: &u8, data: &mut void, bytesToWrite: u32) bool;
+pub const LoadFileTextCallback = fn(fileName: &u8) &u8;
+pub const SaveFileTextCallback = fn(fileName: &u8, text: &mut u8) bool;
+pub const AudioCallback = fn(bufferData: &mut void, frames: u32) void;
 
-//------------------------------------------------------------------------------------
-// Window and Graphics Context Functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn InitWindow(width: i32, height: i32, title: &c_char) void;
+pub bind fn InitWindow(width: i32, height: i32, title: &u8) void;
 pub bind fn CloseWindow() void;
 pub bind fn WindowShouldClose() bool;
 pub bind fn IsWindowReady() bool;
@@ -1338,25 +1420,18 @@ pub bind fn IsWindowState(flag: u32) bool;
 pub bind fn SetWindowState(flags: u32) void;
 pub bind fn ClearWindowState(flags: u32) void;
 pub bind fn ToggleFullscreen() void;
-pub bind fn ToggleBorderlessWindowed() void;
 pub bind fn MaximizeWindow() void;
 pub bind fn MinimizeWindow() void;
 pub bind fn RestoreWindow() void;
 pub bind fn SetWindowIcon(image: Image) void;
-pub bind fn SetWindowIcons(images: &mut Image, count: i32) void;
-pub bind fn SetWindowTitle(title: &c_char) void;
+pub bind fn SetWindowTitle(title: &u8) void;
 pub bind fn SetWindowPosition(x: i32, y: i32) void;
 pub bind fn SetWindowMonitor(monitor: i32) void;
 pub bind fn SetWindowMinSize(width: i32, height: i32) void;
-pub bind fn SetWindowMaxSize(width: i32, height: i32) void;
 pub bind fn SetWindowSize(width: i32, height: i32) void;
-pub bind fn SetWindowOpacity(opacity: f32) void;
-pub bind fn SetWindowFocused() void;
 pub bind fn GetWindowHandle() &mut void;
 pub bind fn GetScreenWidth() i32;
 pub bind fn GetScreenHeight() i32;
-pub bind fn GetRenderWidth() i32;
-pub bind fn GetRenderHeight() i32;
 pub bind fn GetMonitorCount() i32;
 pub bind fn GetCurrentMonitor() i32;
 pub bind fn GetMonitorPosition(monitor: i32) Vector2;
@@ -1367,26 +1442,15 @@ pub bind fn GetMonitorPhysicalHeight(monitor: i32) i32;
 pub bind fn GetMonitorRefreshRate(monitor: i32) i32;
 pub bind fn GetWindowPosition() Vector2;
 pub bind fn GetWindowScaleDPI() Vector2;
-pub bind fn GetMonitorName(monitor: i32) &c_char;
-pub bind fn SetClipboardText(text: &c_char) void;
-pub bind fn GetClipboardText() &c_char;
-pub bind fn GetClipboardImage() Image;
-pub bind fn EnableEventWaiting() void;
-pub bind fn DisableEventWaiting() void;
-
-//------------------------------------------------------------------------------------
-// Cursor and Input Functions (Module: core)
-//------------------------------------------------------------------------------------
+pub bind fn GetMonitorName(monitor: i32) &u8;
+pub bind fn SetClipboardText(text: &u8) void;
+pub bind fn GetClipboardText() &u8;
 pub bind fn ShowCursor() void;
 pub bind fn HideCursor() void;
 pub bind fn IsCursorHidden() bool;
 pub bind fn EnableCursor() void;
 pub bind fn DisableCursor() void;
 pub bind fn IsCursorOnScreen() bool;
-
-//------------------------------------------------------------------------------------
-// Drawing-related functions (Module: core)
-//------------------------------------------------------------------------------------
 pub bind fn ClearBackground(color: Color) void;
 pub bind fn BeginDrawing() void;
 pub bind fn EndDrawing() void;
@@ -1394,7 +1458,7 @@ pub bind fn BeginMode2D(camera: Camera2D) void;
 pub bind fn EndMode2D() void;
 pub bind fn BeginMode3D(camera: Camera3D) void;
 pub bind fn EndMode3D() void;
-pub bind fn BeginTextureMode(target: RenderTexture) void;
+pub bind fn BeginTextureMode(target: RenderTexture2D) void;
 pub bind fn EndTextureMode() void;
 pub bind fn BeginShaderMode(shader: Shader) void;
 pub bind fn EndShaderMode() void;
@@ -1404,225 +1468,140 @@ pub bind fn BeginScissorMode(x: i32, y: i32, width: i32, height: i32) void;
 pub bind fn EndScissorMode() void;
 pub bind fn BeginVrStereoMode(config: VrStereoConfig) void;
 pub bind fn EndVrStereoMode() void;
-
-//------------------------------------------------------------------------------------
-// VR stereo config functions for VR simulator (Module: core)
-//------------------------------------------------------------------------------------
 pub bind fn LoadVrStereoConfig(device: VrDeviceInfo) VrStereoConfig;
 pub bind fn UnloadVrStereoConfig(config: VrStereoConfig) void;
-
-//------------------------------------------------------------------------------------
-// Shader management functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn LoadShader(vsFileName: &c_char, fsFileName: &c_char) Shader;
-pub bind fn LoadShaderFromMemory(vsCode: &c_char, fsCode: &c_char) Shader;
-pub bind fn IsShaderValid(shader: Shader) bool;
-pub bind fn GetShaderLocation(shader: Shader, uniformName: &c_char) i32;
-pub bind fn GetShaderLocationAttrib(shader: Shader, attribName: &c_char) i32;
+pub bind fn LoadShader(vsFileName: &u8, fsFileName: &u8) Shader;
+pub bind fn LoadShaderFromMemory(vsCode: &u8, fsCode: &u8) Shader;
+pub bind fn GetShaderLocation(shader: Shader, uniformName: &u8) i32;
+pub bind fn GetShaderLocationAttrib(shader: Shader, attribName: &u8) i32;
 pub bind fn SetShaderValue(shader: Shader, locIndex: i32, value: &void, uniformType: i32) void;
 pub bind fn SetShaderValueV(shader: Shader, locIndex: i32, value: &void, uniformType: i32, count: i32) void;
 pub bind fn SetShaderValueMatrix(shader: Shader, locIndex: i32, mat: Matrix) void;
-pub bind fn SetShaderValueTexture(shader: Shader, locIndex: i32, texture: Texture) void;
+pub bind fn SetShaderValueTexture(shader: Shader, locIndex: i32, texture: Texture2D) void;
 pub bind fn UnloadShader(shader: Shader) void;
-
-//------------------------------------------------------------------------------------
-// Screen-space-related functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn GetScreenToWorldRay(position: Vector2, camera: Camera) Ray;         // Get a ray trace from screen position (i.e mouse)
-pub bind fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width, height: i32) Ray; // Get a ray trace from screen position (i.e mouse) in a viewport
-pub bind fn GetWorldToScreen(position: Vector3, camera: Camera) Vector2;        // Get the screen space position for a 3d world space position
-pub bind fn GetWorldToScreenEx(position: Vector3, camera: Camera, width, height: i32) Vector2; // Get size position for a 3d world space position
-pub bind fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) Vector2;    // Get the screen space position for a 2d camera world space position
-pub bind fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) Vector2;    // Get the world space position for a 2d camera screen space position
-pub bind fn GetCameraMatrix(camera: Camera) Matrix;                            // Get camera transform matrix (view matrix)
-pub bind fn GetCameraMatrix2D(camera: Camera2D) Matrix;                        // Get camera 2d transform matrix
-
-//------------------------------------------------------------------------------------
-// Timing-related functions (Module: core)
-//------------------------------------------------------------------------------------
+pub bind fn GetMouseRay(mousePosition: Vector2, camera: Camera) Ray;
+pub bind fn GetCameraMatrix(camera: Camera) Matrix;
+pub bind fn GetCameraMatrix2D(camera: Camera2D) Matrix;
+pub bind fn GetWorldToScreen(position: Vector3, camera: Camera) Vector2;
+pub bind fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, height: i32) Vector2;
+pub bind fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) Vector2;
+pub bind fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) Vector2;
 pub bind fn SetTargetFPS(fps: i32) void;
+pub bind fn GetFPS() i32;
 pub bind fn GetFrameTime() f32;
 pub bind fn GetTime() f64;
-pub bind fn GetFPS() i32;
-
-//------------------------------------------------------------------------------------
-// Custom frame control functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn SwapScreenBuffer() void;
-pub bind fn PollInputEvents() void;
-pub bind fn WaitTime(seconds: f64) void;
-
-//------------------------------------------------------------------------------------
-// Random values generation functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn SetRandomSeed(seed: u32) void;
 pub bind fn GetRandomValue(min: i32, max: i32) i32;
-pub bind fn LoadRandomSequence(count: u32, min: i32, max: i32) &mut i32;
-pub bind fn UnloadRandomSequence(sequence: &mut i32) void;
-
-//------------------------------------------------------------------------------------
-// Misc. functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn TakeScreenshot(fileName: &c_char) void;
+pub bind fn SetRandomSeed(seed: u32) void;
+pub bind fn TakeScreenshot(fileName: &u8) void;
 pub bind fn SetConfigFlags(flags: u32) void;
-pub bind fn OpenURL(url: &c_char) void;
+pub bind fn TraceLog(logLevel: i32, text: &u8) void;
 pub bind fn SetTraceLogLevel(logLevel: i32) void;
-pub bind fn TraceLog(logLevel: i32, text: &c_char, args...) void;
-pub bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
 pub bind fn MemAlloc(size: u32) &mut void;
 pub bind fn MemRealloc(ptr: &mut void, size: u32) &mut void;
 pub bind fn MemFree(ptr: &mut void) void;
-
-// File system management functions
-pub bind fn LoadFileData(fileName: &c_char, dataSize: &mut i32) &mut u8; // Load file data as byte array (read)
-pub bind fn UnloadFileData(data: &mut u8) void;                     // Unload file data allocated by LoadFileData()
-pub bind fn SaveFileData(fileName: &c_char, data: &mut void, dataSize: i32) bool; // Save data to file from byte array (write), returns true on success
-pub bind fn ExportDataAsCode(data: &u8, dataSize: i32, fileName: &c_char) bool; // Export data to code (.h), returns true on success
-pub bind fn LoadFileText(fileName: &c_char) &mut c_char;                     // Load text data from file (read), returns a '\0' terminated string
-pub bind fn UnloadFileText(text: &mut c_char) void;                              // Unload file text data allocated by LoadFileText()
-pub bind fn SaveFileText(fileName, text: &c_char) bool;    // Save text data to file (write), string must be '\0' terminated, returns true on success
-
-// File access custom callbacks
-// WARNING: Callbacks setup is intended for advanced users
-pub bind fn SetLoadFileDataCallback(callback: LoadFileDataCallback) void;  // Set custom file binary data loader
-pub bind fn SetSaveFileDataCallback(callback: SaveFileDataCallback) void;  // Set custom file binary data saver
-pub bind fn SetLoadFileTextCallback(callback: LoadFileTextCallback) void;  // Set custom file text data loader
-pub bind fn SetSaveFileTextCallback(callback: SaveFileTextCallback) void;  // Set custom file text data saver
-
-//------------------------------------------------------------------------------------
-// Files management functions (Module: core)
-//------------------------------------------------------------------------------------
-pub bind fn FileRename(fileName, fileRename: &c_char) i32; // Rename file (if exists)
-pub bind fn FileRemove(fileName: &mut c_char) i32;                         // Remove file (if exists)
-pub bind fn FileCopy(srcPath: &mut c_char, dstPath: &mut c_char) i32;       // Copy file from one path to another, dstPath created if it doesn't exist
-pub bind fn FileMove(srcPath: &mut c_char, dstPath: &mut c_char) i32;       // Move file from one directory to another, dstPath created if it doesn't exist
-pub bind fn FileTextReplace(fileName, search, replacement: &mut c_char) i32; // Replace text in an existing file
-pub bind fn FileTextFindIndex(fileName: &mut c_char, search: &mut c_char) i32; // Find text in existing file
-pub bind fn FileExists(fileName: &mut c_char) bool;                        // Check if file exists
-pub bind fn DirectoryExists(dirPath: &mut c_char) bool;                    // Check if a directory path exists
-pub bind fn IsFileExtension(fileName, ext: &mut c_char) bool;  // Check file extension (recommended include point: .png, .wav)
-pub bind fn GetFileLength(fileName: &mut c_char) i32;                      // Get file length in bytes (NOTE: GetFileSize() conflicts with windows.h)
-pub bind fn GetFileModTime(fileName: &mut c_char) c_long;                    // Get file modification time (last write time)
-pub bind fn GetFileExtension(fileName: &mut c_char) &mut c_char;           // Get pointer to extension for a filename string (includes dot: '.png')
-pub bind fn GetFileName(filePath: &mut c_char) &mut c_char;                // Get pointer to filename for a path string
-pub bind fn GetFileNameWithoutExt(filePath: &mut c_char) &mut c_char;      // Get filename string without extension (uses static string)
-pub bind fn GetDirectoryPath(filePath: &mut c_char) &mut c_char;           // Get full path for a given fileName with path (uses static string)
-pub bind fn GetPrevDirectoryPath(dirPath: &mut c_char) &mut c_char;        // Get previous directory path for a given path (uses static string)
-pub bind fn GetWorkingDirectory() &mut c_char;                        // Get current working directory (uses static string)
-pub bind fn GetApplicationDirectory() &mut c_char;                    // Get the directory of the running application (uses static string)
-pub bind fn MakeDirectory(dirPath: &mut c_char) i32;                       // Create directories (including full path requested), returns 0 on success
-pub bind fn ChangeDirectory(dirPath: &mut c_char) bool;                    // Change working directory, return true on success
-pub bind fn IsPathFile(path: &mut c_char) bool;                            // Check if a given path is a file or a directory
-pub bind fn IsFileNameValid(fileName: &mut c_char) bool;                   // Check if fileName is valid for the platform/OS
-pub bind fn LoadDirectoryFiles(dirPath: &mut c_char) FilePathList;         // Load directory filepaths
-pub bind fn LoadDirectoryFilesEx(basePath, filter: &mut c_char, scanSubdirs: bool) FilePathList; // Load directory filepaths with extension filtering and recursive directory scan. Use 'DIR' in the filter string to include directories in the result
-pub bind fn UnloadDirectoryFiles(files: FilePathList) void;                // Unload filepaths
-pub bind fn IsFileDropped() bool;                                     // Check if a file has been dropped into window
-pub bind fn LoadDroppedFiles() FilePathList;                          // Load dropped filepaths
-pub bind fn UnloadDroppedFiles(files: FilePathList) void;                  // Unload dropped filepaths
-pub bind fn GetDirectoryFileCount(dirPath: &mut c_char) u32;      // Get the file count in a directory
-pub bind fn GetDirectoryFileCountEx(basePath: &mut c_char, filter: &mut c_char, scanSubdirs: bool) u32;// Get the file count in a directory with extension filtering and recursive directory scan. Use 'DIR' in the filter string to include directories in the result
-
-// Compression/Encoding functionality
-pub bind fn CompressData(data: &u32, dataSize: i32, compDataSize: &mut i32) &mut u8;        // Compress data (DEFLATE algorithm), memory must be MemFree()
-pub bind fn DecompressData(compData: &u32, compDataSize: i32, dataSize: &mut i32) &mut u8;  // Decompress data (DEFLATE algorithm), memory must be MemFree()
-pub bind fn EncodeDataBase64(data: &u32, dataSize: i32, outputSize: &mut i32) &mut c_char;               // Encode data to Base64 string (includes NULL terminator), memory must be MemFree()
-pub bind fn DecodeDataBase64(text: &c_char, outputSize: &mut i32) &mut c_char;                             // Decode Base64 string (expected NULL terminated), memory must be MemFree()
-pub bind fn ComputeCRC32(data: &mut u32, dataSize: i32) u32;       // Compute CRC32 hash code
-pub bind fn ComputeMD5(data: &mut u32, dataSize: i32) &mut u32;        // Compute MD5 hash code, returns static int[4] (16 bytes)
-pub bind fn ComputeSHA1(data: &mut u32, dataSize: i32) &mut u32;       // Compute SHA1 hash code, returns static int[5] (20 bytes)
-pub bind fn ComputeSHA256(data: &mut u32, dataSize: i32) &mut u32;     // Compute SHA256 hash code, returns static int[8] (32 bytes)
-
-// Automation events functionality
-pub bind fn LoadAutomationEventList(fileName: &c_char) AutomationEventList; // Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
-pub bind fn UnloadAutomationEventList(list: AutomationEventList) void;   // Unload automation events list from file
-pub bind fn ExportAutomationEventList(list: AutomationEventList, fileName: &mut c_char) bool; // Export automation events list as text file
-pub bind fn SetAutomationEventList(list: &mut AutomationEventList) void;     // Set automation event list to record to
-pub bind fn SetAutomationEventBaseFrame(frame: i32) void;                // Set automation event internal base frame to start recording
-pub bind fn StartAutomationEventRecording() void;                   // Start recording automation events (AutomationEventList must be set)
-pub bind fn StopAutomationEventRecording() void;                    // Stop recording automation events
-pub bind fn PlayAutomationEvent(event: AutomationEvent) void;            // Play a recorded automation event
-
-//------------------------------------------------------------------------------------
-// Input Handling Functions (Module: core)
-//------------------------------------------------------------------------------------
-
-// Input-related functions: keyboard
-pub bind fn IsKeyPressed(key: i32) bool;                             // Check if a key has been pressed once
-pub bind fn IsKeyPressedRepeat(key: i32) bool;                       // Check if a key has been pressed again
-pub bind fn IsKeyDown(key: i32) bool;                                // Check if a key is being pressed
-pub bind fn IsKeyReleased(key: i32) bool;                            // Check if a key has been released once
-pub bind fn IsKeyUp(key: i32) bool;                                  // Check if a key is NOT being pressed
-pub bind fn GetKeyPressed() i32;                                // Get key pressed (keycode), call it multiple times for keys queued, returns 0 when the queue is empty
-pub bind fn GetCharPressed() i32;                               // Get char pressed (unicode), call it multiple times for chars queued, returns 0 when the queue is empty
-pub bind fn GetKeyName(key: i32) &c_char;                        // Get name of a QWERTY key on the current keyboard layout (eg returns string 'q' for KEY_A on an AZERTY keyboard)
-pub bind fn SetExitKey(key: i32) void;                               // Set a custom key to exit program (default is ESC)
-
-// Input-related functions: gamepads
-pub bind fn IsGamepadAvailable(gamepad: i32) bool;                   // Check if a gamepad is available
-pub bind fn GetGamepadName(gamepad: i32) &c_char;                // Get gamepad internal name id
-pub bind fn IsGamepadButtonPressed(gamepad, button: i32) bool;   // Check if a gamepad button has been pressed once
-pub bind fn IsGamepadButtonDown(gamepad, button: i32) bool;      // Check if a gamepad button is being pressed
-pub bind fn IsGamepadButtonReleased(gamepad, button: i32) bool;  // Check if a gamepad button has been released once
-pub bind fn IsGamepadButtonUp(gamepad, button: i32) bool;        // Check if a gamepad button is NOT being pressed
-pub bind fn GetGamepadButtonPressed() i32;                      // Get the last gamepad button pressed
-pub bind fn GetGamepadAxisCount(gamepad: i32) i32;                   // Get axis count for a gamepad
-pub bind fn GetGamepadAxisMovement(gamepad, axis: i32) f32;    // Get movement value for a gamepad axis
-pub bind fn SetGamepadMappings(mappings: &c_char) i32;           // Set internal gamepad mappings (SDL_GameControllerDB)
-pub bind fn SetGamepadVibration(gamepad: i32, leftMotor, rightMotor, duration: f32) void; // Set gamepad vibration for both motors (duration in seconds)
-
-// Input-related functions: mouse
-pub bind fn IsMouseButtonPressed(button: i32) bool;                  // Check if a mouse button has been pressed once
-pub bind fn IsMouseButtonDown(button: i32) bool;                     // Check if a mouse button is being pressed
-pub bind fn IsMouseButtonReleased(button: i32) bool;                 // Check if a mouse button has been released once
-pub bind fn IsMouseButtonUp(button: i32) bool;                       // Check if a mouse button is NOT being pressed
-pub bind fn GetMouseX() i32;                                    // Get mouse position X
-pub bind fn GetMouseY() i32;                                    // Get mouse position Y
-pub bind fn GetMousePosition() Vector2;                         // Get mouse position XY
-pub bind fn GetMouseDelta() Vector2;                            // Get mouse delta between frames
-pub bind fn SetMousePosition(x, y: i32) void;                    // Set mouse position XY
-pub bind fn SetMouseOffset(offsetX, offsetY: i32) void;          // Set mouse offset
-pub bind fn SetMouseScale(scaleX, scaleY: i32) void;         // Set mouse scaling
-pub bind fn GetMouseWheelMove() f32;                          // Get mouse wheel movement for X or Y, whichever is larger
-pub bind fn GetMouseWheelMoveV() Vector2;                       // Get mouse wheel movement for both X and Y
-pub bind fn SetMouseCursor(cursor: i32) void;                        // Set mouse cursor
-
-// Input-related functions: touch
-pub bind fn GetTouchX() i32;                                    // Get touch position X for touch point 0 (relative to screen size)
-pub bind fn GetTouchY() i32;                                    // Get touch position Y for touch point 0 (relative to screen size)
-pub bind fn GetTouchPosition(index: i32) Vector2;                    // Get touch position XY for a touch point index (relative to screen size)
-pub bind fn GetTouchPointId(index: i32) i32;                         // Get touch point identifier for given index
-pub bind fn GetTouchPointCount() i32;                           // Get number of touch points
-
-//----------------------------------------------------------------------------------
-// Module: rgestures
-//----------------------------------------------------------------------------------
+pub bind fn OpenURL(url: &u8) void;
+pub bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
+pub bind fn SetLoadFileDataCallback(callback: LoadFileDataCallback) void;
+pub bind fn SetSaveFileDataCallback(callback: SaveFileDataCallback) void;
+pub bind fn SetLoadFileTextCallback(callback: LoadFileTextCallback) void;
+pub bind fn SetSaveFileTextCallback(callback: SaveFileTextCallback) void;
+pub bind fn LoadFileData(fileName: &u8, bytesRead: &mut u32) &u8;
+pub bind fn UnloadFileData(data: &u8) void;
+pub bind fn SaveFileData(fileName: &u8, data: &mut void, bytesToWrite: u32) bool;
+pub bind fn LoadFileText(fileName: &u8) &u8;
+pub bind fn UnloadFileText(text: &u8) void;
+pub bind fn SaveFileText(fileName: &u8, text: &mut u8) bool;
+pub bind fn FileExists(fileName: &u8) bool;
+pub bind fn DirectoryExists(dirPath: &u8) bool;
+pub bind fn IsFileExtension(fileName: &u8, ext: &u8) bool;
+pub bind fn GetFileLength(fileName: &u8) i32;
+pub bind fn GetFileExtension(fileName: &u8) &u8;
+pub bind fn GetFileName(filePath: &u8) &u8;
+pub bind fn GetFileNameWithoutExt(filePath: &u8) &u8;
+pub bind fn GetDirectoryPath(filePath: &u8) &u8;
+pub bind fn GetPrevDirectoryPath(dirPath: &u8) &u8;
+pub bind fn GetWorkingDirectory() &u8;
+pub bind fn GetApplicationDirectory() &u8;
+pub bind fn ChangeDirectory(dir: &u8) bool;
+pub bind fn IsPathFile(path: &u8) bool;
+pub bind fn LoadDirectoryFiles(dirPath: &u8) FilePathList;
+pub bind fn LoadDirectoryFilesEx(basePath: &u8, filter: &u8, scanSubdirs: bool) FilePathList;
+pub bind fn UnloadDirectoryFiles(files: FilePathList) void;
+pub bind fn IsFileDropped() bool;
+pub bind fn LoadDroppedFiles() FilePathList;
+pub bind fn UnloadDroppedFiles(files: FilePathList) void;
+pub bind fn GetFileModTime(fileName: &u8) i64;
+pub bind fn CompressData(data: &u8, dataLength: i32, compDataLength: &mut i32) &u8;
+pub bind fn DecompressData(compData: &u8, compDataLength: i32, dataLength: &mut i32) &u8;
+pub bind fn EncodeDataBase64(data: &u8, dataLength: i32, outputLength: &mut i32) &u8;
+pub bind fn DecodeDataBase64(data: &u8, outputLength: &mut i32) &u8;
+pub bind fn LoadAutomationEventList(fileName: &u8) AutomationEventList;
+pub bind fn UnloadAutomationEventList(list: &mut AutomationEventList) void;
+pub bind fn ExportAutomationEventList(list: AutomationEventList, fileName: &u8) bool;
+pub bind fn SetAutomationEventList(list: &mut AutomationEventList) void;
+pub bind fn SetAutomationEventBaseFrame(frame: i32) void;
+pub bind fn StartAutomationEventRecording() void;
+pub bind fn StopAutomationEventRecording() void;
+pub bind fn PlayAutomationEvent(event: AutomationEvent) void;
+pub bind fn IsKeyPressed(key: i32) bool;
+pub bind fn IsKeyDown(key: i32) bool;
+pub bind fn IsKeyReleased(key: i32) bool;
+pub bind fn IsKeyUp(key: i32) bool;
+pub bind fn SetExitKey(key: i32) void;
+pub bind fn GetKeyPressed() i32;
+pub bind fn GetCharPressed() i32;
+pub bind fn IsGamepadAvailable(gamepad: i32) bool;
+pub bind fn GetGamepadName(gamepad: i32) &u8;
+pub bind fn IsGamepadButtonPressed(gamepad: i32, button: i32) bool;
+pub bind fn IsGamepadButtonDown(gamepad: i32, button: i32) bool;
+pub bind fn IsGamepadButtonReleased(gamepad: i32, button: i32) bool;
+pub bind fn IsGamepadButtonUp(gamepad: i32, button: i32) bool;
+pub bind fn GetGamepadButtonPressed() i32;
+pub bind fn GetGamepadAxisCount(gamepad: i32) i32;
+pub bind fn GetGamepadAxisMovement(gamepad: i32, axis: i32) f32;
+pub bind fn SetGamepadMappings(mappings: &u8) i32;
+pub bind fn IsMouseButtonPressed(button: i32) bool;
+pub bind fn IsMouseButtonDown(button: i32) bool;
+pub bind fn IsMouseButtonReleased(button: i32) bool;
+pub bind fn IsMouseButtonUp(button: i32) bool;
+pub bind fn GetMouseX() i32;
+pub bind fn GetMouseY() i32;
+pub bind fn GetMousePosition() Vector2;
+pub bind fn GetMouseDelta() Vector2;
+pub bind fn SetMousePosition(x: i32, y: i32) void;
+pub bind fn SetMouseOffset(offsetX: i32, offsetY: i32) void;
+pub bind fn SetMouseScale(scaleX: f32, scaleY: f32) void;
+pub bind fn GetMouseWheelMove() f32;
+pub bind fn GetMouseWheelMoveV() Vector2;
+pub bind fn SetMouseCursor(cursor: i32) void;
+pub bind fn GetTouchX() i32;
+pub bind fn GetTouchY() i32;
+pub bind fn GetTouchPosition(index: i32) Vector2;
+pub bind fn GetTouchPointId(index: i32) i32;
+pub bind fn GetTouchPointCount() i32;
 pub bind fn SetGesturesEnabled(flags: u32) void;
-pub bind fn IsGestureDetected(gesture: u32) bool;
+pub bind fn IsGestureDetected(gesture: i32) bool;
 pub bind fn GetGestureDetected() i32;
 pub bind fn GetGestureHoldDuration() f32;
 pub bind fn GetGestureDragVector() Vector2;
 pub bind fn GetGestureDragAngle() f32;
 pub bind fn GetGesturePinchVector() Vector2;
 pub bind fn GetGesturePinchAngle() f32;
-
-//------------------------------------------------------------------------------------
-// Module: rcamera
-//------------------------------------------------------------------------------------
-pub bind fn UpdateCamera(camera: &mut Camera3D, mode: i32) void;
-pub bind fn UpdateCameraPro(camera: &mut Camera3D, movement: Vector3, rotation: Vector3, zoom: f32) void;
-
-//------------------------------------------------------------------------------------
-// Module: shapes
-//------------------------------------------------------------------------------------
-pub bind fn SetShapesTexture(texture: Texture, source: Rectangle) void;
+pub bind fn SetCameraMode(camera: Camera, mode: i32) void;
+pub bind fn UpdateCamera(camera: &mut Camera) void;
+pub bind fn SetCameraPanControl(keyPan: i32) void;
+pub bind fn SetCameraAltControl(keyAlt: i32) void;
+pub bind fn SetCameraSmoothZoomControl(keySmoothZoom: i32) void;
+pub bind fn SetCameraMoveControls(keyFront: i32, keyBack: i32, keyRight: i32, keyLeft: i32, keyUp: i32, keyDown: i32) void;
 pub bind fn DrawPixel(posX: i32, posY: i32, color: Color) void;
 pub bind fn DrawPixelV(position: Vector2, color: Color) void;
 pub bind fn DrawLine(startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color) void;
 pub bind fn DrawLineV(startPos: Vector2, endPos: Vector2, color: Color) void;
 pub bind fn DrawLineEx(startPos: Vector2, endPos: Vector2, thick: f32, color: Color) void;
-pub bind fn DrawLineStrip(points: &Vector2, pointCount: i32, color: Color) void;
 pub bind fn DrawLineBezier(startPos: Vector2, endPos: Vector2, thick: f32, color: Color) void;
+pub bind fn DrawLineBezierQuad(startPos: Vector2, endPos: Vector2, controlPos: Vector2, thick: f32, color: Color) void;
+pub bind fn DrawLineBezierCubic(startPos: Vector2, endPos: Vector2, startControlPos: Vector2, endControlPos: Vector2, thick: f32, color: Color) void;
+pub bind fn DrawLineStrip(points: &mut Vector2, pointCount: i32, color: Color) void;
 pub bind fn DrawCircle(centerX: i32, centerY: i32, radius: f32, color: Color) void;
 pub bind fn DrawCircleSector(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
 pub bind fn DrawCircleSectorLines(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
@@ -1641,79 +1620,47 @@ pub bind fn DrawRectangleGradientV(posX: i32, posY: i32, width: i32, height: i32
 pub bind fn DrawRectangleGradientH(posX: i32, posY: i32, width: i32, height: i32, color1: Color, color2: Color) void;
 pub bind fn DrawRectangleGradientEx(rec: Rectangle, col1: Color, col2: Color, col3: Color, col4: Color) void;
 pub bind fn DrawRectangleLines(posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
-pub bind fn DrawRectangleLinesEx(rec: Rectangle, lineThick: f32, color: Color) void;
+pub bind fn DrawRectangleLinesEx(rec: Rectangle, lineThick: i32, color: Color) void;
 pub bind fn DrawRectangleRounded(rec: Rectangle, roundness: f32, segments: i32, color: Color) void;
-pub bind fn DrawRectangleRoundedLines(rec: Rectangle, roundness: f32, segments: i32, lineThick: f32, color: Color) void;
+pub bind fn DrawRectangleRoundedLines(rec: Rectangle, roundness: f32, segments: i32, lineThick: i32, color: Color) void;
 pub bind fn DrawTriangle(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) void;
 pub bind fn DrawTriangleLines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) void;
-pub bind fn DrawTriangleFan(points: &Vector2, pointCount: i32, color: Color) void;
-pub bind fn DrawTriangleStrip(points: &Vector2, pointCount: i32, color: Color) void;
+pub bind fn DrawTriangleFan(points: &mut Vector2, pointCount: i32, color: Color) void;
+pub bind fn DrawTriangleStrip(points: &mut Vector2, pointCount: i32, color: Color) void;
 pub bind fn DrawPoly(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void;
 pub bind fn DrawPolyLines(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void;
-pub bind fn DrawPolyLinesEx(center: Vector2, sides: i32, radius: f32, rotation: f32, lineThick: f32, color: Color) void;
-
-// Splines drawing functions
-pub bind fn DrawSplineLinear(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-pub bind fn DrawSplineBasis(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-pub bind fn DrawSplineCatmullRom(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-pub bind fn DrawSplineBezierQuadratic(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-pub bind fn DrawSplineBezierCubic(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-pub bind fn DrawSplineSegmentLinear(p1: Vector2, p2: Vector2, thick: f32, color: Color) void;
-pub bind fn DrawSplineSegmentBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: f32, color: Color) void;
-pub bind fn DrawSplineSegmentCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: f32, color: Color) void;
-pub bind fn DrawSplineSegmentBezierQuadratic(p1: Vector2, c2: Vector2, p3: Vector2, thick: f32, color: Color) void;
-pub bind fn DrawSplineSegmentBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, thick: f32, color: Color) void;
-
-// Spline segment point evaluation functions, for a given t [0.0f .. 1.0f]
-pub bind fn GetSplinePointLinear(startPos: Vector2, endPos: Vector2, t: f32) Vector2;
-pub bind fn GetSplinePointBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) Vector2;
-pub bind fn GetSplinePointCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) Vector2;
-pub bind fn GetSplinePointBezierQuad(p1: Vector2, c2: Vector2, p3: Vector2, t: f32) Vector2;
-pub bind fn GetSplinePointBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, t: f32) Vector2;
-
-
-// Basic shapes collision detection functions
+pub bind fn DrawPolyLinesEx(center: Vector2, sides: i32, radius: f32, rotation: f32, lineThickness: f32, color: Color) void;
 pub bind fn CheckCollisionRecs(rec1: Rectangle, rec2: Rectangle) bool;
 pub bind fn CheckCollisionCircles(center1: Vector2, radius1: f32, center2: Vector2, radius2: f32) bool;
 pub bind fn CheckCollisionCircleRec(center: Vector2, radius: f32, rec: Rectangle) bool;
 pub bind fn CheckCollisionPointRec(point: Vector2, rec: Rectangle) bool;
 pub bind fn CheckCollisionPointCircle(point: Vector2, center: Vector2, radius: f32) bool;
 pub bind fn CheckCollisionPointTriangle(point: Vector2, p1: Vector2, p2: Vector2, p3: Vector2) bool;
-pub bind fn CheckCollisionLines(startPos1: Vector2, endPos1: Vector2, startPos2: Vector2, endPos2: &mut Vector2) bool;
+pub bind fn CheckCollisionLines(startPos1: Vector2, endPos1: Vector2, startPos2: Vector2, endPos2: Vector2, collisionPoint: &mut Vector2) bool;
 pub bind fn CheckCollisionPointLine(point: Vector2, p1: Vector2, p2: Vector2, threshold: i32) bool;
-pub bind fn CheckCollisionPointPoly(point: Vector2, points: &Vector2, pointCount: i32) bool;                // Check if point is within a polygon described by array of vertices
 pub bind fn GetCollisionRec(rec1: Rectangle, rec2: Rectangle) Rectangle;
-
-//------------------------------------------------------------------------------------
-// Module: textures
-//------------------------------------------------------------------------------------
-pub bind fn LoadImage(fileName: &c_char) Image;
-pub bind fn LoadImageRaw(fileName: &c_char, width: i32, height: i32, format: i32, headerSize: i32) Image;
-pub bind fn LoadImageAnim(fileName: &c_char, frames: &mut i32) Image;
-pub bind fn LoadImageAnimFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32, frames: &mut i32) Image; // Load image sequence from memory buffer
-pub bind fn LoadImageFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32) Image;
-pub bind fn LoadImageFromTexture(texture: Texture) Image;
+pub bind fn LoadImage(fileName: &u8) Image;
+pub bind fn LoadImageRaw(fileName: &u8, width: i32, height: i32, format: i32, headerSize: i32) Image;
+pub bind fn LoadImageAnim(fileName: &u8, frames: &mut i32) Image;
+pub bind fn LoadImageFromMemory(fileType: &u8, fileData: &u8, dataSize: i32) Image;
+pub bind fn LoadImageFromTexture(texture: Texture2D) Image;
 pub bind fn LoadImageFromScreen() Image;
-pub bind fn IsImageValid(image: Image) bool;
 pub bind fn UnloadImage(image: Image) void;
-pub bind fn ExportImage(image: Image, fileName: &c_char) bool;
-pub bind fn ExportImageAsCode(image: Image, fileName: &c_char) bool;
+pub bind fn ExportImage(image: Image, fileName: &u8) bool;
+pub bind fn ExportImageAsCode(image: Image, fileName: &u8) bool;
 pub bind fn GenImageColor(width: i32, height: i32, color: Color) Image;
-pub bind fn GenImageGradientLinear(width: i32, height: i32, direction: i32, start: Color, end: Color) Image;
+pub bind fn GenImageGradientV(width: i32, height: i32, top: Color, bottom: Color) Image;
+pub bind fn GenImageGradientH(width: i32, height: i32, left: Color, right: Color) Image;
 pub bind fn GenImageGradientRadial(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image;
-pub bind fn GenImageGradientSquare(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image;
 pub bind fn GenImageChecked(width: i32, height: i32, checksX: i32, checksY: i32, col1: Color, col2: Color) Image;
 pub bind fn GenImageWhiteNoise(width: i32, height: i32, factor: f32) Image;
 pub bind fn GenImagePerlinNoise(width: i32, height: i32, offsetX: i32, offsetY: i32, scale: f32) Image;
 pub bind fn GenImageCellular(width: i32, height: i32, tileSize: i32) Image;
-pub bind fn GenImageText(width: i32, height: i32, text: &c_char) Image;
-
-
+pub bind fn GenImageText(width: i32, height: i32, text: &u8) Image;
 pub bind fn ImageCopy(image: Image) Image;
 pub bind fn ImageFromImage(image: Image, rec: Rectangle) Image;
-pub bind fn ImageFromChannel(image: Image, selectedChannel: i32) Image;                                          // Create an image from a selected channel of another image (GRAYSCALE)
-pub bind fn ImageText(text: &c_char, fontSize: i32, color: Color) Image;
-pub bind fn ImageTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32, tint: Color) Image;
+pub bind fn ImageText(text: &u8, fontSize: i32, color: Color) Image;
+pub bind fn ImageTextEx(font: Font, text: &u8, fontSize: f32, spacing: f32, tint: Color) Image;
 pub bind fn ImageFormat(image: &mut Image, newFormat: i32) void;
 pub bind fn ImageToPOT(image: &mut Image, fill: Color) void;
 pub bind fn ImageCrop(image: &mut Image, crop: Rectangle) void;
@@ -1722,7 +1669,6 @@ pub bind fn ImageAlphaClear(image: &mut Image, color: Color, threshold: f32) voi
 pub bind fn ImageAlphaMask(image: &mut Image, alphaMask: Image) void;
 pub bind fn ImageAlphaPremultiply(image: &mut Image) void;
 pub bind fn ImageBlurGaussian(image: &mut Image, blurSize: i32) void;
-pub bind fn ImageKernelConvolution(image: &mut Image, kernel: &f32, kernelSize: i32) void;                    // Apply custom square convolution kernel to image
 pub bind fn ImageResize(image: &mut Image, newWidth: i32, newHeight: i32) void;
 pub bind fn ImageResizeNN(image: &mut Image, newWidth: i32, newHeight: i32) void;
 pub bind fn ImageResizeCanvas(image: &mut Image, newWidth: i32, newHeight: i32, offsetX: i32, offsetY: i32, fill: Color) void;
@@ -1750,138 +1696,99 @@ pub bind fn ImageDrawPixel(dst: &mut Image, posX: i32, posY: i32, color: Color) 
 pub bind fn ImageDrawPixelV(dst: &mut Image, position: Vector2, color: Color) void;
 pub bind fn ImageDrawLine(dst: &mut Image, startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color) void;
 pub bind fn ImageDrawLineV(dst: &mut Image, start: Vector2, end: Vector2, color: Color) void;
-pub bind fn ImageDrawLineEx(dst: &mut Image, start, end: Vector2, thick: i32, color: Color) void;              // Draw a line defining thickness within an image
 pub bind fn ImageDrawCircle(dst: &mut Image, centerX: i32, centerY: i32, radius: i32, color: Color) void;
 pub bind fn ImageDrawCircleV(dst: &mut Image, center: Vector2, radius: i32, color: Color) void;
-pub bind fn ImageDrawCircleLines(dst: &mut Image, centerX: i32, centerY: i32, radius: i32, color: Color) void;
-pub bind fn ImageDrawCircleLinesV(dst: &mut Image, center: Vector2, radius: i32, color: Color) void;
 pub bind fn ImageDrawRectangle(dst: &mut Image, posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
 pub bind fn ImageDrawRectangleV(dst: &mut Image, position: Vector2, size: Vector2, color: Color) void;
 pub bind fn ImageDrawRectangleRec(dst: &mut Image, rec: Rectangle, color: Color) void;
 pub bind fn ImageDrawRectangleLines(dst: &mut Image, rec: Rectangle, thick: i32, color: Color) void;
-pub bind fn ImageDrawTriangle(dst: &mut Image, v1, v2, v3: Vector2, color: Color) void;               // Draw triangle within an image
-pub bind fn ImageDrawTriangleEx(dst: &mut Image, v1, v2, v3: Vector2, c1, c2, c3: Color) void; // Draw triangle with interpolated colors within an image
-pub bind fn ImageDrawTriangleLines(dst: &mut Image, v1, v2, v3: Vector2, color: Color) void;          // Draw triangle outline within an image
-pub bind fn ImageDrawTriangleFan(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color) void;               // Draw a triangle fan defined by points within an image (first vertex is the center)
-pub bind fn ImageDrawTriangleStrip(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color) void;             // Draw a triangle strip defined by points within an image
 pub bind fn ImageDraw(dst: &mut Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color) void;
-pub bind fn ImageDrawText(dst: &mut Image, text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
-pub bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-pub bind fn LoadTexture(fileName: &c_char) Texture;
-pub bind fn LoadTextureFromImage(image: Image) Texture;
-pub bind fn LoadTextureCubemap(image: Image, layout: i32) Texture;
-pub bind fn LoadRenderTexture(width: i32, height: i32) RenderTexture;
-pub bind fn IsTextureValid(texture: Texture) bool;
-pub bind fn UnloadTexture(texture: Texture) void;
-pub bind fn IsRenderTextureValid(target: RenderTexture) bool;
-pub bind fn UnloadRenderTexture(target: RenderTexture) void;
-pub bind fn UpdateTexture(texture: Texture, pixels: &void) void;
-pub bind fn UpdateTextureRec(texture: Texture, rec: Rectangle, pixels: &void) void;
-pub bind fn GenTextureMipmaps(texture: &mut Texture) void;
-pub bind fn SetTextureFilter(texture: Texture, filter: i32) void;
-pub bind fn SetTextureWrap(texture: Texture, wrap: i32) void;
-pub bind fn DrawTexture(texture: Texture, posX: i32, posY: i32, tint: Color) void;
-pub bind fn DrawTextureV(texture: Texture, position: Vector2, tint: Color) void;
-pub bind fn DrawTextureEx(texture: Texture, position: Vector2, rotation: f32, scale: f32, tint: Color) void;
-pub bind fn DrawTextureRec(texture: Texture, source: Rectangle, position: Vector2, tint: Color) void;
-pub bind fn DrawTexturePro(texture: Texture, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
-pub bind fn DrawTextureNPatch(texture: Texture, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
-
-// Color/pixel related functions
-pub bind fn ColorIsEqual(col1, col2: Color) bool;                            // Check if two colors are equal
+pub bind fn ImageDrawText(dst: &mut Image, text: &u8, posX: i32, posY: i32, fontSize: i32, color: Color) void;
+pub bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &u8, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+pub bind fn LoadTexture(fileName: &u8) Texture2D;
+pub bind fn LoadTextureFromImage(image: Image) Texture2D;
+pub bind fn LoadTextureCubemap(image: Image, layout: i32) TextureCubemap;
+pub bind fn LoadRenderTexture(width: i32, height: i32) RenderTexture2D;
+pub bind fn UnloadTexture(texture: Texture2D) void;
+pub bind fn UnloadRenderTexture(target: RenderTexture2D) void;
+pub bind fn UpdateTexture(texture: Texture2D, pixels: &void) void;
+pub bind fn UpdateTextureRec(texture: Texture2D, rec: Rectangle, pixels: &void) void;
+pub bind fn GenTextureMipmaps(texture: &mut Texture2D) void;
+pub bind fn SetTextureFilter(texture: Texture2D, filter: i32) void;
+pub bind fn SetTextureWrap(texture: Texture2D, wrap: i32) void;
+pub bind fn DrawTexture(texture: Texture2D, posX: i32, posY: i32, tint: Color) void;
+pub bind fn DrawTextureV(texture: Texture2D, position: Vector2, tint: Color) void;
+pub bind fn DrawTextureEx(texture: Texture2D, position: Vector2, rotation: f32, scale: f32, tint: Color) void;
+pub bind fn DrawTextureRec(texture: Texture2D, source: Rectangle, position: Vector2, tint: Color) void;
+pub bind fn DrawTextureQuad(texture: Texture2D, tiling: Vector2, offset: Vector2, quad: Rectangle, tint: Color) void;
+pub bind fn DrawTextureTiled(texture: Texture2D, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, scale: f32, tint: Color) void;
+pub bind fn DrawTexturePro(texture: Texture2D, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
+pub bind fn DrawTextureNPatch(texture: Texture2D, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
 pub bind fn Fade(color: Color, alpha: f32) Color;
 pub bind fn ColorToInt(color: Color) i32;
 pub bind fn ColorNormalize(color: Color) Vector4;
 pub bind fn ColorFromNormalized(normalized: Vector4) Color;
 pub bind fn ColorToHSV(color: Color) Vector3;
 pub bind fn ColorFromHSV(hue: f32, saturation: f32, value: f32) Color;
-pub bind fn ColorTint(color: Color, tint: Color) Color;
-pub bind fn ColorBrightness(color: Color, factor: f32) Color;
-pub bind fn ColorContrast(color: Color, contrast: f32) Color;
 pub bind fn ColorAlpha(color: Color, alpha: f32) Color;
 pub bind fn ColorAlphaBlend(dst: Color, src: Color, tint: Color) Color;
-pub bind fn ColorLerp(color1, color2: Color, factor: f32) Color;            // Get color lerp interpolation between two colors, factor [0.0f..1.0f]
 pub bind fn GetColor(hexValue: u32) Color;
 pub bind fn GetPixelColor(srcPtr: &mut void, format: i32) Color;
 pub bind fn SetPixelColor(dstPtr: &mut void, color: Color, format: i32) void;
 pub bind fn GetPixelDataSize(width: i32, height: i32, format: i32) i32;
-
-//------------------------------------------------------------------------------------
-// Module: text
-//------------------------------------------------------------------------------------
 pub bind fn GetFontDefault() Font;
-pub bind fn LoadFont(fileName: &c_char) Font;
-pub bind fn LoadFontEx(fileName: &c_char, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
+pub bind fn LoadFont(fileName: &u8) Font;
+pub bind fn LoadFontEx(fileName: &u8, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
 pub bind fn LoadFontFromImage(image: Image, key: Color, firstChar: i32) Font;
-pub bind fn LoadFontFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
-pub bind fn IsFontValid(font: Font) bool;
+pub bind fn LoadFontFromMemory(fileType: &u8, fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
 pub bind fn LoadFontData(fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32, type: i32) &mut GlyphInfo;
 pub bind fn GenImageFontAtlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image;
 pub bind fn UnloadFontData(chars: &mut GlyphInfo, glyphCount: i32) void;
 pub bind fn UnloadFont(font: Font) void;
-pub bind fn ExportFontAsCode(font: Font, fileName: &c_char) bool;
-
-// Text drawing functions
+pub bind fn ExportFontAsCode(font: Font, fileName: &u8) bool;
 pub bind fn DrawFPS(posX: i32, posY: i32) void;
-pub bind fn DrawText(text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
-pub bind fn DrawTextEx(font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-pub bind fn DrawTextPro(font: Font, text: &c_char, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color) void;
+pub bind fn DrawText(text: &u8, posX: i32, posY: i32, fontSize: i32, color: Color) void;
+pub bind fn DrawTextEx(font: Font, text: &u8, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+pub bind fn DrawTextPro(font: Font, text: &u8, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color) void;
 pub bind fn DrawTextCodepoint(font: Font, codepoint: i32, position: Vector2, fontSize: f32, tint: Color) void;
 pub bind fn DrawTextCodepoints(font: Font, codepoints: &i32, count: i32, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-
-// Text font info functions
-pub bind fn SetTextLineSpacing(spacing: i32) void;
-pub bind fn MeasureText(text: &c_char, fontSize: i32) i32;
-pub bind fn MeasureTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32) Vector2;
+pub bind fn MeasureText(text: &u8, fontSize: i32) i32;
+pub bind fn MeasureTextEx(font: Font, text: &u8, fontSize: f32, spacing: f32) Vector2;
 pub bind fn GetGlyphIndex(font: Font, codepoint: i32) i32;
 pub bind fn GetGlyphInfo(font: Font, codepoint: i32) GlyphInfo;
 pub bind fn GetGlyphAtlasRec(font: Font, codepoint: i32) Rectangle;
-
-// Text codepoint functions
-pub bind fn LoadUTF8(codepoints: &i32, length: i32) &mut u8;
-pub bind fn UnloadUTF8(text: &mut u8) void;
-pub bind fn LoadCodepoints(text: &c_char, count: &mut i32) &mut i32;
+pub bind fn LoadCodepoints(text: &u8, count: &mut i32) &mut i32;
 pub bind fn UnloadCodepoints(codepoints: &mut i32) void;
-pub bind fn GetCodepointCount(text: &c_char) i32;
-pub bind fn GetCodepoint(text: &c_char, codepointSize: &mut i32) i32;
-pub bind fn GetCodepointNext(text: &c_char, codepointSize: &mut i32) i32;                           // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-pub bind fn GetCodepointPrevious(text: &c_char, codepointSize: &mut i32) i32;                           // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-pub bind fn CodepointToUTF8(codepoint: i32, utf8Size: &mut i32) &c_char;
-
-// Text strings management functions
+pub bind fn GetCodepointCount(text: &u8) i32;
+pub bind fn GetCodepoint(text: &u8, bytesProcessed: &mut i32) i32;
+pub bind fn CodepointToUTF8(codepoint: i32, byteSize: &mut i32) &u8;
+pub bind fn TextCodepointsToUTF8(codepoints: &i32, length: i32) &mut u8;
 pub bind fn TextCopy(dst: &mut u8, src: &u8) i32;
-pub bind fn TextIsEqual(text1: &c_char, text2: &c_char) bool;
-pub bind fn TextLength(text: &c_char) u32;
-pub bind fn TextFormat(text: &c_char, args...) &c_char;
-pub bind fn TextSubtext(text: &c_char, position: i32, length: i32) &c_char;
-pub bind fn TextRemoveSpaces(text: &c_char) &c_char;                                       // Remove text spaces, concat words
-pub bind fn GetTextBetween(text, begin, end: &c_char) &mut c_char;           // Get text between two strings
-pub bind fn TextReplace(text: &mut u8, replace: &c_char, search: &c_char) &mut u8;
-pub bind fn TextReplaceBetween(text, begin, end, replacement: &c_char) &mut c_char; // Replace text between two specific strings (WARNING: memory must be freed!)
-pub bind fn TextInsert(text: &c_char, insert: &c_char, position: i32) &mut u8;
-pub bind fn TextJoin(textList: &mut &mut u8, count: i32, delimiter: &c_char) &mut u8;
-pub bind fn TextSplit(text: &c_char, delimiter: u8, count: &mut i32) &mut &mut u8;
-pub bind fn TextAppend(text: &mut u8, append: &c_char, position: &mut i32) void;
-pub bind fn TextFindIndex(text: &c_char, find: &c_char) i32;
-pub bind fn TextToUpper(text: &c_char) &c_char;
-pub bind fn TextToLower(text: &c_char) &c_char;
-pub bind fn TextToPascal(text: &c_char) &c_char;
-pub bind fn TextToSnake(text: &c_char) &mut c_char;                                                  // Get Snake case notation version of provided string
-pub bind fn TextToCamel(text: &c_char) &mut c_char;                                                  // Get Camel case notation version of provided string
-pub bind fn TextToInteger(text: &c_char) i32;
-
-//------------------------------------------------------------------------------------
-// Module: models
-//------------------------------------------------------------------------------------
+pub bind fn TextIsEqual(text1: &u8, text2: &u8) bool;
+pub bind fn TextLength(text: &u8) u32;
+pub bind fn TextFormat(text: &u8) &u8;
+pub bind fn TextSubtext(text: &u8, position: i32, length: i32) &mut u8;
+pub bind fn TextReplace(text: &mut u8, replace: &u8, by: &u8) &mut u8;
+pub bind fn TextInsert(text: &u8, insert: &u8, position: i32) &mut u8;
+pub bind fn TextJoin(textList: &&u8, count: i32, joiner: &u8) &mut u8;
+pub bind fn TextSplit(text: &u8, delimiter: u8, count: &mut i32) &mut &mut u8;
+pub bind fn TextAppend(text: &mut u8, append: &u8, position: &mut i32) void;
+pub bind fn TextFindIndex(text: &u8, find: &u8) i32;
+pub bind fn TextToUpper(text: &u8) &u8;
+pub bind fn TextToLower(text: &u8) &u8;
+pub bind fn TextToPascal(text: &u8) &u8;
+pub bind fn TextToInteger(text: &u8) i32;
 pub bind fn DrawLine3D(startPos: Vector3, endPos: Vector3, color: Color) void;
 pub bind fn DrawPoint3D(position: Vector3, color: Color) void;
 pub bind fn DrawCircle3D(center: Vector3, radius: f32, rotationAxis: Vector3, rotationAngle: f32, color: Color) void;
 pub bind fn DrawTriangle3D(v1: Vector3, v2: Vector3, v3: Vector3, color: Color) void;
-pub bind fn DrawTriangleStrip3D(points: &Vector3, pointCount: i32, color: Color) void;
+pub bind fn DrawTriangleStrip3D(points: &mut Vector3, pointCount: i32, color: Color) void;
 pub bind fn DrawCube(position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
 pub bind fn DrawCubeV(position: Vector3, size: Vector3, color: Color) void;
 pub bind fn DrawCubeWires(position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
 pub bind fn DrawCubeWiresV(position: Vector3, size: Vector3, color: Color) void;
+pub bind fn DrawCubeTexture(texture: Texture2D, position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
+pub bind fn DrawCubeTextureRec(texture: Texture2D, source: Rectangle, position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
 pub bind fn DrawSphere(centerPos: Vector3, radius: f32, color: Color) void;
 pub bind fn DrawSphereEx(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color) void;
 pub bind fn DrawSphereWires(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color) void;
@@ -1889,40 +1796,30 @@ pub bind fn DrawCylinder(position: Vector3, radiusTop: f32, radiusBottom: f32, h
 pub bind fn DrawCylinderEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color) void;
 pub bind fn DrawCylinderWires(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color) void;
 pub bind fn DrawCylinderWiresEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color) void;
-pub bind fn DrawCapsule(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color) void;
-pub bind fn DrawCapsuleWires(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color) void;
 pub bind fn DrawPlane(centerPos: Vector3, size: Vector2, color: Color) void;
 pub bind fn DrawRay(ray: Ray, color: Color) void;
 pub bind fn DrawGrid(slices: i32, spacing: f32) void;
-
-// Model management functions
-pub bind fn LoadModel(fileName: &c_char) Model;
+pub bind fn LoadModel(fileName: &u8) Model;
 pub bind fn LoadModelFromMesh(mesh: Mesh) Model;
-pub bind fn IsModelValid(model: Model) bool;
 pub bind fn UnloadModel(model: Model) void;
+pub bind fn UnloadModelKeepMeshes(model: Model) void;
 pub bind fn GetModelBoundingBox(model: Model) BoundingBox;
-
-// Model drawing functions
 pub bind fn DrawModel(model: Model, position: Vector3, scale: f32, tint: Color) void;
 pub bind fn DrawModelEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void;
 pub bind fn DrawModelWires(model: Model, position: Vector3, scale: f32, tint: Color) void;
 pub bind fn DrawModelWiresEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void;
 pub bind fn DrawBoundingBox(box: BoundingBox, color: Color) void;
-pub bind fn DrawBillboard(camera: Camera3D, texture: Texture, position: Vector3, size: f32, tint: Color) void;
-pub bind fn DrawBillboardRec(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, size: Vector2, tint: Color) void;
-pub bind fn DrawBillboardPro(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: f32, tint: Color) void;
-
-// Mesh management functions
+pub bind fn DrawBillboard(camera: Camera, texture: Texture2D, position: Vector3, size: f32, tint: Color) void;
+pub bind fn DrawBillboardRec(camera: Camera, texture: Texture2D, source: Rectangle, position: Vector3, size: Vector2, tint: Color) void;
+pub bind fn DrawBillboardPro(camera: Camera, texture: Texture2D, source: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: f32, tint: Color) void;
 pub bind fn UploadMesh(mesh: &mut Mesh, dynamic: bool) void;
 pub bind fn UpdateMeshBuffer(mesh: Mesh, index: i32, data: &void, dataSize: i32, offset: i32) void;
 pub bind fn UnloadMesh(mesh: Mesh) void;
 pub bind fn DrawMesh(mesh: Mesh, material: Material, transform: Matrix) void;
 pub bind fn DrawMeshInstanced(mesh: Mesh, material: Material, transforms: &Matrix, instances: i32) void;
-pub bind fn ExportMesh(mesh: Mesh, fileName: &c_char) bool;
 pub bind fn GetMeshBoundingBox(mesh: Mesh) BoundingBox;
 pub bind fn GenMeshTangents(mesh: &mut Mesh) void;
-
-// Mesh generation functions
+pub bind fn GenMeshBinormals(mesh: &mut Mesh) void;
 pub bind fn GenMeshPoly(sides: i32, radius: f32) Mesh;
 pub bind fn GenMeshPlane(width: f32, length: f32, resX: i32, resZ: i32) Mesh;
 pub bind fn GenMeshCube(width: f32, height: f32, length: f32) Mesh;
@@ -1934,24 +1831,16 @@ pub bind fn GenMeshTorus(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
 pub bind fn GenMeshKnot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
 pub bind fn GenMeshHeightmap(heightmap: Image, size: Vector3) Mesh;
 pub bind fn GenMeshCubicmap(cubicmap: Image, cubeSize: Vector3) Mesh;
-
-// Material loading/unloading functions
-pub bind fn LoadMaterials(fileName: &c_char, materialCount: &mut i32) &mut Material;
-pub bind fn LoadMaterialDefault() Material;
-pub bind fn IsMaterialValid(material: Material) bool;
+pub bind fn LoadMaterials(fileName: &u8, materialCount: &mut i32) &mut Material;
+pub bind fn GetMaterialDefault() Material;
 pub bind fn UnloadMaterial(material: Material) void;
-pub bind fn SetMaterialTexture(material: &mut Material, mapType: i32, texture: Texture) void;
+pub bind fn SetMaterialTexture(material: &mut Material, mapType: i32, texture: Texture2D) void;
 pub bind fn SetModelMeshMaterial(model: &mut Model, meshId: i32, materialId: i32) void;
-
-// Model animation loading/unloading functions
-pub bind fn LoadModelAnimations(fileName: &c_char, animCount: &mut u32) &mut ModelAnimation;
+pub bind fn LoadModelAnimations(fileName: &u8, animCount: &mut u32) &mut ModelAnimation;
 pub bind fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: i32) void;
-pub bind fn UpdateModelAnimationBones(model: Model, anim: ModelAnimation, frame: i32) void;          // Update model animation mesh bone matrices (GPU skinning)
 pub bind fn UnloadModelAnimation(anim: ModelAnimation) void;
-pub bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: i32) void;                // Unload animation array data
+pub bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: u32) void;
 pub bind fn IsModelAnimationValid(model: Model, anim: ModelAnimation) bool;
-
-// Collision detection functions
 pub bind fn CheckCollisionSpheres(center1: Vector3, radius1: f32, center2: Vector3, radius2: f32) bool;
 pub bind fn CheckCollisionBoxes(box1: BoundingBox, box2: BoundingBox) bool;
 pub bind fn CheckCollisionBoxSphere(box: BoundingBox, center: Vector3, radius: f32) bool;
@@ -1960,51 +1849,37 @@ pub bind fn GetRayCollisionBox(ray: Ray, box: BoundingBox) RayCollision;
 pub bind fn GetRayCollisionMesh(ray: Ray, mesh: Mesh, transform: Matrix) RayCollision;
 pub bind fn GetRayCollisionTriangle(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3) RayCollision;
 pub bind fn GetRayCollisionQuad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) RayCollision;
-
-//------------------------------------------------------------------------------------
-// Module: audio
-//------------------------------------------------------------------------------------
-pub const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
 pub bind fn InitAudioDevice() void;
 pub bind fn CloseAudioDevice() void;
 pub bind fn IsAudioDeviceReady() bool;
 pub bind fn SetMasterVolume(volume: f32) void;
-
-// Wave/Sound loading/unloading functions
-pub bind fn LoadWave(fileName: &c_char) Wave;
-pub bind fn LoadWaveFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32) Wave;
-pub bind fn IsWaveValid(wave: Wave) bool;
-pub bind fn LoadSound(fileName: &c_char) Sound;
+pub bind fn LoadWave(fileName: &u8) Wave;
+pub bind fn LoadWaveFromMemory(fileType: &u8, fileData: &u8, dataSize: i32) Wave;
+pub bind fn LoadSound(fileName: &u8) Sound;
 pub bind fn LoadSoundFromWave(wave: Wave) Sound;
-pub bind fn LoadSoundAlias(source: Sound) Sound;                             // Create a new sound that shares the same sample data as the source sound, does not own the sound data
-pub bind fn IsSoundValid(sound: Sound) bool;
 pub bind fn UpdateSound(sound: Sound, data: &void, sampleCount: i32) void;
 pub bind fn UnloadWave(wave: Wave) void;
 pub bind fn UnloadSound(sound: Sound) void;
-pub bind fn UnloadSoundAlias(alias: Sound) void;                             // Unload a sound alias (does not deallocate sample data)
-pub bind fn ExportWave(wave: Wave, fileName: &c_char) bool;
-pub bind fn ExportWaveAsCode(wave: Wave, fileName: &c_char) bool;
-
-// Wave/Sound management functions
+pub bind fn ExportWave(wave: Wave, fileName: &u8) bool;
+pub bind fn ExportWaveAsCode(wave: Wave, fileName: &u8) bool;
 pub bind fn PlaySound(sound: Sound) void;
 pub bind fn StopSound(sound: Sound) void;
 pub bind fn PauseSound(sound: Sound) void;
 pub bind fn ResumeSound(sound: Sound) void;
+pub bind fn PlaySoundMulti(sound: Sound) void;
+pub bind fn StopSoundMulti() void;
+pub bind fn GetSoundsPlaying() i32;
 pub bind fn IsSoundPlaying(sound: Sound) bool;
 pub bind fn SetSoundVolume(sound: Sound, volume: f32) void;
 pub bind fn SetSoundPitch(sound: Sound, pitch: f32) void;
 pub bind fn SetSoundPan(sound: Sound, pan: f32) void;
-pub bind fn GetSoundsPlaying() i32;
-pub bind fn WaveCopy(wave: Wave) Wave;
-pub bind fn WaveCrop(wave: &mut Wave, initFrame: i32, finalFrame: i32) void;
 pub bind fn WaveFormat(wave: &mut Wave, sampleRate: i32, sampleSize: i32, channels: i32) void;
+pub bind fn WaveCopy(wave: Wave) Wave;
+pub bind fn WaveCrop(wave: &mut Wave, initSample: i32, finalSample: i32) void;
 pub bind fn LoadWaveSamples(wave: Wave) &mut f32;
 pub bind fn UnloadWaveSamples(samples: &mut f32) void;
-
-// Music management functions
-pub bind fn LoadMusicStream(fileName: &c_char) Music;
-pub bind fn LoadMusicStreamFromMemory(fileType: &c_char, data: &u8, dataSize: i32) Music;
-pub bind fn IsMusicValid(music: Music) bool;
+pub bind fn LoadMusicStream(fileName: &u8) Music;
+pub bind fn LoadMusicStreamFromMemory(fileType: &u8, data: &u8, dataSize: i32) Music;
 pub bind fn UnloadMusicStream(music: Music) void;
 pub bind fn PlayMusicStream(music: Music) void;
 pub bind fn IsMusicStreamPlaying(music: Music) bool;
@@ -2018,10 +1893,7 @@ pub bind fn SetMusicPitch(music: Music, pitch: f32) void;
 pub bind fn SetMusicPan(music: Music, pan: f32) void;
 pub bind fn GetMusicTimeLength(music: Music) f32;
 pub bind fn GetMusicTimePlayed(music: Music) f32;
-
-// AudioStream management functions
 pub bind fn LoadAudioStream(sampleRate: u32, sampleSize: u32, channels: u32) AudioStream;
-pub bind fn IsAudioStreamReady(stream: AudioStream) bool;
 pub bind fn UnloadAudioStream(stream: AudioStream) void;
 pub bind fn UpdateAudioStream(stream: AudioStream, data: &void, frameCount: i32) void;
 pub bind fn IsAudioStreamProcessed(stream: AudioStream) bool;
@@ -2035,9 +1907,32 @@ pub bind fn SetAudioStreamPitch(stream: AudioStream, pitch: f32) void;
 pub bind fn SetAudioStreamPan(stream: AudioStream, pan: f32) void;
 pub bind fn SetAudioStreamBufferSizeDefault(size: i32) void;
 pub bind fn SetAudioStreamCallback(stream: AudioStream, callback: AudioCallback) void;
-
 pub bind fn AttachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
 pub bind fn DetachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;
 
-pub bind fn AttachAudioMixedProcessor(processor: AudioCallback) void;
-pub bind fn DetachAudioMixedProcessor(processor: AudioCallback) void;
+const LIGHTGRAY: Color = Color { r: 200, g: 200, b: 200, a: 255 };
+const GRAY: Color = Color { r: 130, g: 130, b: 130, a: 255 };
+const DARKGRAY: Color = Color { r: 80, g: 80, b: 80, a: 255 };
+const YELLOW: Color = Color { r: 253, g: 249, b: 0, a: 255 };
+const GOLD: Color = Color { r: 255, g: 203, b: 0, a: 255 };
+const ORANGE: Color = Color { r: 255, g: 161, b: 0, a: 255 };
+const PINK: Color = Color { r: 255, g: 109, b: 194, a: 255 };
+const RED: Color = Color { r: 230, g: 41, b: 55, a: 255 };
+const MAROON: Color = Color { r: 190, g: 33, b: 55, a: 255 };
+const GREEN: Color = Color { r: 0, g: 228, b: 48, a: 255 };
+const LIME: Color = Color { r: 0, g: 158, b: 47, a: 255 };
+const DARKGREEN: Color = Color { r: 0, g: 117, b: 44, a: 255 };
+const SKYBLUE: Color = Color { r: 102, g: 191, b: 255, a: 255 };
+const BLUE: Color = Color { r: 0, g: 121, b: 241, a: 255 };
+const DARKBLUE: Color = Color { r: 0, g: 82, b: 172, a: 255 };
+const PURPLE: Color = Color { r: 200, g: 122, b: 255, a: 255 };
+const VIOLET: Color = Color { r: 135, g: 60, b: 190, a: 255 };
+const DARKPURPLE: Color = Color { r: 112, g: 31, b: 126, a: 255 };
+const BEIGE: Color = Color { r: 211, g: 176, b: 131, a: 255 };
+const BROWN: Color = Color { r: 127, g: 106, b: 79, a: 255 };
+const DARKBROWN: Color = Color { r: 76, g: 63, b: 47, a: 255 };
+const WHITE: Color = Color { r: 255, g: 255, b: 255, a: 255 };
+const BLACK: Color = Color { r: 0, g: 0, b: 0, a: 255 };
+const BLANK: Color = Color { r: 0, g: 0, b: 0, a: 0 };
+const MAGENTA: Color = Color { r: 255, g: 0, b: 255, a: 255 };
+const RAYWHITE: Color = Color { r: 245, g: 245, b: 245, a: 255 };

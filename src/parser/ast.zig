@@ -88,6 +88,7 @@ pub const Expression = union(enum) {
     block: Expression.Block,
     call: Call,
     comparison: Comparison,
+    dereference: Dereference,
     generic: Generic,
     index: Index,
     slice: Slice,
@@ -151,6 +152,11 @@ pub const Expression = union(enum) {
         pos: utils.Position,
         parent: *const Expression,
         member_name: []const u8,
+    };
+
+    pub const Dereference = struct {
+        pos: utils.Position,
+        parent: *const Expression,
     };
 
     pub const Call = struct {

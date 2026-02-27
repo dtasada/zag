@@ -807,6 +807,15 @@ pub const Type = union(enum) {
 
                 return inner;
             },
+            .dereference => |deref| switch (try infer(compiler, deref.parent.*)) {
+                .reference => |ref| ref.inner.*,
+                else => |other| utils.printErr(
+                    error.IllegalExpression,
+                    "comperr: Invalid dereference on expression of type '{f}' ({f}).\n",
+                    .{ other, deref.pos },
+                    .red,
+                ),
+            },
         };
     }
 
