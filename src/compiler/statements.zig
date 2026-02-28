@@ -166,14 +166,12 @@ fn compoundTypeDeclaration(
         // Register struct's generic parameters if this is an instantiation
         // Check if we have generic params in outer scope
         const outer_scope_idx = self.scopes.items.len - 2; // -1 is current, -2 is outer
-        if (outer_scope_idx >= 0) switch (T) {
-            .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
+        if (outer_scope_idx >= 0 and (T == .@"struct" or T == .@"union"))
+            for (type_decl.generic_types.items) |g| {
                 // Copy from outer scope if it exists there
                 if (self.scopes.items[outer_scope_idx].items.get(g.name)) |outer_item|
                     try self.scopes.getLast().items.put(g.name, outer_item);
-            },
-            else => {},
-        };
+            };
 
         const previous_return_type = self.current_return_type;
         defer self.current_return_type = previous_return_type;

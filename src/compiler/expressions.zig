@@ -893,7 +893,8 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                         .{ @"struct".name, m.member_name, @"struct".name, @"struct".name, m.pos },
                         .red,
                     ),
-                    .@"struct" => if (!(parent.check(expected_type) or parent == .reference and parent.reference.inner.check(expected_type))) unreachable,
+                    .@"struct" => if (!(parent.check(expected_type) or parent == .reference and
+                        parent.reference.inner.check(expected_type))) unreachable,
                     else => {},
                 }
 
