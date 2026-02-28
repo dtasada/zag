@@ -1611,6 +1611,10 @@
         "required": true,
         "types": [
           {
+            "type": "*",
+            "named": false
+          },
+          {
             "type": "call_expression",
             "named": true
           },

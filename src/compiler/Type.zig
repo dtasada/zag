@@ -963,11 +963,7 @@ pub const Type = union(enum) {
 
         switch (T) {
             .@"struct", .@"union" => for (type_decl.generic_types.items) |g|
-                try compiler.registerSymbol(
-                    g.name,
-                    .{ .type = .{ .generic_param = g.name } },
-                    .{},
-                ),
+                try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } }, .{}),
             else => {},
         }
 
@@ -1044,8 +1040,7 @@ pub const Type = union(enum) {
         }
 
         for (type_decl.methods.items, 0..) |method, i| {
-            var params: std.ArrayList(Function.Param) = .empty;
-            try params.ensureTotalCapacity(compiler.alloc, method.parameters.items.len);
+            var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.parameters.items.len);
 
             for (method.parameters.items) |p|
                 params.appendAssumeCapacity(.{
@@ -1053,8 +1048,7 @@ pub const Type = union(enum) {
                     .type = try .fromAst(compiler, p.type),
                 });
 
-            var generic_params: std.ArrayList(Function.Param) = .empty;
-            try generic_params.ensureTotalCapacity(compiler.alloc, method.generic_parameters.items.len);
+            var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.generic_parameters.items.len);
             for (method.generic_parameters.items) |p|
                 generic_params.appendAssumeCapacity(.{
                     .name = p.name,

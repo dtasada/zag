@@ -226,13 +226,13 @@ pub struct Vector3 {
         // Ref.: https://en.wikipedia.org/w/index.php?title=Euler%E2%80%93Rodrigues_formula
 
         let mut result = v;
-        let axis = axis.normalize();
+        let axis_ = axis.normalize();
 
         let mut mut_angle = angle / 2.0;
         let mut a = std.sin<f32>(mut_angle);
-        let b = axis.x*a;
-        let c = axis.y*a;
-        let d = axis.z*a;
+        let b = axis_.x*a;
+        let c = axis_.y*a;
+        let d = axis_.z*a;
         a = std.cos<f32>(mut_angle);
         let w = Vector3.init(b, c, d);
 

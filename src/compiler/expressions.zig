@@ -867,8 +867,12 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 
                 const first_type = method.params.items[0].type;
                 if (!first_type.check(parent) and
-                    (first_type != .reference or !first_type.reference.inner.check(parent)))
+                    (first_type != .reference or !first_type.reference.inner.check(parent)) and
+                    (parent != .reference or !parent.reference.inner.check(first_type)))
+                {
+                    std.debug.print("first_type: {f}, parent: {f}\n", .{ first_type, parent });
                     return errors.notAnInstanceMethod(@"struct".name, m.member_name, m.pos);
+                }
             }
 
             const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
@@ -889,7 +893,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                         .{ @"struct".name, m.member_name, @"struct".name, @"struct".name, m.pos },
                         .red,
                     ),
-                    .@"struct" => if (!expected_type.eql(parent)) unreachable,
+                    .@"struct" => if (!(parent.check(expected_type) or parent == .reference and parent.reference.inner.check(expected_type))) unreachable,
                     else => {},
                 }
 

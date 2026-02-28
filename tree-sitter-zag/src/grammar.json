@@ -1709,6 +1709,35 @@
           "value": "|"
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "&"
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": "mut"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "FIELD",
           "name": "identifier",
           "content": {
@@ -2282,6 +2311,10 @@
             "content": {
               "type": "CHOICE",
               "members": [
+                {
+                  "type": "STRING",
+                  "value": "*"
+                },
                 {
                   "type": "SYMBOL",
                   "name": "ident"

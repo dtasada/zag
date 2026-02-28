@@ -321,6 +321,7 @@ export default grammar({
 
     capture: $ => seq(
       "|",
+      optional(seq("&", optional("mut"))),
       field("identifier", $.ident),
       "|",
     ),
@@ -454,6 +455,7 @@ export default grammar({
       field("lhs", $.expression),
       ".",
       field("rhs", choice(
+        "*",
         $.ident,
         $.call_expression,
         $.expression,
