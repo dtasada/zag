@@ -65,11 +65,11 @@ pub fn compile(
             .reference => |ref| if (received_type == .slice and
                 received_type.slice.inner.* == .u8 and
                 ref.inner.* == .c_char)
-            {
-                try self.print("\"{s}\"", .{expression.string.string});
-            } else try compile(self, expression, .{ .binding_mut = opts.binding_mut }),
-            else => try compile(self, expression, .{ .binding_mut = opts.binding_mut }),
-        } else try compile(self, expression, .{ .binding_mut = opts.binding_mut });
+                try self.print("\"{s}\"", .{expression.string.string})
+            else
+                try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
+            else => try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
+        } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration });
     } else switch (expression.*) {
         .assignment => |a| try assignment(self, a),
         .block => |blk| try block(self, blk),
@@ -482,7 +482,7 @@ fn unionInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiati
 
     try self.print(".payload = {{ .{s} = ", .{m.member_name});
     try compile(self, &payload_val, .{
-        .expected_type = m.member_type.*,
+        .expected_type = m.member_type,
         .is_variable_declaration = true,
     });
     try self.write(" } }");
@@ -604,7 +604,11 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
         },
         .index => |idx| continue :b idx.lhs.*,
         .slice => |slc| continue :b slc.lhs.*,
-        .dereference => |deref| continue :b deref.parent.*,
+        .dereference => |deref| {
+            if (deref.parent.* != .ident) continue :b deref.parent.*;
+            const t = try self.getSymbolType(deref.parent.ident.ident);
+            if (!(t == .reference and t.reference.is_mut)) continue :b deref.parent.*;
+        },
         else => |other| return utils.printErr(
             error.IllegalExpression,
             "comperr: Illegal assignment expression on {s} ({f}).\n",
@@ -708,7 +712,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                 switch (static_type) {
                     .@"struct" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
                         .variable => |v| return errors.expressionNotCallable(v.type, call_expr.callee.getPosition()),
-                        .member => |member_type| return errors.expressionNotCallable(member_type.*, call_expr.callee.getPosition()),
+                        .member => |member_type| return errors.expressionNotCallable(member_type, call_expr.callee.getPosition()),
                         .method => |method| {
                             try functionCall(self, .{
                                 .name = method.inner_name,
@@ -869,10 +873,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 if (!first_type.check(parent) and
                     (first_type != .reference or !first_type.reference.inner.check(parent)) and
                     (parent != .reference or !parent.reference.inner.check(first_type)))
-                {
-                    std.debug.print("first_type: {f}, parent: {f}\n", .{ first_type, parent });
                     return errors.notAnInstanceMethod(@"struct".name, m.member_name, m.pos);
-                }
             }
 
             const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;

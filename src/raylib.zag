@@ -344,11 +344,11 @@ pub struct Vector3 {
 
     // Clamp the magnitude of the vector between two values
     pub fn clamp_value(v: Vector3, min, max: f32) Vector3 {
-        let length = v.length_sqr();
-        if (length > 0.0) {
-            let length = std.sqrt<f32>(length);
-            let scale = if (length < min) min/length
-                else if (length > max) max/length
+        let mut length_ = v.length_sqr();
+        if (length_ > 0.0) {
+            length_ = std.sqrt<f32>(length);
+            let scale = if (length_ < min) min/length
+                else if (length_ > max) max/length
                 else 1.0;
             return v.scale(scale);
         }
@@ -469,9 +469,9 @@ pub struct Quaternion {
     pub fn length(q: Quaternion) f32 -> std.sqrt<f32>(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w)
 
     pub fn normalize(q: Quaternion) Quaternion {
-        let length = q.length();
-        if (length == 0.0) return q;
-        let ilength = 1.0 / length;
+        let length_ = q.length();
+        if (length_ == 0.0) return q;
+        let ilength = 1.0 / length_;
         return Quaternion.init(q.x*ilength, q.y*ilength, q.z*ilength, q.w*ilength);
     }
 
@@ -517,13 +517,13 @@ pub struct Quaternion {
             cosHalfTheta = -cosHalfTheta;
         }
 
-        if (std.abs(cosHalfTheta) >= 1.0) return q1;
+        if (std.abs<f32>(cosHalfTheta) >= 1.0) return q1;
         if (cosHalfTheta > 0.95) return q1.nlerp(q2, amount);
 
-        let halfTheta = std.acos(cosHalfTheta);
-        let sinHalfTheta = std.sqrt(1.0 - cosHalfTheta*cosHalfTheta);
+        let halfTheta = std.acos<f32>(cosHalfTheta);
+        let sinHalfTheta = std.sqrt<f32>(1.0 - cosHalfTheta*cosHalfTheta);
 
-        if (std.abs(sinHalfTheta) < EPSILON) {
+        if (std.abs<f32>(sinHalfTheta) < EPSILON) {
             return Quaternion.init(
                 (q1.x*0.5 + q2.x*0.5),
                 (q1.y*0.5 + q2.y*0.5),
@@ -532,8 +532,8 @@ pub struct Quaternion {
             );
         }
 
-        let ratioA = std.sin((1.0 - amount) * halfTheta) / sinHalfTheta;
-        let ratioB = std.sin(amount * halfTheta) / sinHalfTheta;
+        let ratioA = std.sin<f32>((1.0 - amount) * halfTheta) / sinHalfTheta;
+        let ratioB = std.sin<f32>(amount * halfTheta) / sinHalfTheta;
 
         return Quaternion.init(
             (q1.x * ratioA + q2.x * ratioB),
@@ -547,7 +547,7 @@ pub struct Quaternion {
         let cos2Theta = from.dot_product(to);
         let cross = from.cross_product(to);
 
-        let result = Quaternion.init(cross.x, cross.y, cross.z, std.sqrt(cross.length_sqr() + cos2Theta*cos2Theta) + cos2Theta);
+        let result = Quaternion.init(cross.x, cross.y, cross.z, std.sqrt<f32>(cross.length_sqr() + cos2Theta*cos2Theta) + cos2Theta);
         return result.normalize();
     }
 
@@ -575,7 +575,7 @@ pub struct Quaternion {
             biggestIndex = 3;
         }
 
-        let biggestVal = std.sqrt(fourBiggestSquaredMinus1 + 1.0) * 0.5;
+        let biggestVal = std.sqrt<f32>(fourBiggestSquaredMinus1 + 1.0) * 0.5;
         let mult = 0.25 / biggestVal;
 
         match (biggestIndex) {
@@ -632,22 +632,22 @@ pub struct Quaternion {
         let mut result = Quaternion.identity();
         let angle = angle * 0.5;
         let axis = axis.normalize();
-        let sinres = std.sin(angle);
+        let sinres = std.sin<f32>(angle);
 
         result.x = axis.x * sinres;
         result.y = axis.y * sinres;
         result.z = axis.z * sinres;
-        result.w = std.cos(angle);
+        result.w = std.cos<f32>(angle);
 
         return result.normalize();
     }
 
     pub fn to_axis_angle(q: Quaternion, outAxis: &mut Vector3, outAngle: &mut f32) void {
         let mut q = q;
-        if (std.abs(q.w) > 1.0) q = q.normalize();
+        if (std.abs<f32>(q.w) > 1.0) q = q.normalize();
 
-        outAngle.* = 2.0 * std.acos(q.w);
-        let den = std.sqrt(1.0 - q.w*q.w);
+        outAngle.* = 2.0 * std.acos<f32>(q.w);
+        let den = std.sqrt<f32>(1.0 - q.w*q.w);
 
         if (den > EPSILON) {
             outAxis.x = q.x / den;
@@ -659,12 +659,12 @@ pub struct Quaternion {
     }
 
     pub fn from_euler(pitch: f32, yaw: f32, roll: f32) Quaternion {
-        let x0 = std.cos(pitch * 0.5);
-        let x1 = std.sin(pitch * 0.5);
-        let y0 = std.cos(yaw * 0.5);
-        let y1 = std.sin(yaw * 0.5);
-        let z0 = std.cos(roll * 0.5);
-        let z1 = std.sin(roll * 0.5);
+        let x0 = std.cos<f32>(pitch * 0.5);
+        let x1 = std.sin<f32>(pitch * 0.5);
+        let y0 = std.cos<f32>(yaw * 0.5);
+        let y1 = std.sin<f32>(yaw * 0.5);
+        let z0 = std.cos<f32>(roll * 0.5);
+        let z1 = std.sin<f32>(roll * 0.5);
 
         return Quaternion.init(
             x1 * y0 * z0 - x0 * y1 * z1,
@@ -677,16 +677,16 @@ pub struct Quaternion {
     pub fn to_euler(q: Quaternion) Vector3 {
         let x0 = 2.0 * (q.w * q.x + q.y * q.z);
         let x1 = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
-        let x = std.atan2(x0, x1);
+        let x = std.atan2<f32>(x0, x1);
 
         let mut y0 = 2.0 * (q.w * q.y - q.z * q.x);
         y0 = if (y0 > 1.0) 1.0 else y0;
         y0 = if (y0 < -1.0) -1.0 else y0;
-        let y = std.asin(y0);
+        let y = std.asin<f32>(y0);
 
         let z0 = 2.0 * (q.w * q.z + q.x * q.y);
         let z1 = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
-        let z = std.atan2(z0, z1);
+        let z = std.atan2<f32>(z0, z1);
 
         return Vector3.init(x, y, z);
     }
@@ -699,14 +699,14 @@ pub struct Quaternion {
     )
 
     pub fn eq(p: Quaternion, q: Quaternion) bool ->
-        (((std.abs(p.x - q.x)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.x), std.abs(q.x))))) and
-        ((std.abs(p.y - q.y)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.y), std.abs(q.y))))) and
-        ((std.abs(p.z - q.z)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.z), std.abs(q.z))))) and
-        ((std.abs(p.w - q.w)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.w), std.abs(q.w)))))) or
-        (((std.abs(p.x + q.x)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.x), std.abs(q.x))))) and
-        ((std.abs(p.y + q.y)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.y), std.abs(q.y))))) and
-        ((std.abs(p.z + q.z)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.z), std.abs(q.z))))) and
-        ((std.abs(p.w + q.w)) <= (EPSILON*std.max(1.0, std.max(std.abs(p.w), std.abs(q.w))))))
+        (((std.abs<f32>(p.x - q.x)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.x), std.abs<f32>(q.x))))) and
+        ((std.abs<f32>(p.y - q.y)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.y), std.abs<f32>(q.y))))) and
+        ((std.abs<f32>(p.z - q.z)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.z), std.abs<f32>(q.z))))) and
+        ((std.abs<f32>(p.w - q.w)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.w), std.abs<f32>(q.w)))))) or
+        (((std.abs<f32>(p.x + q.x)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.x), std.abs<f32>(q.x))))) and
+        ((std.abs<f32>(p.y + q.y)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.y), std.abs<f32>(q.y))))) and
+        ((std.abs<f32>(p.z + q.z)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.z), std.abs<f32>(q.z))))) and
+        ((std.abs<f32>(p.w + q.w)) <= (EPSILON*std.max<f32>(1.0, std.max<f32>(std.abs<f32>(p.w), std.abs<f32>(q.w))))))
 }
 
 // Matrix, 4x4 components, column major, OpenGL style, right-handed
@@ -974,7 +974,7 @@ pub struct Matrix {
 
     // NOTE: Fovy angle must be provided in radians
     pub fn perspective(fovY: f64, aspect: f64, near: f64, far: f64) Matrix {
-        let top = near * std.tan(fovY * 0.5);
+        let top = near * std.tan<f32>(fovY * 0.5);
         let bottom = -top;
         let right = top * aspect;
         let left = -right;
@@ -1035,7 +1035,7 @@ pub struct Matrix {
 
     // Decompose a transformation matrix into its rotational, translational and scaling components and remove shear
     // TODO: This function is not following raymath conventions defined in header: NOT self-contained
-    pub fn MatrixDecompose(mat: Matrix, translation: &mut Vector3, rotation: &mut Quaternion, scale: &mut Vector3) void {
+    pub fn decompose(mat: Matrix, translation: &mut Vector3, rotation: &mut Quaternion, scale: &mut Vector3) void {
         let eps: f32 = 1e-9;
 
         // Extract Translation
@@ -1045,16 +1045,16 @@ pub struct Matrix {
 
         // Matrix Columns - Rotation will be extracted into here.
         let mut matColumns = [_]Vector3{
-            rl.Vector3.init(mat.m0, mat.m4, mat.m8),
-            rl.Vector3.init(mat.m1, mat.m5, mat.m9),
-            rl.Vector3.init(mat.m2, mat.m6, mat.m10)
+            Vector3.init(mat.m0, mat.m4, mat.m8),
+            Vector3.init(mat.m1, mat.m5, mat.m9),
+            Vector3.init(mat.m2, mat.m6, mat.m10)
         };
 
         // Shear Parameters XY, XZ, and YZ (extract and ignored)
-        let shear = [_]f32{ 0, 0, 0 };
+        let mut shear = [_]f32{ 0, 0, 0 };
 
         // Normalized Scale Parameters
-        let mut scl = rl.Vector3.zero();
+        let mut scl = Vector3.zero();
 
         // Max-Normalizing helps numerical stability
         let mut stabilizer = eps;
@@ -1749,14 +1749,14 @@ pub enum NPatchLayout {
     THREE_PATCH_HORIZONTAL,
 }
 
-pub const TraceLogCallback = fn(logLevel: i32, text: &u8, args...) void;
-pub const LoadFileDataCallback = fn(fileName: &u8, bytesRead: &mut u32) &u8;
-pub const SaveFileDataCallback = fn(fileName: &u8, data: &mut void, bytesToWrite: u32) bool;
-pub const LoadFileTextCallback = fn(fileName: &u8) &u8;
-pub const SaveFileTextCallback = fn(fileName: &u8, text: &mut u8) bool;
+pub const TraceLogCallback = fn(logLevel: i32, text: &c_char, args...) void;
+pub const LoadFileDataCallback = fn(fileName: &c_char, bytesRead: &mut u32) &c_char;
+pub const SaveFileDataCallback = fn(fileName: &c_char, data: &mut void, bytesToWrite: u32) bool;
+pub const LoadFileTextCallback = fn(fileName: &c_char) &c_char;
+pub const SaveFileTextCallback = fn(fileName: &c_char, text: &mut u8) bool;
 pub const AudioCallback = fn(bufferData: &mut void, frames: u32) void;
 
-pub bind fn InitWindow(width: i32, height: i32, title: &u8) void;
+pub bind fn InitWindow(width: i32, height: i32, title: &c_char) void;
 pub bind fn CloseWindow() void;
 pub bind fn WindowShouldClose() bool;
 pub bind fn IsWindowReady() bool;
@@ -1774,7 +1774,7 @@ pub bind fn MaximizeWindow() void;
 pub bind fn MinimizeWindow() void;
 pub bind fn RestoreWindow() void;
 pub bind fn SetWindowIcon(image: Image) void;
-pub bind fn SetWindowTitle(title: &u8) void;
+pub bind fn SetWindowTitle(title: &c_char) void;
 pub bind fn SetWindowPosition(x: i32, y: i32) void;
 pub bind fn SetWindowMonitor(monitor: i32) void;
 pub bind fn SetWindowMinSize(width: i32, height: i32) void;
@@ -1792,9 +1792,9 @@ pub bind fn GetMonitorPhysicalHeight(monitor: i32) i32;
 pub bind fn GetMonitorRefreshRate(monitor: i32) i32;
 pub bind fn GetWindowPosition() Vector2;
 pub bind fn GetWindowScaleDPI() Vector2;
-pub bind fn GetMonitorName(monitor: i32) &u8;
-pub bind fn SetClipboardText(text: &u8) void;
-pub bind fn GetClipboardText() &u8;
+pub bind fn GetMonitorName(monitor: i32) &c_char;
+pub bind fn SetClipboardText(text: &c_char) void;
+pub bind fn GetClipboardText() &c_char;
 pub bind fn ShowCursor() void;
 pub bind fn HideCursor() void;
 pub bind fn IsCursorHidden() bool;
@@ -1820,10 +1820,10 @@ pub bind fn BeginVrStereoMode(config: VrStereoConfig) void;
 pub bind fn EndVrStereoMode() void;
 pub bind fn LoadVrStereoConfig(device: VrDeviceInfo) VrStereoConfig;
 pub bind fn UnloadVrStereoConfig(config: VrStereoConfig) void;
-pub bind fn LoadShader(vsFileName: &u8, fsFileName: &u8) Shader;
-pub bind fn LoadShaderFromMemory(vsCode: &u8, fsCode: &u8) Shader;
-pub bind fn GetShaderLocation(shader: Shader, uniformName: &u8) i32;
-pub bind fn GetShaderLocationAttrib(shader: Shader, attribName: &u8) i32;
+pub bind fn LoadShader(vsFileName: &c_char, fsFileName: &c_char) Shader;
+pub bind fn LoadShaderFromMemory(vsCode: &c_char, fsCode: &c_char) Shader;
+pub bind fn GetShaderLocation(shader: Shader, uniformName: &c_char) i32;
+pub bind fn GetShaderLocationAttrib(shader: Shader, attribName: &c_char) i32;
 pub bind fn SetShaderValue(shader: Shader, locIndex: i32, value: &void, uniformType: i32) void;
 pub bind fn SetShaderValueV(shader: Shader, locIndex: i32, value: &void, uniformType: i32, count: i32) void;
 pub bind fn SetShaderValueMatrix(shader: Shader, locIndex: i32, mat: Matrix) void;
@@ -1842,52 +1842,52 @@ pub bind fn GetFrameTime() f32;
 pub bind fn GetTime() f64;
 pub bind fn GetRandomValue(min: i32, max: i32) i32;
 pub bind fn SetRandomSeed(seed: u32) void;
-pub bind fn TakeScreenshot(fileName: &u8) void;
+pub bind fn TakeScreenshot(fileName: &c_char) void;
 pub bind fn SetConfigFlags(flags: u32) void;
-pub bind fn TraceLog(logLevel: i32, text: &u8, args...) void;
+pub bind fn TraceLog(logLevel: i32, text: &c_char, args...) void;
 pub bind fn SetTraceLogLevel(logLevel: i32) void;
 pub bind fn MemAlloc(size: u32) &mut void;
 pub bind fn MemRealloc(ptr: &mut void, size: u32) &mut void;
 pub bind fn MemFree(ptr: &mut void) void;
-pub bind fn OpenURL(url: &u8) void;
+pub bind fn OpenURL(url: &c_char) void;
 pub bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
 pub bind fn SetLoadFileDataCallback(callback: LoadFileDataCallback) void;
 pub bind fn SetSaveFileDataCallback(callback: SaveFileDataCallback) void;
 pub bind fn SetLoadFileTextCallback(callback: LoadFileTextCallback) void;
 pub bind fn SetSaveFileTextCallback(callback: SaveFileTextCallback) void;
-pub bind fn LoadFileData(fileName: &u8, bytesRead: &mut u32) &u8;
-pub bind fn UnloadFileData(data: &u8) void;
-pub bind fn SaveFileData(fileName: &u8, data: &mut void, bytesToWrite: u32) bool;
-pub bind fn LoadFileText(fileName: &u8) &u8;
-pub bind fn UnloadFileText(text: &u8) void;
-pub bind fn SaveFileText(fileName: &u8, text: &mut u8) bool;
-pub bind fn FileExists(fileName: &u8) bool;
-pub bind fn DirectoryExists(dirPath: &u8) bool;
-pub bind fn IsFileExtension(fileName: &u8, ext: &u8) bool;
-pub bind fn GetFileLength(fileName: &u8) i32;
-pub bind fn GetFileExtension(fileName: &u8) &u8;
-pub bind fn GetFileName(filePath: &u8) &u8;
-pub bind fn GetFileNameWithoutExt(filePath: &u8) &u8;
-pub bind fn GetDirectoryPath(filePath: &u8) &u8;
-pub bind fn GetPrevDirectoryPath(dirPath: &u8) &u8;
-pub bind fn GetWorkingDirectory() &u8;
-pub bind fn GetApplicationDirectory() &u8;
-pub bind fn ChangeDirectory(dir: &u8) bool;
-pub bind fn IsPathFile(path: &u8) bool;
-pub bind fn LoadDirectoryFiles(dirPath: &u8) FilePathList;
-pub bind fn LoadDirectoryFilesEx(basePath: &u8, filter: &u8, scanSubdirs: bool) FilePathList;
+pub bind fn LoadFileData(fileName: &c_char, bytesRead: &mut u32) &c_char;
+pub bind fn UnloadFileData(data: &c_char) void;
+pub bind fn SaveFileData(fileName: &c_char, data: &mut void, bytesToWrite: u32) bool;
+pub bind fn LoadFileText(fileName: &c_char) &c_char;
+pub bind fn UnloadFileText(text: &c_char) void;
+pub bind fn SaveFileText(fileName: &c_char, text: &mut u8) bool;
+pub bind fn FileExists(fileName: &c_char) bool;
+pub bind fn DirectoryExists(dirPath: &c_char) bool;
+pub bind fn IsFileExtension(fileName: &c_char, ext: &c_char) bool;
+pub bind fn GetFileLength(fileName: &c_char) i32;
+pub bind fn GetFileExtension(fileName: &c_char) &c_char;
+pub bind fn GetFileName(filePath: &c_char) &c_char;
+pub bind fn GetFileNameWithoutExt(filePath: &c_char) &c_char;
+pub bind fn GetDirectoryPath(filePath: &c_char) &c_char;
+pub bind fn GetPrevDirectoryPath(dirPath: &c_char) &c_char;
+pub bind fn GetWorkingDirectory() &c_char;
+pub bind fn GetApplicationDirectory() &c_char;
+pub bind fn ChangeDirectory(dir: &c_char) bool;
+pub bind fn IsPathFile(path: &c_char) bool;
+pub bind fn LoadDirectoryFiles(dirPath: &c_char) FilePathList;
+pub bind fn LoadDirectoryFilesEx(basePath: &c_char, filter: &c_char, scanSubdirs: bool) FilePathList;
 pub bind fn UnloadDirectoryFiles(files: FilePathList) void;
 pub bind fn IsFileDropped() bool;
 pub bind fn LoadDroppedFiles() FilePathList;
 pub bind fn UnloadDroppedFiles(files: FilePathList) void;
-pub bind fn GetFileModTime(fileName: &u8) i64;
-pub bind fn CompressData(data: &u8, dataLength: i32, compDataLength: &mut i32) &u8;
-pub bind fn DecompressData(compData: &u8, compDataLength: i32, dataLength: &mut i32) &u8;
-pub bind fn EncodeDataBase64(data: &u8, dataLength: i32, outputLength: &mut i32) &u8;
-pub bind fn DecodeDataBase64(data: &u8, outputLength: &mut i32) &u8;
-pub bind fn LoadAutomationEventList(fileName: &u8) AutomationEventList;
+pub bind fn GetFileModTime(fileName: &c_char) i64;
+pub bind fn CompressData(data: &c_char, dataLength: i32, compDataLength: &mut i32) &c_char;
+pub bind fn DecompressData(compData: &c_char, compDataLength: i32, dataLength: &mut i32) &c_char;
+pub bind fn EncodeDataBase64(data: &c_char, dataLength: i32, outputLength: &mut i32) &c_char;
+pub bind fn DecodeDataBase64(data: &c_char, outputLength: &mut i32) &c_char;
+pub bind fn LoadAutomationEventList(fileName: &c_char) AutomationEventList;
 pub bind fn UnloadAutomationEventList(list: &mut AutomationEventList) void;
-pub bind fn ExportAutomationEventList(list: AutomationEventList, fileName: &u8) bool;
+pub bind fn ExportAutomationEventList(list: AutomationEventList, fileName: &c_char) bool;
 pub bind fn SetAutomationEventList(list: &mut AutomationEventList) void;
 pub bind fn SetAutomationEventBaseFrame(frame: i32) void;
 pub bind fn StartAutomationEventRecording() void;
@@ -1901,7 +1901,7 @@ pub bind fn SetExitKey(key: i32) void;
 pub bind fn GetKeyPressed() i32;
 pub bind fn GetCharPressed() i32;
 pub bind fn IsGamepadAvailable(gamepad: i32) bool;
-pub bind fn GetGamepadName(gamepad: i32) &u8;
+pub bind fn GetGamepadName(gamepad: i32) &c_char;
 pub bind fn IsGamepadButtonPressed(gamepad: i32, button: i32) bool;
 pub bind fn IsGamepadButtonDown(gamepad: i32, button: i32) bool;
 pub bind fn IsGamepadButtonReleased(gamepad: i32, button: i32) bool;
@@ -1909,7 +1909,7 @@ pub bind fn IsGamepadButtonUp(gamepad: i32, button: i32) bool;
 pub bind fn GetGamepadButtonPressed() i32;
 pub bind fn GetGamepadAxisCount(gamepad: i32) i32;
 pub bind fn GetGamepadAxisMovement(gamepad: i32, axis: i32) f32;
-pub bind fn SetGamepadMappings(mappings: &u8) i32;
+pub bind fn SetGamepadMappings(mappings: &c_char) i32;
 pub bind fn IsMouseButtonPressed(button: i32) bool;
 pub bind fn IsMouseButtonDown(button: i32) bool;
 pub bind fn IsMouseButtonReleased(button: i32) bool;
@@ -1989,15 +1989,15 @@ pub bind fn CheckCollisionPointTriangle(point: Vector2, p1: Vector2, p2: Vector2
 pub bind fn CheckCollisionLines(startPos1: Vector2, endPos1: Vector2, startPos2: Vector2, endPos2: Vector2, collisionPoint: &mut Vector2) bool;
 pub bind fn CheckCollisionPointLine(point: Vector2, p1: Vector2, p2: Vector2, threshold: i32) bool;
 pub bind fn GetCollisionRec(rec1: Rectangle, rec2: Rectangle) Rectangle;
-pub bind fn LoadImage(fileName: &u8) Image;
-pub bind fn LoadImageRaw(fileName: &u8, width: i32, height: i32, format: i32, headerSize: i32) Image;
-pub bind fn LoadImageAnim(fileName: &u8, frames: &mut i32) Image;
-pub bind fn LoadImageFromMemory(fileType: &u8, fileData: &u8, dataSize: i32) Image;
+pub bind fn LoadImage(fileName: &c_char) Image;
+pub bind fn LoadImageRaw(fileName: &c_char, width: i32, height: i32, format: i32, headerSize: i32) Image;
+pub bind fn LoadImageAnim(fileName: &c_char, frames: &mut i32) Image;
+pub bind fn LoadImageFromMemory(fileType: &c_char, fileData: &c_char, dataSize: i32) Image;
 pub bind fn LoadImageFromTexture(texture: Texture2D) Image;
 pub bind fn LoadImageFromScreen() Image;
 pub bind fn UnloadImage(image: Image) void;
-pub bind fn ExportImage(image: Image, fileName: &u8) bool;
-pub bind fn ExportImageAsCode(image: Image, fileName: &u8) bool;
+pub bind fn ExportImage(image: Image, fileName: &c_char) bool;
+pub bind fn ExportImageAsCode(image: Image, fileName: &c_char) bool;
 pub bind fn GenImageColor(width: i32, height: i32, color: Color) Image;
 pub bind fn GenImageGradientV(width: i32, height: i32, top: Color, bottom: Color) Image;
 pub bind fn GenImageGradientH(width: i32, height: i32, left: Color, right: Color) Image;
@@ -2007,8 +2007,8 @@ pub bind fn GenImageWhiteNoise(width: i32, height: i32, factor: f32) Image;
 pub bind fn GenImageCellular(width: i32, height: i32, tileSize: i32) Image;
 pub bind fn ImageCopy(image: Image) Image;
 pub bind fn ImageFromImage(image: Image, rec: Rectangle) Image;
-pub bind fn ImageText(text: &u8, fontSize: i32, color: Color) Image;
-pub bind fn ImageTextEx(font: Font, text: &u8, fontSize: f32, spacing: f32, tint: Color) Image;
+pub bind fn ImageText(text: &c_char, fontSize: i32, color: Color) Image;
+pub bind fn ImageTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32, tint: Color) Image;
 pub bind fn ImageFormat(image: &mut Image, newFormat: i32) void;
 pub bind fn ImageToPOT(image: &mut Image, fill: Color) void;
 pub bind fn ImageCrop(image: &mut Image, crop: Rectangle) void;
@@ -2051,9 +2051,9 @@ pub bind fn ImageDrawRectangleV(dst: &mut Image, position: Vector2, size: Vector
 pub bind fn ImageDrawRectangleRec(dst: &mut Image, rec: Rectangle, color: Color) void;
 pub bind fn ImageDrawRectangleLines(dst: &mut Image, rec: Rectangle, thick: i32, color: Color) void;
 pub bind fn ImageDraw(dst: &mut Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color) void;
-pub bind fn ImageDrawText(dst: &mut Image, text: &u8, posX: i32, posY: i32, fontSize: i32, color: Color) void;
-pub bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &u8, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-pub bind fn LoadTexture(fileName: &u8) Texture2D;
+pub bind fn ImageDrawText(dst: &mut Image, text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
+pub bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+pub bind fn LoadTexture(fileName: &c_char) Texture2D;
 pub bind fn LoadTextureFromImage(image: Image) Texture2D;
 pub bind fn LoadTextureCubemap(image: Image, layout: i32) TextureCubemap;
 pub bind fn LoadRenderTexture(width: i32, height: i32) RenderTexture2D;
@@ -2085,47 +2085,47 @@ pub bind fn GetPixelColor(srcPtr: &mut void, format: i32) Color;
 pub bind fn SetPixelColor(dstPtr: &mut void, color: Color, format: i32) void;
 pub bind fn GetPixelDataSize(width: i32, height: i32, format: i32) i32;
 pub bind fn GetFontDefault() Font;
-pub bind fn LoadFont(fileName: &u8) Font;
-pub bind fn LoadFontEx(fileName: &u8, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
+pub bind fn LoadFont(fileName: &c_char) Font;
+pub bind fn LoadFontEx(fileName: &c_char, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
 pub bind fn LoadFontFromImage(image: Image, key: Color, firstChar: i32) Font;
-pub bind fn LoadFontFromMemory(fileType: &u8, fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
-pub bind fn LoadFontData(fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32, type: i32) &mut GlyphInfo;
+pub bind fn LoadFontFromMemory(fileType: &c_char, fileData: &c_char, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
+pub bind fn LoadFontData(fileData: &c_char, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32, type: i32) &mut GlyphInfo;
 pub bind fn GenImageFontAtlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image;
 pub bind fn UnloadFontData(chars: &mut GlyphInfo, glyphCount: i32) void;
 pub bind fn UnloadFont(font: Font) void;
-pub bind fn ExportFontAsCode(font: Font, fileName: &u8) bool;
+pub bind fn ExportFontAsCode(font: Font, fileName: &c_char) bool;
 pub bind fn DrawFPS(posX: i32, posY: i32) void;
-pub bind fn DrawText(text: &u8, posX: i32, posY: i32, fontSize: i32, color: Color) void;
-pub bind fn DrawTextEx(font: Font, text: &u8, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-pub bind fn DrawTextPro(font: Font, text: &u8, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color) void;
+pub bind fn DrawText(text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
+pub bind fn DrawTextEx(font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+pub bind fn DrawTextPro(font: Font, text: &c_char, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color) void;
 pub bind fn DrawTextCodepoint(font: Font, codepoint: i32, position: Vector2, fontSize: f32, tint: Color) void;
 pub bind fn DrawTextCodepoints(font: Font, codepoints: &i32, count: i32, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-pub bind fn MeasureText(text: &u8, fontSize: i32) i32;
-pub bind fn MeasureTextEx(font: Font, text: &u8, fontSize: f32, spacing: f32) Vector2;
+pub bind fn MeasureText(text: &c_char, fontSize: i32) i32;
+pub bind fn MeasureTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32) Vector2;
 pub bind fn GetGlyphIndex(font: Font, codepoint: i32) i32;
 pub bind fn GetGlyphInfo(font: Font, codepoint: i32) GlyphInfo;
 pub bind fn GetGlyphAtlasRec(font: Font, codepoint: i32) Rectangle;
-pub bind fn LoadCodepoints(text: &u8, count: &mut i32) &mut i32;
+pub bind fn LoadCodepoints(text: &c_char, count: &mut i32) &mut i32;
 pub bind fn UnloadCodepoints(codepoints: &mut i32) void;
-pub bind fn GetCodepointCount(text: &u8) i32;
-pub bind fn GetCodepoint(text: &u8, bytesProcessed: &mut i32) i32;
-pub bind fn CodepointToUTF8(codepoint: i32, byteSize: &mut i32) &u8;
+pub bind fn GetCodepointCount(text: &c_char) i32;
+pub bind fn GetCodepoint(text: &c_char, bytesProcessed: &mut i32) i32;
+pub bind fn CodepointToUTF8(codepoint: i32, byteSize: &mut i32) &c_char;
 pub bind fn TextCodepointsToUTF8(codepoints: &i32, length: i32) &mut u8;
-pub bind fn TextCopy(dst: &mut u8, src: &u8) i32;
-pub bind fn TextIsEqual(text1: &u8, text2: &u8) bool;
-pub bind fn TextLength(text: &u8) u32;
-pub bind fn TextFormat(text: &u8, args...) &u8;
-pub bind fn TextSubtext(text: &u8, position: i32, length: i32) &mut u8;
-pub bind fn TextReplace(text: &mut u8, replace: &u8, by: &u8) &mut u8;
-pub bind fn TextInsert(text: &u8, insert: &u8, position: i32) &mut u8;
-pub bind fn TextJoin(textList: &&u8, count: i32, joiner: &u8) &mut u8;
-pub bind fn TextSplit(text: &u8, delimiter: u8, count: &mut i32) &mut &mut u8;
-pub bind fn TextAppend(text: &mut u8, append: &u8, position: &mut i32) void;
-pub bind fn TextFindIndex(text: &u8, find: &u8) i32;
-pub bind fn TextToUpper(text: &u8) &u8;
-pub bind fn TextToLower(text: &u8) &u8;
-pub bind fn TextToPascal(text: &u8) &u8;
-pub bind fn TextToInteger(text: &u8) i32;
+pub bind fn TextCopy(dst: &mut u8, src: &c_char) i32;
+pub bind fn TextIsEqual(text1: &c_char, text2: &c_char) bool;
+pub bind fn TextLength(text: &c_char) u32;
+pub bind fn TextFormat(text: &c_char, args...) &c_char;
+pub bind fn TextSubtext(text: &c_char, position: i32, length: i32) &mut u8;
+pub bind fn TextReplace(text: &mut u8, replace: &c_char, by: &c_char) &mut u8;
+pub bind fn TextInsert(text: &c_char, insert: &c_char, position: i32) &mut u8;
+pub bind fn TextJoin(textList: &&c_char, count: i32, joiner: &c_char) &mut u8;
+pub bind fn TextSplit(text: &c_char, delimiter: u8, count: &mut i32) &mut &mut u8;
+pub bind fn TextAppend(text: &mut u8, append: &c_char, position: &mut i32) void;
+pub bind fn TextFindIndex(text: &c_char, find: &c_char) i32;
+pub bind fn TextToUpper(text: &c_char) &c_char;
+pub bind fn TextToLower(text: &c_char) &c_char;
+pub bind fn TextToPascal(text: &c_char) &c_char;
+pub bind fn TextToInteger(text: &c_char) i32;
 pub bind fn DrawLine3D(startPos: Vector3, endPos: Vector3, color: Color) void;
 pub bind fn DrawPoint3D(position: Vector3, color: Color) void;
 pub bind fn DrawCircle3D(center: Vector3, radius: f32, rotationAxis: Vector3, rotationAngle: f32, color: Color) void;
@@ -2147,7 +2147,7 @@ pub bind fn DrawCylinderWiresEx(startPos: Vector3, endPos: Vector3, startRadius:
 pub bind fn DrawPlane(centerPos: Vector3, size: Vector2, color: Color) void;
 pub bind fn DrawRay(ray: Ray, color: Color) void;
 pub bind fn DrawGrid(slices: i32, spacing: f32) void;
-pub bind fn LoadModel(fileName: &u8) Model;
+pub bind fn LoadModel(fileName: &c_char) Model;
 pub bind fn LoadModelFromMesh(mesh: Mesh) Model;
 pub bind fn UnloadModel(model: Model) void;
 pub bind fn UnloadModelKeepMeshes(model: Model) void;
@@ -2179,12 +2179,12 @@ pub bind fn GenMeshTorus(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
 pub bind fn GenMeshKnot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
 pub bind fn GenMeshHeightmap(heightmap: Image, size: Vector3) Mesh;
 pub bind fn GenMeshCubicmap(cubicmap: Image, cubeSize: Vector3) Mesh;
-pub bind fn LoadMaterials(fileName: &u8, materialCount: &mut i32) &mut Material;
+pub bind fn LoadMaterials(fileName: &c_char, materialCount: &mut i32) &mut Material;
 pub bind fn GetMaterialDefault() Material;
 pub bind fn UnloadMaterial(material: Material) void;
 pub bind fn SetMaterialTexture(material: &mut Material, mapType: i32, texture: Texture2D) void;
 pub bind fn SetModelMeshMaterial(model: &mut Model, meshId: i32, materialId: i32) void;
-pub bind fn LoadModelAnimations(fileName: &u8, animCount: &mut u32) &mut ModelAnimation;
+pub bind fn LoadModelAnimations(fileName: &c_char, animCount: &mut u32) &mut ModelAnimation;
 pub bind fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: i32) void;
 pub bind fn UnloadModelAnimation(anim: ModelAnimation) void;
 pub bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: u32) void;
@@ -2201,15 +2201,15 @@ pub bind fn InitAudioDevice() void;
 pub bind fn CloseAudioDevice() void;
 pub bind fn IsAudioDeviceReady() bool;
 pub bind fn SetMasterVolume(volume: f32) void;
-pub bind fn LoadWave(fileName: &u8) Wave;
-pub bind fn LoadWaveFromMemory(fileType: &u8, fileData: &u8, dataSize: i32) Wave;
-pub bind fn LoadSound(fileName: &u8) Sound;
+pub bind fn LoadWave(fileName: &c_char) Wave;
+pub bind fn LoadWaveFromMemory(fileType: &c_char, fileData: &c_char, dataSize: i32) Wave;
+pub bind fn LoadSound(fileName: &c_char) Sound;
 pub bind fn LoadSoundFromWave(wave: Wave) Sound;
 pub bind fn UpdateSound(sound: Sound, data: &void, sampleCount: i32) void;
 pub bind fn UnloadWave(wave: Wave) void;
 pub bind fn UnloadSound(sound: Sound) void;
-pub bind fn ExportWave(wave: Wave, fileName: &u8) bool;
-pub bind fn ExportWaveAsCode(wave: Wave, fileName: &u8) bool;
+pub bind fn ExportWave(wave: Wave, fileName: &c_char) bool;
+pub bind fn ExportWaveAsCode(wave: Wave, fileName: &c_char) bool;
 pub bind fn PlaySound(sound: Sound) void;
 pub bind fn StopSound(sound: Sound) void;
 pub bind fn PauseSound(sound: Sound) void;
@@ -2226,8 +2226,8 @@ pub bind fn WaveCopy(wave: Wave) Wave;
 pub bind fn WaveCrop(wave: &mut Wave, initSample: i32, finalSample: i32) void;
 pub bind fn LoadWaveSamples(wave: Wave) &mut f32;
 pub bind fn UnloadWaveSamples(samples: &mut f32) void;
-pub bind fn LoadMusicStream(fileName: &u8) Music;
-pub bind fn LoadMusicStreamFromMemory(fileType: &u8, data: &u8, dataSize: i32) Music;
+pub bind fn LoadMusicStream(fileName: &c_char) Music;
+pub bind fn LoadMusicStreamFromMemory(fileType: &c_char, data: &c_char, dataSize: i32) Music;
 pub bind fn UnloadMusicStream(music: Music) void;
 pub bind fn PlayMusicStream(music: Music) void;
 pub bind fn IsMusicStreamPlaying(music: Music) bool;

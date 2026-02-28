@@ -17,10 +17,10 @@ struct Player {
     fn update(self: &mut Player) void {
         rl.DrawCircleV(self.position, 20.0, self.color);
 
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_W))) self.position.y -= 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_A))) self.position.x -= 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_S))) self.position.y += 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.KEY_D))) self.position.x += 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.W))) self.position.y -= 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.A))) self.position.x -= 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.S))) self.position.y += 6;
+        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.D))) self.position.x += 6;
     }
 }
 

@@ -139,7 +139,6 @@ pub fn genericArgumentCountMismatch(expected: usize, received: usize, pos: utils
 }
 
 pub fn badMutability(position: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.BadMutability,
         "comperr: Assignment expression on immutable binding ({f}).\n",

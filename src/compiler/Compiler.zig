@@ -609,6 +609,8 @@ pub fn compileBlock(
             index: []const u8,
             capture: utils.Capture,
         } = null,
+        return_type_override: ?Type = null,
+        return_type_override_is_array: bool = false,
         return_implicit_success: ?Type = null,
     },
 ) CompilerError!void {
@@ -669,13 +671,16 @@ pub fn compileBlock(
         else => try statements.compile(self, statement),
     };
 
-    if (return_expr) |e| {
-        try compileType(self, self.current_return_type.?, .{});
-        try self.write(" __zag_ret_val = ");
-        try expressions.compile(self, &e, .{
+    if (return_expr) |*e| {
+        const return_type = opts.return_type_override orelse self.current_return_type.?;
+        try self.compileVariableSignature("__zag_ret_val", return_type, .{});
+        try self.write(" = ");
+        if (opts.return_type_override_is_array) try self.print("({s}){{ .items = ", .{opts.return_type_override.?.@"struct".inner_name});
+        try expressions.compile(self, e, .{
             .is_variable_declaration = true,
             .expected_type = self.current_return_type.?,
         });
+        if (opts.return_type_override_is_array) try self.write("}");
         try self.write(";\n");
     }
 

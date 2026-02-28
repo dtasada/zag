@@ -66,7 +66,7 @@ pub const Type = union(enum) {
     fn CompoundType(T: utils.CompoundTypeTag) type {
         return struct {
             pub const MemberType = switch (T) {
-                .@"struct", .@"union" => *const Self,
+                .@"struct", .@"union" => Self,
                 .@"enum" => usize,
             };
 
@@ -877,9 +877,9 @@ pub const Type = union(enum) {
             .@"enum" => Type.Enum,
         } = if (compiler.getSymbolType(type_decl.name)) |existing| b: {
             switch (T) {
-                .@"struct" => if (existing == .@"struct" and existing.@"struct".definition != null) break :b existing.@"struct",
-                .@"union" => if (existing == .@"union" and existing.@"union".definition != null) break :b existing.@"union",
-                .@"enum" => if (existing == .@"enum" and existing.@"enum".definition != null) break :b existing.@"enum",
+                .@"struct" => if (existing == .@"struct") break :b existing.@"struct",
+                .@"union" => if (existing == .@"union") break :b existing.@"union",
+                .@"enum" => if (existing == .@"enum") break :b existing.@"enum",
             }
             // If type mismatch or not found (logic error in scan?), create new.
             // But strict forward decl implies we should find it.
@@ -1006,16 +1006,16 @@ pub const Type = union(enum) {
 
             switch (T) {
                 inline .@"struct", .@"union" => {
-                    const member_type: *const Type = switch (T) {
-                        .@"struct" => try fromAstPtr(compiler, member.type),
-                        .@"union" => if (member.type) |t| try fromAstPtr(compiler, t) else &.void,
+                    const member_type: Type = switch (T) {
+                        .@"struct" => try fromAst(compiler, member.type),
+                        .@"union" => if (member.type) |t| try fromAst(compiler, t) else .void,
                         else => unreachable,
                     };
-                    switch (member_type.*) {
+                    switch (member_type) {
                         inline .@"struct", .@"union" => |ct, tag| {
                             var inner_members = ct.members.iterator();
                             while (inner_members.next()) |inner_member| {
-                                if (inner_member.value_ptr.*.eql(@unionInit(Type, @tagName(T), compound_type)))
+                                if (inner_member.value_ptr.eql(@unionInit(Type, @tagName(T), compound_type)))
                                     return utils.printErr(
                                         error.CircularTypeDefinition,
                                         "comperr: {s} '{s}' depends on itself. Member '{s}' is of type '{s}' ({f}).\n",
@@ -1108,7 +1108,7 @@ pub const Type = union(enum) {
             .@"struct" => |@"struct"| {
                 if (@"struct".getProperty(member.member_name)) |property| switch (property) {
                     .variable => |v| return v.type,
-                    .member => |m| return m.*,
+                    .member => |m| return m,
                     .method => |method| return Type.Function.fromMethod(.@"struct", method, @"struct".module),
                 } else return utils.printErr(
                     error.UndeclaredProperty,
@@ -1119,7 +1119,7 @@ pub const Type = union(enum) {
             },
             .@"union" => |@"union"| if (@"union".getProperty(member.member_name)) |property| switch (property) {
                 .variable => |v| return v.type,
-                .member => |member_type| return member_type.*,
+                .member => |member_type| return member_type,
                 .method => |method| return Type.Function.fromMethod(.@"struct", method, @"union".module),
             } else return errors.undeclaredProperty(parent_type, member.member_name, member.pos),
             .@"enum" => |@"enum"| if (@"enum".getProperty(member.member_name)) |property| switch (property) {
@@ -1206,7 +1206,7 @@ pub const Type = union(enum) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => expected == .optional,
             .slice => |rs| switch (expected) {
-                .reference => |er| rs.inner.* == .u8 and (er.inner.* == .c_char or er.inner.* == .u8),
+                .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
                 else => fallback,
             },
             .reference => |received_ref| switch (expected) {
@@ -1332,7 +1332,7 @@ pub const Type = union(enum) {
                         var eh = std.hash.Wyhash.init(0);
                         eh.update(entry.key_ptr.*);
                         switch (t) {
-                            inline .@"struct", .@"union" => eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.*.*))),
+                            inline .@"struct", .@"union" => eh.update(std.mem.asBytes(&ctx.hash(entry.value_ptr.*))),
                             else => unreachable,
                         }
 
@@ -1442,8 +1442,8 @@ pub const Type = union(enum) {
                         const a_member = entry.value_ptr.*;
                         switch (b) {
                             inline .@"struct", .@"union" => |t| if (!ctx.eql(
-                                a_member.*,
-                                (t.members.get(name) orelse return false).*,
+                                a_member,
+                                t.members.get(name) orelse return false,
                             )) return false,
                             else => unreachable,
                         }

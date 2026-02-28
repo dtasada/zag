@@ -126,13 +126,13 @@ fn compoundTypeDeclaration(
         .@"struct" => {
             try self.compileVariableSignature(
                 member.key_ptr.*,
-                member.value_ptr.*.*,
+                member.value_ptr.*,
                 .{ .binding_mut = true }, // struct members shouldn't be const.
             );
             try self.write(";\n");
         },
         .@"union" => {
-            var t = member.value_ptr.*.*;
+            var t = member.value_ptr.*;
             if (t == .void) t = .u8;
             try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
             try self.write(";\n");
@@ -144,9 +144,7 @@ fn compoundTypeDeclaration(
         }),
     };
 
-    if (T == .@"union") {
-        try self.write("} payload;\n");
-    }
+    if (T == .@"union") try self.write("} payload;\n");
 
     try self.print("}} {s};\n\n", .{inner_name});
 
@@ -183,13 +181,36 @@ fn compoundTypeDeclaration(
             .{ .inner_name = try self.mangle(method.name) },
         );
 
+        var return_type: Type = try .fromAst(self, method.return_type);
+        const return_type_is_array = return_type == .array;
+        if (return_type == .array) {
+            const inner_type = return_type;
+            const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{return_type.hash()});
+            return_type = .{ .@"struct" = try .init(self, return_type_name, return_type_name, null) };
+            try return_type.@"struct".members.put("items", return_type);
+
+            if (self.zag_header_contents.get(return_type) == null) {
+                const saved_section_ = self.current_section;
+                self.switchSection(.header_type_defs);
+                defer self.switchSection(saved_section_);
+
+                try self.write("typedef struct {\n");
+                try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
+                try self.print(";\n}} {s};\n", .{return_type_name});
+
+                try self.zag_header_contents.put(return_type, return_type_name);
+            }
+
+            try self.write(return_type_name);
+        } else try self.compileType(return_type, .{ .binding_mut = true });
+
         if (type_decl.is_pub) {
             self.switchSection(.header_function_decls);
 
-            try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
+            try self.compileType(return_type, .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
             for (method.parameters.items, 0..) |parameter_type, i| {
-                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{ .binding_mut = parameter_type.is_mut });
+                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{ .binding_mut = true });
                 if (i < method.parameters.items.len - 1) try self.write(", ");
             }
             try self.write(");\n");
@@ -197,7 +218,6 @@ fn compoundTypeDeclaration(
             self.switchSection(.source_function_impls);
         }
 
-        try self.compileType(try .fromAst(self, method.return_type), .{ .binding_mut = true });
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
         for (method.parameters.items, 0..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
@@ -226,7 +246,11 @@ fn compoundTypeDeclaration(
             ),
         };
 
-        try self.compileBlock(method.body, .{ .return_implicit_success = inject_return });
+        try self.compileBlock(method.body, .{
+            .return_implicit_success = inject_return,
+            .return_type_override = return_type,
+            .return_type_override_is_array = return_type_is_array,
+        });
     }
 }
 
@@ -472,9 +496,6 @@ fn functionDefinition(
     else
         ast.Statement.FunctionDefinition,
 ) CompilerError!void {
-    if (std.mem.eql(u8, function_def.name, "refract")) {
-        std.debug.print("compiling refract\n", .{});
-    }
     const inner_name = if (binding_function) function_def.name else try self.mangle(function_def.name);
 
     if (self.getSymbolDefined(function_def.name)) |sd| {
