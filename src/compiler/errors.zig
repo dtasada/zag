@@ -241,3 +241,12 @@ pub fn functionMustReturn(name: []const u8, return_type: Type, pos: utils.Positi
         .red,
     );
 }
+
+pub fn notAnInstanceMethod(struct_name: []const u8, member_name: []const u8, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
+        .{ struct_name, member_name, pos },
+        .red,
+    );
+}

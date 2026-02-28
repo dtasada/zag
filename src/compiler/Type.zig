@@ -1212,7 +1212,7 @@ pub const Type = union(enum) {
             .@"typeof(undefined)" => true,
             .@"typeof(null)" => expected == .optional,
             .slice => |rs| switch (expected) {
-                .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
+                .reference => |er| rs.inner.* == .u8 and (er.inner.* == .c_char or er.inner.* == .u8),
                 else => fallback,
             },
             .reference => |received_ref| switch (expected) {

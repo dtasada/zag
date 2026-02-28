@@ -604,6 +604,7 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
         },
         .index => |idx| continue :b idx.lhs.*,
         .slice => |slc| continue :b slc.lhs.*,
+        .dereference => |deref| continue :b deref.parent.*,
         else => |other| return utils.printErr(
             error.IllegalExpression,
             "comperr: Illegal assignment expression on {s} ({f}).\n",
@@ -861,29 +862,13 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| {
             if (!is_instance_method) {
-                if (method.params.items.len == 0) return utils.printErr(
-                    error.IllegalExpression,
-                    "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
-                    .{ @"struct".name, m.member_name, m.pos },
-                    .red,
-                );
+                if (method.params.items.len == 0)
+                    return errors.notAnInstanceMethod(@"struct".name, m.member_name, m.pos);
 
-                if (!method.params.items[0].type.check(parent)) {
-                    switch (method.params.items[0].type) {
-                        .reference => |ref| if (!ref.inner.check(parent)) return utils.printErr(
-                            error.IllegalExpression,
-                            "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
-                            .{ @"struct".name, m.member_name, m.pos },
-                            .red,
-                        ),
-                        else => return utils.printErr(
-                            error.IllegalExpression,
-                            "comperr: Illegal expression: '{s}.{s}' is not an instance method ({f}).\n",
-                            .{ @"struct".name, m.member_name, m.pos },
-                            .red,
-                        ),
-                    }
-                }
+                const first_type = method.params.items[0].type;
+                if (!first_type.check(parent) and
+                    (first_type != .reference or !first_type.reference.inner.check(parent)))
+                    return errors.notAnInstanceMethod(@"struct".name, m.member_name, m.pos);
             }
 
             const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
