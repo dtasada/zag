@@ -642,9 +642,21 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
         ),
     }
 
-    try compile(self, expr.assignee, .{});
-    try self.print(" {s} ", .{@tagName(expr.op)}); // TODO: ^= will xor but it should power
-    try compile(self, expr.value, .{ .expected_type = expected_type });
+    switch (expr.op) {
+        .@"^=" => {
+            try compile(self, expr.assignee, .{});
+            try self.write(" = pow(");
+            try compile(self, expr.assignee, .{});
+            try self.write(",");
+            try compile(self, expr.value, .{ .expected_type = expected_type });
+            try self.write(")");
+        },
+        else => {
+            try compile(self, expr.assignee, .{});
+            try self.print(" {s} ", .{@tagName(expr.op)});
+            try compile(self, expr.value, .{ .expected_type = expected_type });
+        },
+    }
 }
 
 fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {

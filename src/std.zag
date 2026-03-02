@@ -1,5 +1,10 @@
 import c;
 
+enum Error {
+    ALLOC_ERROR,
+    INDEX_OUT_OF_BOUNDS,
+}
+
 pub fn abs<T>(x: T) T -> if (x >= 0) x else -x
 pub fn acos<T>(x: T) T -> c.acos(x)
 pub fn asin<T>(x: T) T -> c.asin(x)
@@ -11,9 +16,9 @@ pub fn sin<T>(x: T) T -> c.sin(x)
 pub fn sqrt<T>(x: T) T -> c.sqrt(x)
 pub fn tan<T>(x: T) T -> c.tan(x)
 
-pub fn alloc<T>() !&mut T {
+pub fn alloc<T>() Error!&mut T {
     let ptr = c.malloc(sizeof<T>());
-    if (ptr == c_null) c.printf("error allocating");
+    if (ptr == c_null) return Error.ALLOC_ERROR;
     return ptr;
 }
 
@@ -38,14 +43,14 @@ pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
 
 pub fn memcpy<T>(dst: &mut T, src: &T) void -> c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>());
 
-pub fn memcpy_slice<T>(dst: []mut T, src: []T) !void {
-    if (dst.len != src.len) return c_null;
+pub fn memcpy_slice<T>(dst: []mut T, src: []T) Error!void {
+    if (dst.len != src.len) return Error.ALLOC_ERROR;
 
     c.memcpy(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
 }
 
-pub fn memmove<T>(dst: []mut T, src: []T) !void {
-    if (dst.len != src.len) return c_null;
+pub fn memmove<T>(dst: []mut T, src: []T) Error!void {
+    if (dst.len != src.len) return Error.ALLOC_ERROR;
 
     c.memmove(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
 }
@@ -145,8 +150,8 @@ pub struct ArrayList<T> {
     //     return c_null;
     // }
 
-    pub fn remove(self: &mut ArrayList<T>, index: usize) !void {
-        if (index >= self.items.len) return c_null;
+    pub fn remove(self: &mut ArrayList<T>, index: usize) Error!void {
+        if (index >= self.items.len) return Error.INDEX_OUT_OF_BOUNDS;
 
         if (index < self.items.len - 1) {
             // Only memmove if it's not the last element

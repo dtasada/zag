@@ -332,7 +332,7 @@ pub const Type = union(enum) {
                     failure.* = if (error_union.failure) |err|
                         try fromAst(compiler, err.*)
                     else
-                        .{ .reference = .{ .inner = &.void, .is_mut = false } };
+                        .void;
 
                     break :b .{ .success = success, .failure = failure };
                 },
@@ -1295,32 +1295,26 @@ pub const Type = union(enum) {
 
             switch (t) {
                 .optional => |inner| h.update(std.mem.asBytes(&ctx.hash(inner.*))),
-
                 .reference => |r| {
                     h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
                     h.update(std.mem.asBytes(&r.is_mut));
                 },
-
                 .slice => |r| {
                     h.update(std.mem.asBytes(&ctx.hash(r.inner.*)));
                 },
-
                 .array => |a| {
                     h.update(std.mem.asBytes(&ctx.hash(a.inner.*)));
                     h.update(std.mem.asBytes(&a.size));
                 },
-
                 .error_union => |e| {
                     h.update(std.mem.asBytes(&ctx.hash(e.success.*)));
                     h.update(std.mem.asBytes(&ctx.hash(e.failure.*)));
                 },
-
                 .function => |f| {
                     for (f.params.items) |p| h.update(std.mem.asBytes(&ctx.hash(p.type)));
                     for (f.generic_params.items) |p| h.update(std.mem.asBytes(&ctx.hash(p.type)));
                     h.update(std.mem.asBytes(&ctx.hash(f.return_type.*)));
                 },
-
                 inline .@"struct", .@"union" => |ct| {
                     for (ctx.visited.items) |visit| {
                         if (visit.@"0" == @as(*const anyopaque, @ptrCast(ct.members))) {
@@ -1406,7 +1400,6 @@ pub const Type = union(enum) {
                         h.update(std.mem.asBytes(&mixed));
                     }
                 },
-
                 else => {}, // all primitives // TODO: some new non-primitive types might be getting caught into the else block
             }
 

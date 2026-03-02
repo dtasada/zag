@@ -263,7 +263,6 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
 
             const word = try atom.toOwnedSlice(alloc);
 
-            // TODO: try to replace with std.meta.stringToEnum(comptime T: type, str: []const u8)
             const token: Token = keywords.get(word) orelse .{ .ident = word };
             try self.appendToken(alloc, token);
         } else if (std.ascii.isDigit(self.currentChar())) {
