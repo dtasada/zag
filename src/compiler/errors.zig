@@ -50,6 +50,7 @@ pub fn typeMismatch(
     received_type: Type,
     position: utils.Position,
 ) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.TypeMismatch,
         "comperr: Expected '{f}', received '{f}' ({f}).\n",

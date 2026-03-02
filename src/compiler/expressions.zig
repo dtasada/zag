@@ -846,16 +846,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
             },
         },
         else => switch (try Type.infer(self, call_expr.callee.*)) {
-            .function => |function| {
-                if (function.generic_params.items.len > 0 and call_expr.callee.* != .generic)
-                    return errors.genericArgumentCountMismatch(
-                        function.generic_params.items.len,
-                        0,
-                        call_expr.pos,
-                    );
-
-                try functionCall(self, function, call_expr);
-            },
+            .function => |function| try functionCall(self, function, call_expr),
             else => |other| return errors.expressionNotCallable(other, call_expr.callee.getPosition()),
         },
     }
@@ -1053,11 +1044,13 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
     const expected_args = if (variadic_arg) |_| function.params.items.len - 1 else function.params.items.len;
     const received_args = call_expr.args.items.len;
 
-    if (variadic_arg != null and received_args < expected_args - 1) return errors.argumentCountMismatch(
-        expected_args - 1,
-        received_args,
-        call_expr.pos,
-    ) else if (expected_args != received_args) return errors.argumentCountMismatch(
+    if (variadic_arg) |_| {
+        if (received_args < expected_args) return errors.argumentCountMismatch(
+            expected_args - 1,
+            received_args,
+            call_expr.pos,
+        );
+    } else if (expected_args != received_args) return errors.argumentCountMismatch(
         expected_args,
         received_args,
         call_expr.pos,
@@ -1075,7 +1068,8 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
 
     try self.write("(");
     for (call_expr.args.items, 1..) |*e, i| {
-        try compile(self, e, .{ .expected_type = function.params.items[i - 1].type });
+        const expected_type = function.params.items[i - 1].type;
+        try compile(self, e, .{ .expected_type = if (expected_type == .variadic) null else expected_type });
         if (i < call_expr.args.items.len) try self.write(", ");
     }
     try self.write(")");
