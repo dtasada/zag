@@ -785,7 +785,18 @@ pub const Type = union(enum) {
                     else => .{ .type = t },
                 };
             },
-            .match => |_| @panic("unimplemented"),
+            .match => |m| {
+                var result_type: ?Type = null;
+                for (m.cases.items) |case| {
+                    result_type = if (case.result == .expression)
+                        try .infer(compiler, case.result.expression)
+                    else if (result_type) |rt|
+                        return errors.typeMismatchMatchExpression(rt, .void, case.pos)
+                    else
+                        .void;
+                }
+                return result_type.?;
+            },
             .type => |t| .{ .type = try fromAstPtr(compiler, t) },
             .slice => |slice| switch (try infer(compiler, slice.lhs.*)) {
                 // TODO: change slice mutability to equal binding mutability of reference

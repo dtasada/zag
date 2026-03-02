@@ -674,6 +674,7 @@ pub fn compileBlock(
 
     if (return_expr) |*e| {
         const return_type = opts.return_type_override orelse self.current_return_type.?;
+        self.currentSection().current_statement = self.currentWriter().items.len;
         try self.compileVariableSignature("__zag_ret_val", return_type, .{});
         try self.write(" = ");
         if (opts.return_type_override_is_array) try self.print("({s}){{ .items = ", .{opts.return_type_override.?.@"struct".inner_name});
@@ -688,8 +689,10 @@ pub fn compileBlock(
     for (self.scopes.getLast().pending_defers.items) |pd| try statements.compile(self, pd);
 
     if (return_expr) |_| {
+        self.currentSection().current_statement = self.currentWriter().items.len;
         try self.write("return __zag_ret_val;");
     } else if (opts.return_implicit_success) |ris| {
+        self.currentSection().current_statement = self.currentWriter().items.len;
         try self.write("return (");
         try self.compileType(ris, .{});
         try self.write("){ .is_success = true, .payload.success = 0 };\n");

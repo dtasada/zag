@@ -58,6 +58,19 @@ pub fn typeMismatch(
     );
 }
 
+pub fn typeMismatchMatchExpression(
+    expected_type: Type,
+    received_type: Type,
+    position: utils.Position,
+) CompilerError {
+    return utils.printErr(
+        error.TypeMismatch,
+        "comperr: Type mismatch in match expression. All cases should evaluate to the same type. Expected '{f}', received '{f}' ({f}).\n",
+        .{ expected_type, received_type, position },
+        .red,
+    );
+}
+
 pub fn expressionNotCallable(t: Type, position: utils.Position) CompilerError {
     return utils.printErr(
         error.IllegalExpression,

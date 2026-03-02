@@ -279,7 +279,7 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
     self.popScope();
 
     self.currentSection().pos = self.currentWriter().items.len;
-    if (block_t != .void) try self.write(temp_name.?);
+    if (temp_name) |tn| try self.write(tn);
 }
 
 fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {
@@ -383,6 +383,16 @@ fn generic(self: *Self, g: ast.Expression.Generic) !void {
 }
 
 fn match(self: *Self, m: ast.Expression.Match) !void {
+    self.currentSection().pos = self.currentSection().current_statement;
+
+    const block_t: Type = try .infer(self, .{ .match = m });
+    var temp_name: ?[]const u8 = null;
+    if (block_t != .void) {
+        try self.compileType(block_t, .{ .binding_mut = true });
+        temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&m))});
+        try self.print(" {s};\n", .{temp_name.?});
+    }
+
     switch (try Type.infer(self, m.condition.*)) {
         .@"union" => |@"union"| {
             try self.write("switch ((");
@@ -410,12 +420,15 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
                                 .red,
                             ),
                         }
+
                         try self.write(":\n");
                     },
                     .@"else" => try self.write("default:\n"),
                 }
 
+                if (temp_name) |tn| try self.print("{s} = ", .{tn});
                 try statements.compile(self, &case.result);
+                if (temp_name) |_| try self.write(";");
                 try self.write("break;\n");
             }
 
@@ -436,6 +449,7 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
                     .@"else" => try self.write("default:\n"),
                 }
 
+                if (temp_name) |tn| try self.print("{s} = ", .{tn});
                 try statements.compile(self, &case.result);
                 try self.write("break;\n");
             }
@@ -449,6 +463,9 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
             .red,
         ),
     }
+
+    self.currentSection().pos = self.currentWriter().items.len;
+    if (block_t != .void) try self.write(temp_name.?);
 }
 
 fn structInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiation, t: Type.Struct) !void {

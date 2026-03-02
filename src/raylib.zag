@@ -577,33 +577,32 @@ pub struct Quaternion {
         let biggestVal = std.sqrt<f32>(fourBiggestSquaredMinus1 + 1.0) * 0.5;
         let mult = 0.25 / biggestVal;
 
-        match (biggestIndex) {
-            0 -> {
-                result.w = biggestVal;
-                result.x = (mat.m6 - mat.m9) * mult;
-                result.y = (mat.m8 - mat.m2) * mult;
-                result.z = (mat.m1 - mat.m4) * mult;
-            },
-            1 -> {
-                result.x = biggestVal;
-                result.w = (mat.m6 - mat.m9) * mult;
-                result.y = (mat.m1 + mat.m4) * mult;
-                result.z = (mat.m8 + mat.m2) * mult;
-            },
-            2 -> {
-                result.y = biggestVal;
-                result.w = (mat.m8 - mat.m2) * mult;
-                result.x = (mat.m1 + mat.m4) * mult;
-                result.z = (mat.m6 + mat.m9) * mult;
-            },
-            3 -> {
-                result.z = biggestVal;
-                result.w = (mat.m1 - mat.m4) * mult;
-                result.x = (mat.m8 + mat.m2) * mult;
-                result.y = (mat.m6 + mat.m9) * mult;
-            },
-        }
-        return result;
+        return match (biggestIndex) {
+            0 -> Quaternion.init(
+                biggestVal,
+                (mat.m6 - mat.m9) * mult,
+                (mat.m8 - mat.m2) * mult,
+                (mat.m1 - mat.m4) * mult,
+            ),
+            1 -> Quaternion.init(
+                biggestVal,
+                (mat.m6 - mat.m9) * mult,
+                (mat.m1 + mat.m4) * mult,
+                (mat.m8 + mat.m2) * mult,
+            ),
+            2 -> Quaternion.init(
+                biggestVal,
+                (mat.m8 - mat.m2) * mult,
+                (mat.m1 + mat.m4) * mult,
+                (mat.m6 + mat.m9) * mult,
+            ),
+            3 -> Quaternion.init(
+                biggestVal,
+                (mat.m1 - mat.m4) * mult,
+                (mat.m8 + mat.m2) * mult,
+                (mat.m6 + mat.m9) * mult,
+            ),
+        };
     }
 
     pub fn to_matrix(q: Quaternion) Matrix {
