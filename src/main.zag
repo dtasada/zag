@@ -48,6 +48,8 @@ fn main() void {
 
     let mut player = Player.init(640, 360);
 
+    let opt: ?i32 = nil;
+
     let mut zombies = std.ArrayList<Zombie>.init();
     defer zombies.deinit();
 

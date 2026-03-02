@@ -234,7 +234,7 @@ pub const Type = union(enum) {
     type: ?*const Type,
     any,
 
-    @"typeof(null)",
+    @"typeof(nil)",
     @"typeof(undefined)",
     generic_param: []const u8,
 
@@ -1215,7 +1215,7 @@ pub const Type = union(enum) {
 
         return switch (received) {
             .@"typeof(undefined)" => true,
-            .@"typeof(null)" => expected == .optional,
+            .@"typeof(nil)" => expected == .optional,
             .slice => |rs| switch (expected) {
                 .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
                 else => fallback,

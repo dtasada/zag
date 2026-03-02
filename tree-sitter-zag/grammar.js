@@ -84,7 +84,7 @@ export default grammar({
 
       $.true_literal,
       $.false_literal,
-      $.null_literal,
+      $.nil_literal,
       $.c_null_literal,
       $.undefined_literal,
 
@@ -653,7 +653,7 @@ export default grammar({
 
     true_literal: $ => "true",
     false_literal: $ => "false",
-    null_literal: $ => "null",
+    nil_literal: $ => "nil",
     c_null_literal: $ => "c_null",
     undefined_literal: $ => "undefined",
   },

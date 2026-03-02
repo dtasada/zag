@@ -1070,7 +1070,7 @@ pub fn registerSymbol(
 fn registerConstants(self: *Self) !void {
     try self.registerSymbol("true", .{ .symbol = .{ .type = .bool } }, .{});
     try self.registerSymbol("false", .{ .symbol = .{ .type = .bool } }, .{});
-    try self.registerSymbol("null", .{ .symbol = .{ .type = .@"typeof(null)" } }, .{});
+    try self.registerSymbol("nil", .{ .symbol = .{ .type = .@"typeof(nil)" } }, .{});
     try self.registerSymbol("undefined", .{ .symbol = .{ .type = .@"typeof(undefined)" } }, .{});
 
     try self.registerSymbol("i8", .{ .type = .i8 }, .{ .inner_name = "int8_t" });

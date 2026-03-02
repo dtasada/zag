@@ -30,7 +30,7 @@ pub fn compile(
 
         if (!expected_type.eql(received_type)) switch (expected_type) {
             .optional => |opt| switch (received_type) {
-                .@"typeof(null)" => try self.print(
+                .@"typeof(nil)" => try self.print(
                     "({s}){{ .is_some = false }}",
                     .{self.zag_header_contents.get(expected_type).?},
                 ),

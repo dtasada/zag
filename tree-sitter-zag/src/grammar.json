@@ -132,7 +132,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "null_literal"
+          "name": "nil_literal"
         },
         {
           "type": "SYMBOL",
@@ -4378,9 +4378,9 @@
       "type": "STRING",
       "value": "false"
     },
-    "null_literal": {
+    "nil_literal": {
       "type": "STRING",
-      "value": "null"
+      "value": "nil"
     },
     "c_null_literal": {
       "type": "STRING",

@@ -89,7 +89,7 @@ pub struct ArrayList<T> {
     }
 
     pub fn pop(self: &mut ArrayList<T>) ?T {
-        if (self.items.len == 0) return null;
+        if (self.items.len == 0) return nil;
 
         let idx = self.items.len - 1;
         let val = self.items[idx];
