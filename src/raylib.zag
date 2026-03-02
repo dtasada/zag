@@ -346,9 +346,9 @@ pub struct Vector3 {
     pub fn clamp_value(v: Vector3, min, max: f32) Vector3 {
         let mut length_ = v.length_sqr();
         if (length_ > 0.0) {
-            length_ = std.sqrt<f32>(length);
-            let scale = if (length_ < min) min/length
-                else if (length_ > max) max/length
+            length_ = std.sqrt<f32>(length_);
+            let scale = if (length_ < min) min/length_
+                else if (length_ > max) max/length_
                 else 1.0;
             return v.scale(scale);
         }
@@ -508,9 +508,8 @@ pub struct Quaternion {
 
     pub fn nlerp(q1: Quaternion, q2: Quaternion, amount: f32) Quaternion -> q1.lerp(q2, amount).normalize()
 
-    pub fn slerp(q1: Quaternion, q2: Quaternion, amount: f32) Quaternion {
+    pub fn slerp(q1: Quaternion, mut q2: Quaternion, amount: f32) Quaternion {
         let mut cosHalfTheta = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
-        let mut q2 = q2;
 
         if (cosHalfTheta < 0) {
             q2.x = -q2.x; q2.y = -q2.y; q2.z = -q2.z; q2.w = -q2.w;
@@ -626,12 +625,12 @@ pub struct Quaternion {
         );
     }
 
-    pub fn from_axis_angle(axis: Vector3, angle: f32) Quaternion {
+    pub fn from_axis_angle(mut axis: Vector3, mut angle: f32) Quaternion {
         if (axis.length_sqr() == 0.0) return Quaternion.identity();
 
         let mut result = Quaternion.identity();
-        let angle = angle * 0.5;
-        let axis = axis.normalize();
+        angle *= 0.5;
+        axis = axis.normalize();
         let sinres = std.sin<f32>(angle);
 
         result.x = axis.x * sinres;
@@ -642,8 +641,7 @@ pub struct Quaternion {
         return result.normalize();
     }
 
-    pub fn to_axis_angle(q: Quaternion, outAxis: &mut Vector3, outAngle: &mut f32) void {
-        let mut q = q;
+    pub fn to_axis_angle(mut q: Quaternion, outAxis: &mut Vector3, outAngle: &mut f32) void {
         if (std.abs<f32>(q.w) > 1.0) q = q.normalize();
 
         outAngle.* = 2.0 * std.acos<f32>(q.w);
@@ -842,8 +840,8 @@ pub struct Matrix {
     }
 
     // NOTE: Angle should be provided in radians
-    pub fn rotate(axis: Vector3, angle: f32) Matrix {
-        let axis = axis.normalize();
+    pub fn rotate(mut axis: Vector3, angle: f32) Matrix {
+        axis = axis.normalize();
 
         let sinres = std.sin<f32>(angle);
         let cosres = std.cos<f32>(angle);

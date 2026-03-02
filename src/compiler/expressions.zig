@@ -152,15 +152,15 @@ pub fn compile(
                 return errors.ifExpressionMustContainElseClause(@"if".pos);
 
             const condition_type: Type = try .infer(self, @"if".condition.*);
-            if (@"if".capture) |capture| {
-                const capture_type = switch (condition_type) {
-                    .optional => |optional| optional.*,
-                    else => |other| other,
-                };
-
-                try self.pushScope();
-                try self.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
-            }
+            try self.pushScope();
+            if (@"if".capture) |capture| try self.registerSymbol(capture.name, .{
+                .symbol = .{
+                    .type = switch (condition_type) {
+                        .optional => |optional| optional.*,
+                        else => |other| other,
+                    },
+                },
+            }, .{});
 
             const body_type: Type = try .infer(self, @"if".body.*);
             const else_type: Type = try .infer(self, @"else".*);
@@ -175,8 +175,10 @@ pub fn compile(
             try self.write(" ? ");
 
             try compile(self, @"if".body, .{});
-            if (@"if".capture) |_| self.popScope();
+            self.popScope();
 
+            try self.pushScope();
+            defer self.popScope();
             try self.write(" : ");
             try compile(self, @"else", .{});
             try self.write(")");
@@ -242,13 +244,18 @@ pub fn compile(
 }
 
 fn block(self: *Self, blk: ast.Expression.Block) !void {
-    try self.write("({\n");
+    self.currentSection().pos = self.currentSection().current_statement;
+
+    const block_t: Type = try .inferBlock(self, blk);
+    var temp_name: ?[]const u8 = null;
+    if (block_t != .void) {
+        try self.compileType(block_t, .{ .binding_mut = true });
+        temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&blk))});
+        try self.print(" {s};\n", .{temp_name.?});
+    }
+
     try self.pushScope();
-
-    try self.compileType(try .inferBlock(self, blk), .{ .binding_mut = true });
-    const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&blk))});
-    try self.print(" {s};\n", .{temp_name});
-
+    try self.write("{\n");
     var received_eval = false;
     for (blk.block.items) |*stmt| {
         switch (stmt.*) {
@@ -260,7 +267,7 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
                     .red,
                 );
 
-                try self.print("{s} = ", .{temp_name});
+                try self.print("{s} = ", .{temp_name.?});
                 try compile(self, be, .{});
                 try self.write(";\n");
                 received_eval = true;
@@ -268,10 +275,11 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
             else => try statements.compile(self, stmt),
         }
     }
-
-    try self.write(temp_name);
-    try self.write(";\n})");
+    try self.write("}\n");
     self.popScope();
+
+    self.currentSection().pos = self.currentWriter().items.len;
+    if (block_t != .void) try self.write(temp_name.?);
 }
 
 fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {

@@ -160,6 +160,7 @@ fn compoundTypeDeclaration(
     for (type_decl.methods.items) |method| {
         try self.pushScope();
         defer self.popScope();
+        self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;
 
         // Register struct's generic parameters if this is an instantiation
         // Check if we have generic params in outer scope
@@ -286,7 +287,7 @@ fn variableDefinition(
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
     const final_type = expected_type orelse received_type;
 
-    if (self.getScopeItem(v.variable_name)) |item| {
+    if (self.getScopeItemWithinFunction(v.variable_name)) |item| {
         if (item == .symbol and item.symbol.is_defined)
             return errors.symbolShadowing(v.variable_name, v.pos);
     } else |_| {}
@@ -519,6 +520,7 @@ fn functionDefinition(
 
     try self.pushScope();
     defer self.popScope();
+    self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;
 
     const previous_return_type = self.current_return_type;
     defer self.current_return_type = previous_return_type;

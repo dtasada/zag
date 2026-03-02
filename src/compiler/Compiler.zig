@@ -107,6 +107,7 @@ const GenericInstantiation = struct {
 pub const Scope = struct {
     pending_defers: *std.ArrayList(*const ast.Statement),
     items: *std.StringHashMap(ScopeItem),
+    is_function_boundary: bool = false,
 };
 pub const ScopeItem = union(enum) {
     symbol: struct {
@@ -1261,4 +1262,13 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         .{symbol},
         .red,
     );
+}
+
+pub fn getScopeItemWithinFunction(self: *const Self, symbol: []const u8) !ScopeItem {
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope| {
+        if (scope.items.get(symbol)) |item| return item;
+        if (scope.is_function_boundary) break; // stop at function boundary
+    }
+    return error.UnknownSymbol;
 }
