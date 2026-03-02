@@ -669,6 +669,10 @@ pub fn compileBlock(
             return_expr = r.@"return";
             break;
         },
+        .block_eval => |be| if (try Type.infer(self, be) != .void) {
+            return_expr = be;
+            break;
+        },
         else => try statements.compile(self, statement),
     };
 
