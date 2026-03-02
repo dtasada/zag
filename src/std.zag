@@ -1,6 +1,6 @@
 import c;
 
-enum Error {
+pub enum Error {
     ALLOC_ERROR,
     INDEX_OUT_OF_BOUNDS,
 }
@@ -105,10 +105,7 @@ pub struct ArrayList<T> {
     }
 
 
-    pub fn clear(self: &mut ArrayList<T>) void {
-        // Correctly set length to 0.
-        self.items = self.items[..0];
-    }
+    pub fn clear(self: &mut ArrayList<T>) void -> self.items = self.items[..0]
 
     pub fn deinit(self: &mut ArrayList<T>) void {
         if (self.capacity != 0)
@@ -120,10 +117,10 @@ pub struct ArrayList<T> {
     //     for (self.items) |i| {
     //         if (item == i) return true;
     //     }
-
+    //
     //     return false;
     // }
-
+    //
     // pub fn eq(self: &ArrayList<T>, rhs: &ArrayList<T>) bool {
     //     if (self.items.len != rhs.items.len) return false;
     //     for (0..self.items.len) |i| {
@@ -131,22 +128,22 @@ pub struct ArrayList<T> {
     //     }
     //     return true;
     // }
-
+    //
     // pub fn index_of(self: &ArrayList<T>, item: T) !usize {
     //     for (0..self.items.len) |i| {
     //         if (self.items[i] == item) return i;
     //     }
-
+    //
     //     return c_null;
     // }
-
+    //
     // pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
     //     if (self.items.len == 0) return c_null;
-
+    //
     //     for (self.items.len - 1 ..= 0) |i| {
     //         if (self.items[i] == item) return i;
     //     }
-
+    //
     //     return c_null;
     // }
 

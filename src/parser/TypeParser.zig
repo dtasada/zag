@@ -195,7 +195,6 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
 
 pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
     const position = self.parent_parser.currentPosition();
-    _ = self.parent_parser.advance(); // consume '!'
 
     const failure = try alloc.create(ast.Type);
     failure.* = lhs;

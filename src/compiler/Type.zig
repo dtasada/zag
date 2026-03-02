@@ -467,6 +467,30 @@ pub const Type = union(enum) {
         if (definition_wrapper) |def_wrap| {
             try compiler.pushScope();
 
+            var mod_it = module.symbols.iterator();
+            while (mod_it.next()) |entry| {
+                const sym = entry.value_ptr.*;
+                const scope_item: Compiler.ScopeItem = switch (sym.type) {
+                    .@"enum", .@"struct", .@"union" => .{ .type = .{
+                        .type = sym.type,
+                        .inner_name = sym.inner_name,
+                        .is_defined = true,
+                    } },
+                    else => .{ .symbol = .{
+                        .type = sym.type,
+                        .inner_name = sym.inner_name,
+                        .is_mut = false,
+                        .is_defined = true,
+                    } },
+                };
+                try compiler.scopes.getLast().items.put(entry.key_ptr.*, scope_item);
+            }
+
+            // Then register imports and generic params (may override above)
+            var imp_it = module.imports.iterator();
+            while (imp_it.next()) |entry|
+                try compiler.registerSymbol(entry.key_ptr.*, .{ .module = entry.value_ptr.* }, .{});
+
             try compiler.registerSymbol(
                 base_name,
                 .{ .type = base_type },

@@ -928,13 +928,23 @@ fn solveGenerics(self: *Self) !void {
         defer self.popScope();
 
         var it = instantiation.module.symbols.iterator();
-        while (it.next()) |entry|
-            try self.scopes.getLast().items.put(entry.key_ptr.*, .{ .symbol = .{
-                .type = entry.value_ptr.type,
-                .inner_name = entry.value_ptr.name,
-                .is_mut = false,
-                .is_defined = true,
-            } });
+        while (it.next()) |entry| {
+            const sym = entry.value_ptr.*;
+            const scope_item: ScopeItem = switch (sym.type) {
+                .@"enum", .@"struct", .@"union" => .{ .type = .{
+                    .type = sym.type,
+                    .inner_name = sym.name,
+                    .is_defined = true,
+                } },
+                else => .{ .symbol = .{
+                    .type = sym.type,
+                    .inner_name = sym.name,
+                    .is_mut = false,
+                    .is_defined = true,
+                } },
+            };
+            try self.scopes.getLast().items.put(entry.key_ptr.*, scope_item);
+        }
 
         var imp_it = instantiation.module.imports.iterator();
         while (imp_it.next()) |entry|
