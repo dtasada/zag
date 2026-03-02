@@ -152,8 +152,9 @@ fn compoundTypeDeclaration(
         try variableDefinition(self, variable, .{
             .inner_name = compound_type
                 .variables
-                .get(variable.variable_name).?
-                .inner_name,
+                .get(variable.variable_name)
+                .?.inner_name,
+            .is_static_member = true,
         });
 
     self.switchSection(.source_function_impls);
@@ -281,7 +282,10 @@ pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!v
 fn variableDefinition(
     self: *Self,
     v: ast.Statement.VariableDefinition,
-    opts: struct { inner_name: ?[]const u8 = null },
+    opts: struct {
+        inner_name: ?[]const u8 = null,
+        is_static_member: bool = false,
+    },
 ) CompilerError!void {
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
@@ -314,12 +318,16 @@ fn variableDefinition(
         try self.zag_header_contents.put(inner_type, mangled_name);
         try self.registerSymbol(v.variable_name, .{ .type = inner_type }, .{ .inner_name = mangled_name });
     } else {
-        try self.registerSymbol(v.variable_name, .{
-            .symbol = .{
-                .is_mut = v.binding == .is_mut,
-                .type = final_type,
+        try self.registerSymbol(
+            v.variable_name,
+            .{
+                .symbol = .{
+                    .is_mut = v.binding == .is_mut,
+                    .type = final_type,
+                },
             },
-        }, .{ .inner_name = mangled_name });
+            .{ .inner_name = mangled_name },
+        );
 
         if (v.is_pub) {
             const saved_section = self.current_section;
@@ -327,10 +335,15 @@ fn variableDefinition(
             defer self.switchSection(saved_section);
 
             try self.write("extern ");
-            // For extern, it's a declaration. binding_mut=false gives 'const' for let/const.
             try self.compileVariableSignature(mangled_name, final_type, .{ .binding_mut = v.binding == .is_mut });
             try self.write(";\n");
         }
+
+        const saved_section = self.current_section;
+        if (opts.is_static_member) {
+            self.switchSection(.source_function_impls);
+        }
+        defer self.switchSection(saved_section);
 
         try self.compileVariableSignature(mangled_name, final_type, .{
             .binding_mut = v.binding == .is_mut,
