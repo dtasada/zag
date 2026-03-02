@@ -579,10 +579,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         },
 
         .module => |module| if (module.symbols.get(expr.member_name)) |symbol| {
-            if (symbol.type == .function and symbol.type.function.is_bind)
-                try self.write(symbol.name)
-            else
-                try self.print("{s}_{s}", .{ module.name, symbol.name });
+            try self.write(symbol.inner_name);
         } else return utils.printErr(
             error.UndeclaredProperty,
             "comperr: Module '{s}' has no member '{s}' ({f}).\n",
