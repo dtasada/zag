@@ -13,12 +13,12 @@ struct Player {
     }
 
     fn update(self: &mut Player) void {
-        rl.DrawCircleV(self.position, 20.0, self.color);
+        rl.draw_circle_v(self.position, 20.0, self.color);
 
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.W))) self.position.y -= 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.A))) self.position.x -= 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.S))) self.position.y += 6;
-        if (rl.IsKeyDown(cast<i32>(rl.KeyboardKey.D))) self.position.x += 6;
+        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.W))) self.position.y -= 6;
+        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.A))) self.position.x -= 6;
+        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.S))) self.position.y += 6;
+        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.D))) self.position.x += 6;
     }
 }
 
@@ -37,15 +37,15 @@ struct Zombie {
         let diff = player.position.subtract(self.position);
         self.position = self.position.add(diff.normalize().scale(2.0));
 
-        rl.DrawCircleV(self.position, 20.0, self.color);
+        rl.draw_circle_v(self.position, 20.0, self.color);
     }
 }
 
 fn main() void {
-    rl.InitWindow(1280, 720, "Hello world!");
-    defer rl.CloseWindow();
+    rl.init_window(1280, 720, "Hello world!");
+    defer rl.close_window();
 
-    rl.SetTargetFPS(60);
+    rl.set_target_fps(60);
 
     let mut player = Player.init(640, 360);
 
@@ -57,11 +57,11 @@ fn main() void {
     zombies.append(Zombie.init(1280, 0));
     zombies.append(Zombie.init(1280, 720));
 
-    while (!rl.WindowShouldClose()) {
-        rl.BeginDrawing();
-        defer rl.EndDrawing();
+    while (!rl.window_should_close()) {
+        rl.begin_drawing();
+        defer rl.end_drawing();
 
-        rl.ClearBackground(rl.Color { r: 0, g: 0, b: 0, a: 255 });
+        rl.clear_background(rl.Color { r: 0, g: 0, b: 0, a: 255 });
 
         for (zombies.items) |&mut zombie| zombie.update(&player);
 

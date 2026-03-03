@@ -108,7 +108,7 @@ pub struct Camera3D {
     projection: i32,         // Camera projection: CAMERA_PERSPECTIVE or CAMERA_ORTHOGRAPHIC
 }
 
-const Camera = Camera3D;
+pub const Camera = Camera3D;
 
 // Camera2D, defines position/orientation in 2d space
 pub struct Camera2D {
