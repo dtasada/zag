@@ -202,6 +202,7 @@ pub fn compile(alloc: std.mem.Allocator) !void {
             "-Wno-parentheses-equality",
             "-Wno-sign-compare",
             "-Wno-logical-op-parentheses",
+            "-Wno-incompatible-pointer-types-discards-qualifiers",
             "-lraylib",
         },
     });

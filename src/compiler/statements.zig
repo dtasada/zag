@@ -211,7 +211,7 @@ fn compoundTypeDeclaration(
             try self.compileType(return_type, .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
             for (method.parameters.items, 0..) |parameter_type, i| {
-                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{ .binding_mut = true });
+                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{ .binding_mut = parameter_type.is_mut });
                 if (i < method.parameters.items.len - 1) try self.write(", ");
             }
             try self.write(");\n");
@@ -548,7 +548,7 @@ fn functionDefinition(
         try self.compileType(self.current_return_type.?, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 0..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{ .binding_mut = true });
+            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{ .binding_mut = parameter.is_mut });
             if (i < function_def.parameters.items.len - 1) try self.write(", ");
         }
         try self.write(");\n");

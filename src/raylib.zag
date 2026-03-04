@@ -2462,7 +2462,7 @@ bind fn GetDirectoryFileCountEx(basePath: &mut c_char, filter: &mut c_char, scan
 // Compression/Encoding functionality
 bind fn CompressData(data: &u8, dataLength: i32, compDataLength: &mut i32) &mut u8;        // Compress data (DEFLATE algorithm), memory must be MemFree()
 bind fn DecompressData(data: &u8, dataLength: i32, compDataLength: &mut i32) &mut u8;  // Decompress data (DEFLATE algorithm), memory must be MemFree()
-bind fn EncodeDataBase64(data: &u32, dataSize: i32, outputSize: &mut i32) &mut c_char;               // Encode data to Base64 string (includes NULL terminator), memory must be MemFree()
+bind fn EncodeDataBase64(data: &u8, dataSize: i32, outputSize: &mut i32) &mut c_char;               // Encode data to Base64 string (includes NULL terminator), memory must be MemFree()
 bind fn DecodeDataBase64(text: &c_char, outputSize: &mut i32) &mut c_char;                             // Decode Base64 string (expected NULL terminated), memory must be MemFree()
 bind fn ComputeCRC32(data: &mut u32, dataSize: i32) u32;       // Compute CRC32 hash code
 bind fn ComputeMD5(data: &mut u32, dataSize: i32) &mut u32;        // Compute MD5 hash code, returns static int[4] (16 bytes)
