@@ -152,8 +152,7 @@ fn compoundTypeDeclaration(
         try variableDefinition(self, variable, .{
             .inner_name = compound_type
                 .variables
-                .get(variable.variable_name)
-                .?.inner_name,
+                .get(variable.variable_name).?.inner_name,
             .is_static_member = true,
         });
 

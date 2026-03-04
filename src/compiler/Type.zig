@@ -1260,6 +1260,7 @@ pub const Type = union(enum) {
         switch (self.*) {
             inline .@"struct", .@"enum", .@"union" => |compound| {
                 if (compound.generic_instantiation) |inst| {
+                    try writer.print("{s}.", .{compound.module.name});
                     try writer.print("{s}<", .{inst.base_name});
                     for (inst.args, 0..) |arg, i| {
                         try writer.print("{f}", .{arg});
@@ -1267,6 +1268,7 @@ pub const Type = union(enum) {
                     }
                     _ = try writer.write(">");
                 } else {
+                    try writer.print("{s}.", .{compound.module.name});
                     _ = try writer.write(compound.name);
                 }
             },

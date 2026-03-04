@@ -5,6 +5,27 @@ pub enum Error {
     INDEX_OUT_OF_BOUNDS,
 }
 
+pub struct String {
+    bytes: []u8,
+
+    pub fn init(bytes: []u8) String {
+        let buf = alloc_slice<u8>(bytes.len);
+        memcpy_slice<u8>(buf, bytes);
+        return String { bytes: buf };
+    }
+
+    pub fn deinit(self: String) void {
+        free_slice<u8>(self.bytes);
+    }
+
+    pub fn from_raw(bytes: []u8) String {
+        return String { bytes: bytes };
+    }
+
+    pub fn len(self: String) usize -> self.bytes.len
+    pub fn is_empty(self: String) bool -> self.bytes.len == 0
+}
+
 pub fn abs<T>(x: T) T -> if (x >= 0) x else -x
 pub fn acos<T>(x: T) T -> c.acos(x)
 pub fn asin<T>(x: T) T -> c.asin(x)

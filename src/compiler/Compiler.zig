@@ -567,7 +567,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     // We pass the SAME registry
     var child_compiler = try init(self.alloc, ast_res.root, full_path, self.module_registry, .analysis);
-    defer child_compiler.deinit();
+    // defer child_compiler.deinit();
 
     try child_compiler.analyze();
 
@@ -577,19 +577,15 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     var it = child_compiler.exported_symbols.iterator();
     while (it.next()) |entry| {
-        var sym = entry.value_ptr.*;
-        switch (sym.type) {
-            .@"struct" => |*s| s.module = mod,
-            .@"union" => |*u| u.module = mod,
-            .function => |*f| f.module = mod,
+        switch (entry.value_ptr.type) {
+            inline .@"struct", .@"union", .function => |*s| s.module = mod,
             else => {},
         }
-        try mod.symbols.put(entry.key_ptr.*, sym);
+        try mod.symbols.put(entry.key_ptr.*, entry.value_ptr.*);
     }
 
     var imp_it = child_compiler.imported_modules.iterator();
-    while (imp_it.next()) |entry|
-        try mod.imports.put(entry.key_ptr.*, entry.value_ptr.*);
+    while (imp_it.next()) |entry| try mod.imports.put(entry.key_ptr.*, entry.value_ptr.*);
 
     // Register
     try self.module_registry.put(full_path, mod);
@@ -669,8 +665,11 @@ pub fn compileBlock(
             return_expr = r.@"return";
             break;
         },
-        .block_eval => |be| if (try Type.infer(self, be) != .void) {
-            return_expr = be;
+        .block_eval => |be| {
+            if (try Type.infer(self, be) != .void)
+                return_expr = be
+            else
+                try statements.compile(self, statement);
             break;
         },
         else => try statements.compile(self, statement),
@@ -679,7 +678,7 @@ pub fn compileBlock(
     if (return_expr) |*e| {
         const return_type = opts.return_type_override orelse self.current_return_type.?;
         self.currentSection().current_statement = self.currentWriter().items.len;
-        try self.compileVariableSignature("__zag_ret_val", return_type, .{});
+        try self.compileVariableSignature("__zag_ret_val", return_type, .{ .binding_mut = true });
         try self.write(" = ");
         if (opts.return_type_override_is_array) try self.print("({s}){{ .items = ", .{opts.return_type_override.?.@"struct".inner_name});
         try expressions.compile(self, e, .{
