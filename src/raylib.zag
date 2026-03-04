@@ -1845,7 +1845,7 @@ pub fn set_shader_value_v(shader: Shader, locIndex: i32, value: &void, uniformTy
 pub fn set_shader_value_matrix(shader: Shader, locIndex: i32, mat: Matrix) void -> raylibc.SetShaderValueMatrix(cast<raylibc.Shader>(shader), locIndex, mat)
 pub fn set_shader_value_texture(shader: Shader, locIndex: i32, texture: Texture2D) void -> raylibc.SetShaderValueTexture(cast<raylibc.Shader>(shader), locIndex, texture)
 pub fn unload_shader(shader: Shader) void -> raylibc.UnloadShader(cast<raylibc.Shader>(shader))
-pub fn get_mouse_ray(mousePosition: Vector2, camera: Camera) Ray -> cast<Ray>(raylibc.GetMouseRay(mousePosition, camera))
+pub fn get_screen_to_world_ray(mousePosition: Vector2, camera: Camera) Ray -> cast<Ray>(raylibc.GetScreenToWorldRay(mousePosition, camera))
 pub fn get_camera_matrix(camera: Camera) Matrix -> raylibc.GetCameraMatrix(camera)
 pub fn get_camera_matrix2_d(camera: Camera2D) Matrix -> raylibc.GetCameraMatrix2D(camera)
 pub fn get_world_to_screen(position: Vector3, camera: Camera) Vector2 -> cast<Vector2>(raylibc.GetWorldToScreen(position, camera))

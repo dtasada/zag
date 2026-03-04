@@ -358,7 +358,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
     while (std.meta.activeTag(self.currentToken()) != closing_token) {
         try args.append(self.alloc, if (is_generic) b: {
             const backup_pos = self.pos;
-            if (self.type_parser.parseType(self.alloc, .primary)) |t|
+            if (self.type_parser.parseType(self.alloc, .default)) |t|
                 break :b .{ .type = t }
             else |_| {
                 self.pos = backup_pos;
