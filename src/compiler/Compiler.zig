@@ -233,9 +233,7 @@ pub fn init(
     input: ast.RootNode,
     file_path: []const u8,
     registry: *std.StringHashMap(Module),
-    mode: Mode,
 ) CompilerError!*Self {
-    _ = mode;
     const self = try alloc.create(Self);
 
     const visited = try alloc.create(std.ArrayList(Type.Context.Visited));
@@ -602,7 +600,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     const ast_res = try getAST(self.alloc, full_path); // recursive AST
 
     // We pass the SAME registry
-    var child_compiler = try init(self.alloc, ast_res.root, full_path, self.module_registry, .analysis);
+    var child_compiler = try init(self.alloc, ast_res.root, full_path, self.module_registry);
     // defer child_compiler.deinit();
 
     try child_compiler.analyze();

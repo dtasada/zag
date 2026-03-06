@@ -3,54 +3,6 @@ const std = @import("std");
 const utils = @import("utils");
 const Compiler = @import("Compiler");
 
-/// Takes zag code and lexes, parses and compiles it to C code.
-pub fn transpile(
-    alloc: std.mem.Allocator,
-    file_path: []const u8,
-    registry: *std.StringHashMap(Compiler.Module),
-) !void {
-    const ast = try Compiler.getAST(alloc, file_path);
-
-    var compiler = Compiler.init(alloc, ast.root, file_path, registry, .emit) catch |err|
-        return utils.printErr(
-            error.FailedToCreateCompiler,
-            "Failed to create compiler: {}\n",
-            .{err},
-            .red,
-        );
-    defer compiler.deinit();
-
-    compiler.emit() catch |err| return utils.printErr(
-        error.CompilationError,
-        "Compilation error: {}\n",
-        .{err},
-        .red,
-    );
-}
-
-/// Reads a directory and transpiles all necessary files
-fn transpileModule(
-    alloc: std.mem.Allocator,
-    dir_path: []const u8,
-    registry: *std.StringHashMap(Compiler.Module),
-) !void {
-    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-    defer dir.close();
-
-    var walker = try dir.walk(alloc);
-    defer walker.deinit();
-
-    while (try walker.next()) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.path, ".zag")) continue;
-
-        const file_path = try std.fs.path.join(alloc, &.{ dir_path, entry.path });
-        defer alloc.free(file_path);
-
-        try transpile(alloc, file_path, registry);
-    }
-}
-
 pub fn build() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     const alloc = gpa.allocator();
@@ -104,7 +56,7 @@ fn transpileWithHeaders(
 ) !void {
     const ast = try Compiler.getAST(alloc, file_path);
 
-    var compiler = Compiler.init(alloc, ast.root, file_path, registry, .emit) catch |err|
+    var compiler = Compiler.init(alloc, ast.root, file_path, registry) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",
