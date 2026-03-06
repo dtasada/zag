@@ -46,7 +46,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
             try self.registerSymbol(btd.name, .{ .type = t }, .{});
 
             const saved_section = self.current_section;
-            self.switchSection(.header_type_defs);
+            self.switchSection(.header_forward_decls);
             defer self.switchSection(saved_section);
 
             try self.print("typedef {s} {s} {s};\n", .{ @tagName(btd.type), btd.name, btd.name });
@@ -95,6 +95,9 @@ fn compoundTypeDeclaration(
     for (type_decl.subtypes.items) |subtype| switch (subtype) {
         inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
     };
+
+    try self.beginTypeDefEmit(@unionInit(Type, @tagName(T), compound_type));
+    errdefer self.endTypeDefEmit();
 
     // Emit the tag type enum for unions
     if (T == .@"union") {
@@ -147,6 +150,8 @@ fn compoundTypeDeclaration(
     if (T == .@"union") try self.write("} payload;\n");
 
     try self.print("}} {s};\n\n", .{inner_name});
+
+    self.endTypeDefEmit();
 
     for (type_decl.variables.items) |variable|
         try variableDefinition(self, variable, .{
@@ -303,7 +308,7 @@ fn variableDefinition(
     if (final_type == .type) {
         const saved_section = self.current_section;
         self.switchSection(.header_type_defs);
-        defer self.switchSection(saved_section);
+        try self.beginTypeDefEmit(final_type.type.?.*);
 
         const inner_type = final_type.type.?.*;
         try self.write("typedef ");
@@ -314,6 +319,10 @@ fn variableDefinition(
             try self.print(" {s}", .{mangled_name});
         }
         try self.write(";\n");
+
+        self.endTypeDefEmit();
+        self.switchSection(saved_section);
+
         try self.zag_header_contents.put(inner_type, mangled_name);
         try self.registerSymbol(v.variable_name, .{ .type = inner_type }, .{ .inner_name = mangled_name });
     } else {

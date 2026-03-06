@@ -1,0 +1,298 @@
+diff --git a/src/compiler/Compiler.zig b/src/compiler/Compiler.zig
+index 1c51f6d..80f9f14 100644
+--- a/src/compiler/Compiler.zig
++++ b/src/compiler/Compiler.zig
+@@ -90,6 +90,9 @@ pending_instantiations: std.ArrayList(GenericInstantiation),
+ 
+ imported_modules: std.StringHashMap(Module),
+ 
++type_def_blocks: std.ArrayList(TypeDefBlock) = .empty,
++type_def_stack: std.ArrayList(usize) = .empty,
++
+ const GenericInstantiation = struct {
+     inner_name: []const u8,
+     args: []const Value,
+@@ -129,6 +132,11 @@ pub const ScopeItem = union(enum) {
+     module: Module,
+ };
+ 
++pub const TypeDefBlock = struct {
++    type: Type,
++    code: std.ArrayList(u8),
++};
++
+ pub fn getAST(
+     alloc: std.mem.Allocator,
+     file_path: []const u8,
+@@ -183,6 +191,11 @@ pub fn currentWriter(self: *Self) *std.ArrayList(u8) {
+ 
+ /// Write to current section
+ pub fn write(self: *Self, bytes: []const u8) CompilerError!void {
++    if (self.type_def_stack.items.len > 0 and self.current_section == .header_type_defs) {
++        const idx = self.type_def_stack.getLast();
++        try self.type_def_blocks.items[idx].code.appendSlice(self.alloc, bytes);
++        return;
++    }
+     try self.currentWriter().insertSlice(self.alloc, self.currentSection().pos, bytes);
+     self.currentSection().pos += bytes.len;
+ }
+@@ -194,6 +207,19 @@ pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) CompilerError
+     try self.write(bytes);
+ }
+ 
++pub fn beginTypeDefEmit(self: *Self, t: Type) !void {
++    const idx = self.type_def_blocks.items.len;
++    try self.type_def_blocks.append(self.alloc, .{
++        .type = t,
++        .code = .empty,
++    });
++    try self.type_def_stack.append(self.alloc, idx);
++}
++
++pub fn endTypeDefEmit(self: *Self) void {
++    _ = self.type_def_stack.pop();
++}
++
+ /// initializes a new `Compiler`.
+ /// creates `.zag-out` folder and mirrors the `src` directory with compiled C code.
+ /// also creates `.zag-out/bin` folder but doesn't write anything to it.
+@@ -243,6 +269,10 @@ pub fn deinit(self: *Self) void {
+         self.sections.getPtr(section).buffer.deinit(self.alloc);
+     }
+ 
++    for (self.type_def_blocks.items) |*block| block.code.deinit(self.alloc);
++    self.type_def_blocks.deinit(self.alloc);
++    self.type_def_stack.deinit(self.alloc);
++
+     self.scopes.deinit(self.alloc);
+     self.pending_instantiations.deinit(self.alloc);
+     self.imported_modules.deinit();
+@@ -332,7 +362,7 @@ fn writeOutputFiles(self: *Self) !void {
+     try header_file_writer.interface.writeAll(self.sections.get(.header_includes).buffer.items);
+     try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
+     try header_file_writer.interface.writeAll(self.sections.get(.header_primitives).buffer.items);
+-    try header_file_writer.interface.writeAll(self.sections.get(.header_type_defs).buffer.items);
++    try self.emitTypeDefsInOrder(&header_file_writer.interface);
+     try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).buffer.items);
+     try header_file_writer.interface.writeAll("\n#endif\n");
+     try header_file_writer.interface.flush();
+@@ -749,9 +779,7 @@ pub fn compileType(
+         .error_union => |error_union| {
+             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
+             if (self.zag_header_contents.get(t) == null) {
+-                const saved_section = self.current_section;
+-                self.switchSection(.header_primitives);
+-                defer self.switchSection(saved_section);
++                try self.beginTypeDefEmit(t);
+ 
+                 try self.write("typedef struct {\n");
+                 try self.write("bool is_success;\n");
+@@ -767,6 +795,7 @@ pub fn compileType(
+                 try self.write("} payload;\n");
+                 try self.print("}} {s};\n", .{type_name});
+ 
++                self.endTypeDefEmit();
+                 try self.zag_header_contents.put(t, type_name);
+             }
+ 
+@@ -775,9 +804,7 @@ pub fn compileType(
+         .slice => |slice| {
+             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
+             if (self.zag_header_contents.get(t) == null) {
+-                const saved_section = self.current_section;
+-                self.switchSection(.header_primitives);
+-                defer self.switchSection(saved_section);
++                try self.beginTypeDefEmit(t);
+ 
+                 try self.write("typedef struct {\n");
+                 try self.compileType(slice.inner.*, .{
+@@ -788,6 +815,7 @@ pub fn compileType(
+                 try self.write("size_t len;\n");
+                 try self.print("}} {s};\n", .{type_name});
+ 
++                self.endTypeDefEmit();
+                 try self.zag_header_contents.put(t, type_name);
+             }
+ 
+@@ -802,9 +830,7 @@ pub fn compileType(
+             const type_name = try std.fmt.allocPrint(self.alloc, "__zag_FuncPtr_{}", .{t.hash()});
+ 
+             if (self.zag_header_contents.get(t) == null) {
+-                const saved_section = self.current_section;
+-                self.switchSection(.header_type_defs);
+-                defer self.switchSection(saved_section);
++                try self.beginTypeDefEmit(t);
+ 
+                 try self.write("typedef ");
+                 try self.compileType(function.return_type.*, .{ .binding_mut = true, .is_top_level = new_opts.is_top_level });
+@@ -815,6 +841,7 @@ pub fn compileType(
+                 }
+                 try self.write(");\n");
+ 
++                self.endTypeDefEmit();
+                 try self.zag_header_contents.put(t, type_name);
+             }
+ 
+@@ -1288,3 +1315,119 @@ pub fn getScopeItemWithinFunction(self: *const Self, symbol: []const u8) !ScopeI
+     }
+     return error.UnknownSymbol;
+ }
++
++fn getTypeDefDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
++    switch (t) {
++        .@"enum" => {}, // primitive values, no deps
++        .@"struct" => |s| {
++            var it = s.members.iterator();
++            while (it.next()) |entry| {
++                const mt = entry.value_ptr.*;
++                if (needsFullDef(mt)) try out.append(self.alloc, mt);
++            }
++        },
++        .@"union" => |u| {
++            var it = u.members.iterator();
++            while (it.next()) |entry| {
++                const mt = entry.value_ptr.*;
++                if (needsFullDef(mt)) try out.append(self.alloc, mt);
++            }
++        },
++        .error_union => |eu| {
++            // both embedded by value inside the union
++            if (needsFullDef(eu.success.*)) try out.append(self.alloc, eu.success.*);
++            if (needsFullDef(eu.failure.*)) try out.append(self.alloc, eu.failure.*);
++        },
++        .slice => {}, // inner type is a pointer, forward decl is enough
++        .function => {}, // C allows incomplete types in fn ptr signatures
++        else => {},
++    }
++}
++
++fn needsFullDef(t: Type) bool {
++    return switch (t) {
++        .@"struct", .@"union", .@"enum", .error_union => true,
++        .reference, .slice, .optional => false, // all pointers under the hood
++        else => false,
++    };
++}
++
++pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
++    const n = self.type_def_blocks.items.len;
++    const visited = try self.alloc.alloc(u8, n);
++    defer self.alloc.free(visited);
++    @memset(visited, 0);
++
++    var order: std.ArrayList(usize) = .empty;
++    defer order.deinit(self.alloc);
++
++    for (0..n) |i|
++        if (visited[i] == 0) try self.topoVisit(i, visited, &order);
++
++    for (order.items) |idx| {
++        try writer.writeAll(self.type_def_blocks.items[idx].code.items);
++    }
++}
++
++fn topoVisit(self: *Self, idx: usize, visited: []u8, order: *std.ArrayList(usize)) !void {
++    visited[idx] = 1;
++
++    const t = self.type_def_blocks.items[idx].type;
++    var deps: std.ArrayList(Type) = .empty;
++    defer deps.deinit(self.alloc);
++    try self.collectTypeDeps(t, &deps);
++
++    for (deps.items) |dep| {
++        for (self.type_def_blocks.items, 0..) |*block, j| {
++            if (typeDefsMatch(dep, block.type)) {
++                if (visited[j] == 0) try self.topoVisit(j, visited, order);
++                break;
++            }
++        }
++    }
++
++    visited[idx] = 2;
++    try order.append(self.alloc, idx);
++}
++
++fn collectTypeDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
++    switch (t) {
++        .@"struct" => |s| {
++            var it = s.members.iterator();
++            while (it.next()) |e| try self.appendIfConcrete(e.value_ptr.*, out);
++        },
++        .@"union" => |u| {
++            var it = u.members.iterator();
++            while (it.next()) |e| try self.appendIfConcrete(e.value_ptr.*, out);
++        },
++        .error_union => |eu| {
++            try self.appendIfConcrete(eu.success.*, out);
++            try self.appendIfConcrete(eu.failure.*, out);
++        },
++        else => {},
++    }
++}
++
++fn appendIfConcrete(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
++    switch (t) {
++        .@"struct", .@"union", .@"enum", .error_union, .slice => try out.append(self.alloc, t),
++        else => {},
++    }
++}
++
++fn typeDefsMatch(a: Type, b: Type) bool {
++    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
++    return switch (a) {
++        .@"struct" => |s| std.mem.eql(u8, s.inner_name, b.@"struct".inner_name),
++        .@"union" => |u| std.mem.eql(u8, u.inner_name, b.@"union".inner_name),
++        .@"enum" => |e| std.mem.eql(u8, e.inner_name, b.@"enum".inner_name),
++        .error_union => |eu| typeDefsMatch(eu.success.*, b.error_union.success.*) and
++            typeDefsMatch(eu.failure.*, b.error_union.failure.*),
++        .slice => |sa| switch (b) {
++            .slice => |sb| typeDefsMatch(sa.inner.*, sb.inner.*) and sa.is_mut == sb.is_mut,
++            else => false,
++        },
++
++        else => false,
++    };
++}
+diff --git a/src/compiler/statements.zig b/src/compiler/statements.zig
+index bb23c84..fb39e3c 100644
+--- a/src/compiler/statements.zig
++++ b/src/compiler/statements.zig
+@@ -96,6 +96,9 @@ fn compoundTypeDeclaration(
+         inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
+     };
+ 
++    try self.beginTypeDefEmit(@unionInit(Type, @tagName(T), compound_type));
++    errdefer self.endTypeDefEmit();
++
+     // Emit the tag type enum for unions
+     if (T == .@"union") {
+         const tag_enum = compound_type.tag_type.?.@"enum";
+@@ -148,6 +151,8 @@ fn compoundTypeDeclaration(
+ 
+     try self.print("}} {s};\n\n", .{inner_name});
+ 
++    self.endTypeDefEmit();
++
+     for (type_decl.variables.items) |variable|
+         try variableDefinition(self, variable, .{
+             .inner_name = compound_type
+@@ -303,7 +308,7 @@ fn variableDefinition(
+     if (final_type == .type) {
+         const saved_section = self.current_section;
+         self.switchSection(.header_type_defs);
+-        defer self.switchSection(saved_section);
++        try self.beginTypeDefEmit(final_type.type.?.*);
+ 
+         const inner_type = final_type.type.?.*;
+         try self.write("typedef ");
+@@ -314,6 +319,10 @@ fn variableDefinition(
+             try self.print(" {s}", .{mangled_name});
+         }
+         try self.write(";\n");
++
++        self.endTypeDefEmit();
++        self.switchSection(saved_section);
++
+         try self.zag_header_contents.put(inner_type, mangled_name);
+         try self.registerSymbol(v.variable_name, .{ .type = inner_type }, .{ .inner_name = mangled_name });
+     } else {
