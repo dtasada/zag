@@ -1,5 +1,7 @@
 const std = @import("std");
 const ast = @import("Parser").ast;
+const Compiler = @import("Compiler.zig");
+const Type = @import("Type.zig").Type;
 
 pub fn blockReturns(block: ast.Block) bool {
     for (block.items) |stmt| {
@@ -60,5 +62,43 @@ pub fn statementReturns(statement: ast.Statement) bool {
         },
 
         else => false,
+    };
+}
+
+pub fn topoVisit(self: *Compiler, idx: usize, visited: []u8, order: *std.ArrayList(usize)) !void {
+    visited[idx] = 1;
+
+    const t = self.type_def_blocks.items[idx].type;
+    var deps: std.ArrayList(Type) = .empty;
+    defer deps.deinit(self.alloc);
+    try self.collectTypeDeps(t, &deps);
+
+    for (deps.items) |dep| {
+        for (self.type_def_blocks.items, 0..) |*block, j| {
+            if (typeDefsMatch(dep, block.type)) {
+                if (visited[j] == 0) try topoVisit(self, j, visited, order);
+                break;
+            }
+        }
+    }
+
+    visited[idx] = 2;
+    try order.append(self.alloc, idx);
+}
+
+fn typeDefsMatch(a: Type, b: Type) bool {
+    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+    return switch (a) {
+        .@"struct" => |s| std.mem.eql(u8, s.inner_name, b.@"struct".inner_name),
+        .@"union" => |u| std.mem.eql(u8, u.inner_name, b.@"union".inner_name),
+        .@"enum" => |e| std.mem.eql(u8, e.inner_name, b.@"enum".inner_name),
+        .error_union => |eu| typeDefsMatch(eu.success.*, b.error_union.success.*) and
+            typeDefsMatch(eu.failure.*, b.error_union.failure.*),
+        .slice => |sa| switch (b) {
+            .slice => |sb| typeDefsMatch(sa.inner.*, sb.inner.*) and sa.is_mut == sb.is_mut,
+            else => false,
+        },
+
+        else => true,
     };
 }

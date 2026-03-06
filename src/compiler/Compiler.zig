@@ -3,6 +3,7 @@ const std = @import("std");
 const utils = @import("utils");
 const ast = @import("Parser").ast;
 
+const analysis = @import("analysis.zig");
 const expressions = @import("expressions.zig");
 const statements = @import("statements.zig");
 const errors = @import("errors.zig");
@@ -1363,45 +1364,6 @@ fn needsFullDef(t: Type) bool {
     };
 }
 
-fn isPrimitive(t: Type) bool {
-    return switch (t) {
-        .i8,
-        .i16,
-        .i32,
-        .i64,
-        .u8,
-        .u16,
-        .u32,
-        .u64,
-        .usize,
-        .f32,
-        .f64,
-        .bool,
-        .void,
-        .c_char,
-        .c_int,
-        .c_long,
-        .c_short,
-        .c_uchar,
-        .c_ulong,
-        .c_ushort,
-        .c_uint,
-        => true,
-        else => false,
-    };
-}
-
-fn isGlobalType(t: Type) bool {
-    return switch (t) {
-        .error_union => |eu| isPrimitive(eu.success.*) and isPrimitive(eu.failure.*),
-        .slice => |s| isPrimitive(s.inner.*),
-        .optional => |o| isPrimitive(o.*),
-        .array => |a| isPrimitive(a.inner.*),
-        .function => false, // params may reference named types
-        else => false,
-    };
-}
-
 pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
     const n = self.type_def_blocks.items.len;
     const visited = try self.alloc.alloc(u8, n);
@@ -1411,8 +1373,7 @@ pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
     var order: std.ArrayList(usize) = .empty;
     defer order.deinit(self.alloc);
 
-    for (0..n) |i|
-        if (visited[i] == 0) try self.topoVisit(i, visited, &order);
+    for (0..n) |i| if (visited[i] == 0) try analysis.topoVisit(self, i, visited, &order);
 
     for (order.items) |idx| {
         const block = &self.type_def_blocks.items[idx];
@@ -1424,35 +1385,10 @@ pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
     }
 }
 
-fn topoVisit(self: *Self, idx: usize, visited: []u8, order: *std.ArrayList(usize)) !void {
-    visited[idx] = 1;
-
-    const t = self.type_def_blocks.items[idx].type;
-    var deps: std.ArrayList(Type) = .empty;
-    defer deps.deinit(self.alloc);
-    try self.collectTypeDeps(t, &deps);
-
-    for (deps.items) |dep| {
-        for (self.type_def_blocks.items, 0..) |*block, j| {
-            if (typeDefsMatch(dep, block.type)) {
-                if (visited[j] == 0) try self.topoVisit(j, visited, order);
-                break;
-            }
-        }
-    }
-
-    visited[idx] = 2;
-    try order.append(self.alloc, idx);
-}
-
-fn collectTypeDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
+pub fn collectTypeDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
     switch (t) {
-        .@"struct" => |s| {
+        inline .@"struct", .@"union" => |s| {
             var it = s.members.iterator();
-            while (it.next()) |e| try self.appendIfConcrete(e.value_ptr.*, out);
-        },
-        .@"union" => |u| {
-            var it = u.members.iterator();
             while (it.next()) |e| try self.appendIfConcrete(e.value_ptr.*, out);
         },
         .error_union => |eu| {
@@ -1468,21 +1404,4 @@ fn appendIfConcrete(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
         .@"struct", .@"union", .@"enum", .error_union, .slice => try out.append(self.alloc, t),
         else => {},
     }
-}
-
-fn typeDefsMatch(a: Type, b: Type) bool {
-    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
-    return switch (a) {
-        .@"struct" => |s| std.mem.eql(u8, s.inner_name, b.@"struct".inner_name),
-        .@"union" => |u| std.mem.eql(u8, u.inner_name, b.@"union".inner_name),
-        .@"enum" => |e| std.mem.eql(u8, e.inner_name, b.@"enum".inner_name),
-        .error_union => |eu| typeDefsMatch(eu.success.*, b.error_union.success.*) and
-            typeDefsMatch(eu.failure.*, b.error_union.failure.*),
-        .slice => |sa| switch (b) {
-            .slice => |sb| typeDefsMatch(sa.inner.*, sb.inner.*) and sa.is_mut == sb.is_mut,
-            else => false,
-        },
-
-        else => true,
-    };
 }
