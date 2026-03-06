@@ -365,6 +365,7 @@ fn writeOutputFiles(self: *Self) !void {
     try header_file_writer.interface.writeAll("#include <zag.h>\n\n");
     try header_file_writer.interface.writeAll(self.sections.get(.header_includes).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
+    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_primitives).buffer.items);
     try self.emitTypeDefsInOrder(&header_file_writer.interface);
     try header_file_writer.interface.writeAll(self.sections.get(.header_function_decls).buffer.items);

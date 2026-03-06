@@ -2214,7 +2214,6 @@ pub fn play_sound(sound: Sound) void -> PlaySound(sound)
 pub fn stop_sound(sound: Sound) void -> StopSound(sound)
 pub fn pause_sound(sound: Sound) void -> PauseSound(sound)
 pub fn resume_sound(sound: Sound) void -> ResumeSound(sound)
-pub fn get_sounds_playing() i32 -> GetSoundsPlaying()
 pub fn is_sound_playing(sound: Sound) bool -> IsSoundPlaying(sound)
 pub fn set_sound_volume(sound: Sound, volume: f32) void -> SetSoundVolume(sound, volume)
 pub fn set_sound_pitch(sound: Sound, pitch: f32) void -> SetSoundPitch(sound, pitch)
@@ -2930,7 +2929,6 @@ bind fn IsSoundPlaying(sound: Sound) bool;
 bind fn SetSoundVolume(sound: Sound, volume: f32) void;
 bind fn SetSoundPitch(sound: Sound, pitch: f32) void;
 bind fn SetSoundPan(sound: Sound, pan: f32) void;
-bind fn GetSoundsPlaying() i32;
 bind fn WaveCopy(wave: Wave) Wave;
 bind fn WaveCrop(wave: &mut Wave, initFrame: i32, finalFrame: i32) void;
 bind fn WaveFormat(wave: &mut Wave, sampleRate: i32, sampleSize: i32, channels: i32) void;

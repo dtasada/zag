@@ -196,13 +196,11 @@ fn compoundTypeDeclaration(
             try return_type.@"struct".members.put("items", return_type);
 
             if (self.zag_header_contents.get(return_type) == null) {
-                const saved_section_ = self.current_section;
-                self.switchSection(.header_type_defs);
-                defer self.switchSection(saved_section_);
-
+                try self.beginTypeDefEmit(return_type);
                 try self.write("typedef struct {\n");
                 try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
                 try self.print(";\n}} {s};\n", .{return_type_name});
+                self.endTypeDefEmit();
 
                 try self.zag_header_contents.put(return_type, return_type_name);
             }
@@ -543,9 +541,29 @@ fn functionDefinition(
     defer self.popScope();
     self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;
 
+    var return_type: Type = try .fromAst(self, function_def.return_type);
+
     const previous_return_type = self.current_return_type;
     defer self.current_return_type = previous_return_type;
     self.current_return_type = try .fromAst(self, function_def.return_type);
+
+    const return_type_is_array = return_type == .array;
+    if (return_type == .array) {
+        const inner_type = return_type;
+        const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{return_type.hash()});
+        return_type = .{ .@"struct" = try .init(self, return_type_name, return_type_name, null) };
+        try return_type.@"struct".members.put("items", return_type);
+
+        if (self.zag_header_contents.get(return_type) == null) {
+            try self.beginTypeDefEmit(return_type);
+            try self.write("typedef struct {\n");
+            try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
+            try self.print(";\n}} {s};\n", .{return_type_name});
+            self.endTypeDefEmit();
+
+            try self.zag_header_contents.put(return_type, return_type_name);
+        }
+    }
 
     if (binding_function or function_def.is_pub) {
         const saved_section = self.current_section;
@@ -554,7 +572,7 @@ fn functionDefinition(
 
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.
-        try self.compileType(self.current_return_type.?, .{ .binding_mut = true });
+        try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 0..) |parameter, i| {
             try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{ .binding_mut = parameter.is_mut });
@@ -566,7 +584,7 @@ fn functionDefinition(
     if (!binding_function) {
         // we'll set the type of the function return type to be mutable because cc warns when a
         // function's return type is `const` qualified.
-        try self.compileType(try .fromAst(self, function_def.return_type), .{ .binding_mut = true });
+        try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 0..) |parameter, i| {
             try self.compileVariableSignature(
@@ -604,7 +622,11 @@ fn functionDefinition(
             ),
         };
 
-        try self.compileBlock(function_def.body, .{ .return_implicit_success = inject_return });
+        try self.compileBlock(function_def.body, .{
+            .return_implicit_success = inject_return,
+            .return_type_override = return_type,
+            .return_type_override_is_array = return_type_is_array,
+        });
     }
 }
 
