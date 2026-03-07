@@ -13,7 +13,7 @@ pub struct String {
         free_slice<u8>(self.bytes);
     }
 
-    pub fn from_raw(bytes: []u8) String {
+    pub fn from_raw(bytes: []mut u8) String {
         return String { bytes: bytes };
     }
 

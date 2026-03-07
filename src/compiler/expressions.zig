@@ -610,54 +610,14 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
 }
 
 fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
-    const expected_type: Type = try .infer(self, expr.assignee.*);
-    const received_type: Type = try .infer(self, expr.value.*);
+    const expected_type: Type = try Type.infer(self, expr.assignee.*);
+    const received_type: Type = try Type.infer(self, expr.value.*);
 
     if (!received_type.check(expected_type))
         return errors.typeMismatch(expected_type, received_type, expr.value.getPosition());
 
-    b: switch (expr.assignee.*) {
-        .ident => |ident| if (!try self.getSymbolMutability(ident.ident))
-            return errors.badMutability(expr.pos),
-        .member => |m| {
-            const parent_type = try Type.infer(self, m.parent.*);
-            switch (parent_type) {
-                .module => |mod| {
-                    const symbol = mod.symbols.get(m.member_name) orelse
-                        return errors.unknownSymbol(m.member_name, m.pos);
-                    if (!symbol.is_mut) return errors.badMutability(expr.pos);
-                },
-                .reference => |ref| if (!ref.is_mut) return errors.badMutability(expr.pos),
-                else => continue :b m.parent.*,
-            }
-        },
-        inline .index, .slice => |idx| {
-            const assignee_t: Type = try .infer(self, idx.lhs.*);
-            switch (assignee_t) {
-                .slice => |slc| if (!slc.is_mut) continue :b idx.lhs.*,
-                else => continue :b idx.lhs.*,
-            }
-        },
-        .dereference => |deref| {
-            if (deref.parent.* != .ident) continue :b deref.parent.*;
-            const t = try self.getSymbolType(deref.parent.ident.ident);
-            if (!(t == .reference and t.reference.is_mut)) continue :b deref.parent.*;
-        },
-        else => |other| return utils.printErr(
-            error.IllegalExpression,
-            "comperr: Illegal assignment expression on {s} ({f}).\n",
-            .{ @tagName(other), expr.pos },
-            .red,
-        ),
-    }
-
-    switch (expr.assignee.*) {
-        .index => |idx| switch (try Type.infer(self, idx.lhs.*)) {
-            .slice => |slc| if (!slc.is_mut) return errors.badMutability(expr.pos),
-            else => {},
-        },
-        else => {},
-    }
+    if (!try self.getExpressionMutability(expr.assignee.*))
+        return errors.badMutability(expr.pos);
 
     switch (expr.op) {
         .@"^=" => {
@@ -797,10 +757,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
             }
 
             var parent_reference_level: i32 = 0;
-            var reference_is_mut = switch (m.parent.*) {
-                .ident => |ident| try self.getSymbolMutability(ident.ident),
-                else => false, // TODO: symbol mutability is wrong
-            };
+            var reference_is_mut = self.getExpressionMutability(m.parent.*);
 
             // Need to resolve method to Type.Function for methodCall
             const parent = try Type.infer(self, m.parent.*);
@@ -901,10 +858,7 @@ fn tryResolveStaticType(self: *Self, expr: ast.Expression) !?Type {
 
 fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Member, method: Type.Function) !void {
     var parent_reference_level: i32 = 0;
-    var reference_is_mut = switch (m.parent.*) {
-        .ident => |ident| try self.getSymbolMutability(ident.ident),
-        else => false, // TODO: symbol mutability is wrong
-    };
+    var reference_is_mut = try self.getExpressionMutability(m.parent.*);
 
     var is_instance_method = false;
     const parent: Type = try .infer(self, m.parent.*);
@@ -1103,12 +1057,22 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         call_expr.pos,
     );
 
-    for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_type, i| {
+    for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_param, i| {
+        const expected_type = expected_param.type;
         const received_expr = call_expr.args.items[i];
-        const received_type: Type = try .infer(self, received_expr);
-        if (expected_type.type != .variadic and
-            !received_type.check(expected_type.type))
-            return errors.typeMismatch(expected_type.type, received_type, received_expr.getPosition());
+        const received_type = try Type.infer(self, received_expr);
+
+        if (expected_type != .variadic and !received_type.check(expected_type))
+            return errors.typeMismatch(expected_type, received_type, received_expr.getPosition());
+
+        switch (expected_type) {
+            .slice => |exp_slice| switch (received_type) {
+                .slice => |rec_slice| if (exp_slice.is_mut and !rec_slice.is_mut)
+                    return errors.typeMismatch(expected_type, received_type, received_expr.getPosition()),
+                else => {},
+            },
+            else => {},
+        }
     }
 
     try compile(self, call_expr.callee, .{});

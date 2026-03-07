@@ -793,8 +793,8 @@ pub const Type = union(enum) {
             },
             .type => |t| .{ .type = try fromAstPtr(compiler, t) },
             .slice => |slice| switch (try infer(compiler, slice.lhs.*)) {
-                // TODO: change slice mutability to equal binding mutability of reference
-                inline .slice, .array => |t| .{ .slice = .{ .inner = t.inner, .is_mut = false } },
+                .slice => |s| .{ .slice = s },
+                .array => |a| .{ .slice = .{ .inner = a.inner, .is_mut = try compiler.getExpressionMutability(expr) } },
                 else => |other| errors.illegalSliceExpression(other, slice.pos),
             },
             .bad_node => unreachable,

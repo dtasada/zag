@@ -1282,6 +1282,37 @@ pub fn getSymbolDefined(self: *const Self, symbol: []const u8) !bool {
     };
 }
 
+pub fn getExpressionMutability(self: *Self, expr: ast.Expression) !bool {
+    return switch (expr) {
+        .ident => |ident| self.getSymbolMutability(ident.ident),
+        .member => |m| {
+            const parent_type = try Type.infer(self, m.parent.*);
+            return switch (parent_type) {
+                .reference => |ref| ref.is_mut,
+                .module => |mod| {
+                    const symbol = mod.symbols.get(m.member_name) orelse return false;
+                    return symbol.is_mut;
+                },
+                inline .@"struct", .@"union", .slice => self.getExpressionMutability(m.parent.*),
+                else => false,
+            };
+        },
+        inline .index, .slice => |idx| {
+            const lhs_type = try Type.infer(self, idx.lhs.*);
+            return switch (lhs_type) {
+                .slice => |slc| slc.is_mut,
+                .array => self.getExpressionMutability(idx.lhs.*),
+                else => false,
+            };
+        },
+        .dereference => |deref| {
+            const t = try Type.infer(self, deref.parent.*);
+            return t == .reference and t.reference.is_mut;
+        },
+        else => false,
+    };
+}
+
 pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
