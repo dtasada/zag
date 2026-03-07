@@ -222,6 +222,9 @@ pub const Type = union(enum) {
     c_ushort,
     c_uint,
 
+    c_float,
+    c_double,
+
     usize,
 
     f32,
@@ -615,16 +618,18 @@ pub const Type = union(enum) {
             });
 
             return new_type;
-        } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "sizeof")) {
-            return instantiateBuiltin(compiler, base_type.function, name, base_name, args.items, false);
-        } else if (base_type == .function and (std.mem.eql(u8, base_type.function.name, "cast") or std.mem.eql(u8, base_type.function.name, "xor"))) {
-            return instantiateBuiltin(compiler, base_type.function, name, base_name, args.items, true);
-        } else return utils.printErr(
-            error.GenericInstantiationFailed,
-            "comperr: Cannot instantiate {f} (missing definition or unsupported) ({f})\n",
-            .{ base_type, pos },
-            .red,
-        );
+        } else return if (base_type == .function and std.mem.eql(u8, base_type.function.name, "sizeof"))
+            instantiateBuiltin(compiler, base_type.function, name, base_name, args.items, false)
+        else if (base_type == .function and (std.mem.eql(u8, base_type.function.name, "cast") or
+            std.mem.eql(u8, base_type.function.name, "xor")))
+            instantiateBuiltin(compiler, base_type.function, name, base_name, args.items, true)
+        else
+            utils.printErr(
+                error.GenericInstantiationFailed,
+                "comperr: Cannot instantiate {f} (missing definition or unsupported) ({f})\n",
+                .{ base_type, pos },
+                .red,
+            );
     }
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
@@ -1528,6 +1533,11 @@ pub const Type = union(enum) {
             .i64, .i32, .i16, .i8 => true,
             .f64, .f32 => true,
             .usize => true,
+
+            .c_char, .c_long, .c_short, .c_int => true,
+            .c_uchar, .c_ulong, .c_ushort, .c_uint => true,
+            .c_float, .c_double => true,
+
             else => false,
         };
     }

@@ -426,7 +426,6 @@ pub struct Vector4 {
         let dz = target.z - v.z;
         let dw = target.w - v.w;
         let value = (dx*dx) + (dy*dy) + (dz*dz) + (dw*dw);
-
         if ((value == 0) or ((maxDistance >= 0) and (value <= maxDistance*maxDistance))) return target;
 
         let dist = std.sqrt<f32>(value);
@@ -1790,23 +1789,23 @@ pub fn minimize_window() void -> MinimizeWindow()
 pub fn restore_window() void -> RestoreWindow()
 pub fn set_window_icon(image: Image) void -> SetWindowIcon(image)
 pub fn set_window_title(title: &c_char) void -> SetWindowTitle(title)
-pub fn set_window_position(x: i32, y: i32) void -> SetWindowPosition(x, y)
+pub fn set_window_position(x, y: i32) void -> SetWindowPosition(x, y)
 pub fn set_window_monitor(monitor: i32) void -> SetWindowMonitor(monitor)
-pub fn set_window_min_size(width: i32, height: i32) void -> SetWindowMinSize(width, height)
-pub fn set_window_size(width: i32, height: i32) void -> SetWindowSize(width, height)
+pub fn set_window_min_size(width, height: i32) void -> SetWindowMinSize(width, height)
+pub fn set_window_size(width, height: i32) void -> SetWindowSize(width, height)
 pub fn get_window_handle() &mut void -> GetWindowHandle()
 pub fn get_screen_width() i32 -> GetScreenWidth()
 pub fn get_screen_height() i32 -> GetScreenHeight()
 pub fn get_monitor_count() i32 -> GetMonitorCount()
 pub fn get_current_monitor() i32 -> GetCurrentMonitor()
-pub fn get_monitor_position(monitor: i32) Vector2 -> cast<Vector2>(GetMonitorPosition(monitor))
+pub fn get_monitor_position(monitor: i32) Vector2 -> GetMonitorPosition(monitor)
 pub fn get_monitor_width(monitor: i32) i32 -> GetMonitorWidth(monitor)
 pub fn get_monitor_height(monitor: i32) i32 -> GetMonitorHeight(monitor)
 pub fn get_monitor_physical_width(monitor: i32) i32 -> GetMonitorPhysicalWidth(monitor)
 pub fn get_monitor_physical_height(monitor: i32) i32 -> GetMonitorPhysicalHeight(monitor)
 pub fn get_monitor_refresh_rate(monitor: i32) i32 -> GetMonitorRefreshRate(monitor)
-pub fn get_window_position() Vector2 -> cast<Vector2>(GetWindowPosition())
-pub fn get_window_scale_dpi() Vector2 -> cast<Vector2>(GetWindowScaleDPI())
+pub fn get_window_position() Vector2 -> GetWindowPosition()
+pub fn get_window_scale_dpi() Vector2 -> GetWindowScaleDPI()
 pub fn get_monitor_name(monitor: i32) &c_char -> GetMonitorName(monitor)
 pub fn set_clipboard_text(text: &c_char) void -> SetClipboardText(text)
 pub fn get_clipboard_text() &c_char -> GetClipboardText()
@@ -1833,10 +1832,10 @@ pub fn begin_scissor_mode(x: i32, y: i32, width: i32, height: i32) void -> Begin
 pub fn end_scissor_mode() void -> EndScissorMode()
 pub fn begin_vr_stereo_mode(config: VrStereoConfig) void -> BeginVrStereoMode(config)
 pub fn end_vr_stereo_mode() void -> EndVrStereoMode()
-pub fn load_vr_stereo_config(device: VrDeviceInfo) VrStereoConfig -> cast<VrStereoConfig>(LoadVrStereoConfig(device))
+pub fn load_vr_stereo_config(device: VrDeviceInfo) VrStereoConfig -> LoadVrStereoConfig(device)
 pub fn unload_vr_stereo_config(config: VrStereoConfig) void -> UnloadVrStereoConfig(config)
-pub fn load_shader(vsFileName: &c_char, fsFileName: &c_char) Shader -> cast<Shader>(LoadShader(vsFileName, fsFileName))
-pub fn load_shader_from_memory(vsCode: &c_char, fsCode: &c_char) Shader -> cast<Shader>(LoadShaderFromMemory(vsCode, fsCode))
+pub fn load_shader(vsFileName: &c_char, fsFileName: &c_char) Shader -> LoadShader(vsFileName, fsFileName)
+pub fn load_shader_from_memory(vsCode: &c_char, fsCode: &c_char) Shader -> LoadShaderFromMemory(vsCode, fsCode)
 pub fn get_shader_location(shader: Shader, uniformName: &c_char) i32 -> GetShaderLocation(cast<Shader>(shader), uniformName)
 pub fn get_shader_location_attrib(shader: Shader, attribName: &c_char) i32 -> GetShaderLocationAttrib(cast<Shader>(shader), attribName)
 pub fn set_shader_value(shader: Shader, locIndex: i32, value: &void, uniformType: i32) void -> SetShaderValue(cast<Shader>(shader), locIndex, value, uniformType)
@@ -1844,13 +1843,13 @@ pub fn set_shader_value_v(shader: Shader, locIndex: i32, value: &void, uniformTy
 pub fn set_shader_value_matrix(shader: Shader, locIndex: i32, mat: Matrix) void -> SetShaderValueMatrix(cast<Shader>(shader), locIndex, mat)
 pub fn set_shader_value_texture(shader: Shader, locIndex: i32, texture: Texture2D) void -> SetShaderValueTexture(cast<Shader>(shader), locIndex, texture)
 pub fn unload_shader(shader: Shader) void -> UnloadShader(cast<Shader>(shader))
-pub fn get_screen_to_world_ray(mousePosition: Vector2, camera: Camera) Ray -> cast<Ray>(GetScreenToWorldRay(mousePosition, camera))
+pub fn get_screen_to_world_ray(mousePosition: Vector2, camera: Camera) Ray -> GetScreenToWorldRay(mousePosition, camera)
 pub fn get_camera_matrix(camera: Camera) Matrix -> GetCameraMatrix(camera)
 pub fn get_camera_matrix2_d(camera: Camera2D) Matrix -> GetCameraMatrix2D(camera)
-pub fn get_world_to_screen(position: Vector3, camera: Camera) Vector2 -> cast<Vector2>(GetWorldToScreen(position, camera))
-pub fn get_world_to_screen_ex(position: Vector3, camera: Camera, width: i32, height: i32) Vector2 -> cast<Vector2>(GetWorldToScreenEx(position, camera, width, height))
-pub fn get_world_to_screen2_d(position: Vector2, camera: Camera2D) Vector2 -> cast<Vector2>(GetWorldToScreen2D(position, camera))
-pub fn get_screen_to_world2_d(position: Vector2, camera: Camera2D) Vector2 -> cast<Vector2>(GetScreenToWorld2D(position, camera))
+pub fn get_world_to_screen(position: Vector3, camera: Camera) Vector2 -> GetWorldToScreen(position, camera)
+pub fn get_world_to_screen_ex(position: Vector3, camera: Camera, width: i32, height: i32) Vector2 -> GetWorldToScreenEx(position, camera, width, height)
+pub fn get_world_to_screen2_d(position: Vector2, camera: Camera2D) Vector2 -> GetWorldToScreen2D(position, camera)
+pub fn get_screen_to_world2_d(position: Vector2, camera: Camera2D) Vector2 -> GetScreenToWorld2D(position, camera)
 pub fn set_target_fps(fps: i32) void -> SetTargetFPS(fps)
 pub fn get_fps() i32 -> GetFPS()
 pub fn get_frame_time() f32 -> GetFrameTime()
@@ -1860,7 +1859,7 @@ pub fn set_random_seed(seed: u32) void -> SetRandomSeed(seed)
 pub fn take_screenshot(fileName: &c_char) void -> TakeScreenshot(fileName)
 pub fn set_config_flags(flags: u32) void -> SetConfigFlags(flags)
 // pub fn trace_log(logLevel: i32, text: &c_char, args...) void -> TraceLog(logLevel, text, args...)
-// pub fn set_trace_log_level(logLevel: i32) void -> SetTraceLogLevel(logLevel)
+pub fn set_trace_log_level(logLevel: i32) void -> SetTraceLogLevel(logLevel)
 pub fn mem_alloc(size: u32) &mut void -> MemAlloc(size)
 pub fn mem_realloc(ptr: &mut void, size: u32) &mut void -> MemRealloc(ptr, size)
 pub fn mem_free(ptr: &mut void) void -> MemFree(ptr)
@@ -1889,18 +1888,18 @@ pub fn get_working_directory() &c_char -> GetWorkingDirectory()
 pub fn get_application_directory() &c_char -> GetApplicationDirectory()
 pub fn change_directory(dir: &mut c_char) bool -> ChangeDirectory(dir)
 pub fn is_path_file(path: &mut c_char) bool -> IsPathFile(path)
-pub fn load_directory_files(dirPath: &mut c_char) FilePathList -> cast<FilePathList>(LoadDirectoryFiles(dirPath))
-pub fn load_directory_files_ex(basePath, filter: &mut c_char, scanSubdirs: bool) FilePathList -> cast<FilePathList>(LoadDirectoryFilesEx(basePath, filter, scanSubdirs))
+pub fn load_directory_files(dirPath: &mut c_char) FilePathList -> LoadDirectoryFiles(dirPath)
+pub fn load_directory_files_ex(basePath, filter: &mut c_char, scanSubdirs: bool) FilePathList -> LoadDirectoryFilesEx(basePath, filter, scanSubdirs)
 pub fn unload_directory_files(files: FilePathList) void -> UnloadDirectoryFiles(files)
 pub fn is_file_dropped() bool -> IsFileDropped()
-pub fn load_dropped_files() FilePathList -> cast<FilePathList>(LoadDroppedFiles())
+pub fn load_dropped_files() FilePathList -> LoadDroppedFiles()
 pub fn unload_dropped_files(files: FilePathList) void -> UnloadDroppedFiles(files)
-pub fn get_file_mod_time(fileName: &mut c_char) i64 -> cast<i64>(GetFileModTime(fileName))
+pub fn get_file_mod_time(fileName: &mut c_char) i64 -> GetFileModTime(fileName)
 pub fn compress_data(data: &u8, dataSize: i32, compDataSize: &mut i32) &mut u8 -> CompressData(data, dataSize, compDataSize)
 pub fn decompress_data(compData: &u8, dataSize: i32, compDataSize: &mut i32) &mut u8 -> DecompressData(compData, dataSize, compDataSize)
 pub fn encode_data_base64(data: &u8, dataSize: i32, outputSize: &mut i32) &c_char -> EncodeDataBase64(data, dataSize, outputSize)
 pub fn decode_data_base64(data: &mut c_char, outputLength: &mut i32) &c_char -> DecodeDataBase64(data, outputLength)
-pub fn load_automation_event_list(fileName: &c_char) AutomationEventList -> cast<AutomationEventList>(LoadAutomationEventList(fileName))
+pub fn load_automation_event_list(fileName: &c_char) AutomationEventList -> LoadAutomationEventList(fileName)
 pub fn unload_automation_event_list(list: AutomationEventList) void -> UnloadAutomationEventList(list)
 pub fn export_automation_event_list(list: AutomationEventList, fileName: &mut c_char) bool -> ExportAutomationEventList(list, fileName)
 pub fn set_automation_event_list(list: &mut AutomationEventList) void -> SetAutomationEventList(list)
@@ -1931,26 +1930,26 @@ pub fn is_mouse_button_released(button: i32) bool -> IsMouseButtonReleased(butto
 pub fn is_mouse_button_up(button: i32) bool -> IsMouseButtonUp(button)
 pub fn get_mouse_x() i32 -> GetMouseX()
 pub fn get_mouse_y() i32 -> GetMouseY()
-pub fn get_mouse_position() Vector2 -> cast<Vector2>(GetMousePosition())
-pub fn get_mouse_delta() Vector2 -> cast<Vector2>(GetMouseDelta())
+pub fn get_mouse_position() Vector2 -> GetMousePosition()
+pub fn get_mouse_delta() Vector2 -> GetMouseDelta()
 pub fn set_mouse_position(x: i32, y: i32) void -> SetMousePosition(x, y)
 pub fn set_mouse_offset(offsetX: i32, offsetY: i32) void -> SetMouseOffset(offsetX, offsetY)
 pub fn set_mouse_scale(scaleX: f32, scaleY: f32) void -> SetMouseScale(scaleX, scaleY)
 pub fn get_mouse_wheel_move() f32 -> GetMouseWheelMove()
-pub fn get_mouse_wheel_move_v() Vector2 -> cast<Vector2>(GetMouseWheelMoveV())
+pub fn get_mouse_wheel_move_v() Vector2 -> GetMouseWheelMoveV()
 pub fn set_mouse_cursor(cursor: i32) void -> SetMouseCursor(cursor)
 pub fn get_touch_x() i32 -> GetTouchX()
 pub fn get_touch_y() i32 -> GetTouchY()
-pub fn get_touch_position(index: i32) Vector2 -> cast<Vector2>(GetTouchPosition(index))
+pub fn get_touch_position(index: i32) Vector2 -> GetTouchPosition(index)
 pub fn get_touch_point_id(index: i32) i32 -> GetTouchPointId(index)
 pub fn get_touch_point_count() i32 -> GetTouchPointCount()
 pub fn set_gestures_enabled(flags: u32) void -> SetGesturesEnabled(flags)
 pub fn is_gesture_detected(gesture: i32) bool -> IsGestureDetected(gesture)
 pub fn get_gesture_detected() i32 -> GetGestureDetected()
 pub fn get_gesture_hold_duration() f32 -> GetGestureHoldDuration()
-pub fn get_gesture_drag_vector() Vector2 -> cast<Vector2>(GetGestureDragVector())
+pub fn get_gesture_drag_vector() Vector2 -> GetGestureDragVector()
 pub fn get_gesture_drag_angle() f32 -> GetGestureDragAngle()
-pub fn get_gesture_pinch_vector() Vector2 -> cast<Vector2>(GetGesturePinchVector())
+pub fn get_gesture_pinch_vector() Vector2 -> GetGesturePinchVector()
 pub fn get_gesture_pinch_angle() f32 -> GetGesturePinchAngle()
 pub fn update_camera(camera: &mut Camera, mode: CameraMode) void -> UpdateCamera(camera, cast<i32>(mode))
 pub fn draw_pixel(posX: i32, posY: i32, color: Color) void -> DrawPixel(posX, posY, color)
@@ -1996,27 +1995,27 @@ pub fn check_collision_point_circle(point: Vector2, center: Vector2, radius: f32
 pub fn check_collision_point_triangle(point: Vector2, p1: Vector2, p2: Vector2, p3: Vector2) bool -> CheckCollisionPointTriangle(point, p1, p2, p3)
 pub fn check_collision_lines(startPos1, endPos1, startPos2, endPos2: Vector2, collisionPoint: &mut Vector2) bool -> CheckCollisionLines(startPos1, endPos1, startPos2, endPos2, collisionPoint)
 pub fn check_collision_point_line(point: Vector2, p1: Vector2, p2: Vector2, threshold: i32) bool -> CheckCollisionPointLine(point, p1, p2, threshold)
-pub fn get_collision_rec(rec1: Rectangle, rec2: Rectangle) Rectangle -> cast<Rectangle>(GetCollisionRec(rec1, rec2))
-pub fn load_image(fileName: &c_char) Image -> cast<Image>(LoadImage(fileName))
-pub fn load_image_raw(fileName: &c_char, width: i32, height: i32, format: i32, headerSize: i32) Image -> cast<Image>(LoadImageRaw(fileName, width, height, format, headerSize))
-pub fn load_image_anim(fileName: &c_char, frames: &mut i32) Image -> cast<Image>(LoadImageAnim(fileName, frames))
+pub fn get_collision_rec(rec1: Rectangle, rec2: Rectangle) Rectangle -> GetCollisionRec(rec1, rec2)
+pub fn load_image(fileName: &c_char) Image -> LoadImage(fileName)
+pub fn load_image_raw(fileName: &c_char, width: i32, height: i32, format: i32, headerSize: i32) Image -> LoadImageRaw(fileName, width, height, format, headerSize)
+pub fn load_image_anim(fileName: &c_char, frames: &mut i32) Image -> LoadImageAnim(fileName, frames)
 pub fn load_image_from_memory(fileType: &c_char, fileData: &u8, dataSize: i32) Image -> LoadImageFromMemory(fileType, fileData, dataSize)
-pub fn load_image_from_texture(texture: Texture2D) Image -> cast<Image>(LoadImageFromTexture(texture))
-pub fn load_image_from_screen() Image -> cast<Image>(LoadImageFromScreen())
+pub fn load_image_from_texture(texture: Texture2D) Image -> LoadImageFromTexture(texture)
+pub fn load_image_from_screen() Image -> LoadImageFromScreen()
 pub fn unload_image(image: Image) void -> UnloadImage(image)
 pub fn export_image(image: Image, fileName: &c_char) bool -> ExportImage(image, fileName)
 pub fn export_image_as_code(image: Image, fileName: &c_char) bool -> ExportImageAsCode(image, fileName)
 pub fn gen_image_color(width: i32, height: i32, color: Color) Image -> GenImageColor(width, height, color)
 pub fn gen_image_gradient_linear(width, height, direction: i32, start, end: Color) Image -> GenImageGradientLinear(width, height, direction, start, end)        // Generate image: linear gradient, direction in degrees [0..360], 0=Vertical gradient
-pub fn gen_image_gradient_radial(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image -> cast<Image>(GenImageGradientRadial(width, height, density, inner, outer))
+pub fn gen_image_gradient_radial(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image -> GenImageGradientRadial(width, height, density, inner, outer)
 pub fn gen_image_gradient_square(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image -> GenImageGradientSquare(width, height, density, inner, outer)        // Generate image: linear gradient, direction in degrees [0..360], 0=Vertical gradient
-pub fn gen_image_checked(width: i32, height: i32, checksX: i32, checksY: i32, col1: Color, col2: Color) Image -> cast<Image>(GenImageChecked(width, height, checksX, checksY, col1, col2))
-pub fn gen_image_white_noise(width: i32, height: i32, factor: f32) Image -> cast<Image>(GenImageWhiteNoise(width, height, factor))
-pub fn gen_image_cellular(width: i32, height: i32, tileSize: i32) Image -> cast<Image>(GenImageCellular(width, height, tileSize))
-pub fn image_copy(image: Image) Image -> cast<Image>(ImageCopy(image))
-pub fn image_from_image(image: Image, rec: Rectangle) Image -> cast<Image>(ImageFromImage(image, rec))
-pub fn image_text(text: &c_char, fontSize: i32, color: Color) Image -> cast<Image>(ImageText(text, fontSize, color))
-pub fn image_text_ex(font: Font, text: &c_char, fontSize: f32, spacing: f32, tint: Color) Image -> cast<Image>(ImageTextEx(font, text, fontSize, spacing, tint))
+pub fn gen_image_checked(width: i32, height: i32, checksX: i32, checksY: i32, col1: Color, col2: Color) Image -> GenImageChecked(width, height, checksX, checksY, col1, col2)
+pub fn gen_image_white_noise(width: i32, height: i32, factor: f32) Image -> GenImageWhiteNoise(width, height, factor)
+pub fn gen_image_cellular(width: i32, height: i32, tileSize: i32) Image -> GenImageCellular(width, height, tileSize)
+pub fn image_copy(image: Image) Image -> ImageCopy(image)
+pub fn image_from_image(image: Image, rec: Rectangle) Image -> ImageFromImage(image, rec)
+pub fn image_text(text: &c_char, fontSize: i32, color: Color) Image -> ImageText(text, fontSize, color)
+pub fn image_text_ex(font: Font, text: &c_char, fontSize: f32, spacing: f32, tint: Color) Image -> ImageTextEx(font, text, fontSize, spacing, tint)
 pub fn image_format(image: &mut Image, newFormat: i32) void -> ImageFormat(image, newFormat)
 pub fn image_to_pot(image: &mut Image, fill: Color) void -> ImageToPOT(image, fill)
 pub fn image_crop(image: &mut Image, crop: Rectangle) void -> ImageCrop(image, crop)
@@ -2045,8 +2044,8 @@ pub fn load_image_colors(image: Image) &mut Color -> LoadImageColors(image)
 pub fn load_image_palette(image: Image, maxPaletteSize: i32, colorCount: &mut i32) &mut Color -> LoadImagePalette(image, maxPaletteSize, colorCount)
 pub fn unload_image_colors(colors: &mut Color) void -> UnloadImageColors(colors)
 pub fn unload_image_palette(colors: &mut Color) void -> UnloadImagePalette(colors)
-pub fn get_image_alpha_border(image: Image, threshold: f32) Rectangle -> cast<Rectangle>(GetImageAlphaBorder(image, threshold))
-pub fn get_image_color(image: Image, x: i32, y: i32) Color -> cast<Color>(GetImageColor(image, x, y))
+pub fn get_image_alpha_border(image: Image, threshold: f32) Rectangle -> GetImageAlphaBorder(image, threshold)
+pub fn get_image_color(image: Image, x: i32, y: i32) Color -> GetImageColor(image, x, y)
 pub fn image_clear_background(dst: &mut Image, color: Color) void -> ImageClearBackground(dst, color)
 pub fn image_draw_pixel(dst: &mut Image, posX: i32, posY: i32, color: Color) void -> ImageDrawPixel(dst, posX, posY, color)
 pub fn image_draw_pixel_v(dst: &mut Image, position: Vector2, color: Color) void -> ImageDrawPixelV(dst, position, color)
@@ -2078,25 +2077,25 @@ pub fn draw_texture_ex(texture: Texture2D, position: Vector2, rotation: f32, sca
 pub fn draw_texture_rec(texture: Texture2D, source: Rectangle, position: Vector2, tint: Color) void -> DrawTextureRec(texture, source, position, tint)
 pub fn draw_texture_pro(texture: Texture2D, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void -> DrawTexturePro(texture, source, dest, origin, rotation, tint)
 pub fn draw_texture_n_patch(texture: Texture2D, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void -> DrawTextureNPatch(texture, nPatchInfo, dest, origin, rotation, tint)
-pub fn fade(color: Color, alpha: f32) Color -> cast<Color>(Fade(color, alpha))
+pub fn fade(color: Color, alpha: f32) Color -> Fade(color, alpha)
 pub fn color_to_int(color: Color) i32 -> ColorToInt(color)
-pub fn color_normalize(color: Color) Vector4 -> cast<Vector4>(ColorNormalize(color))
-pub fn color_from_normalized(normalized: Vector4) Color -> cast<Color>(ColorFromNormalized(normalized))
-pub fn color_to_hsv(color: Color) Vector3 -> cast<Vector3>(ColorToHSV(color))
-pub fn color_from_hsv(hue: f32, saturation: f32, value: f32) Color -> cast<Color>(ColorFromHSV(hue, saturation, value))
-pub fn color_alpha(color: Color, alpha: f32) Color -> cast<Color>(ColorAlpha(color, alpha))
-pub fn color_alpha_blend(dst: Color, src: Color, tint: Color) Color -> cast<Color>(ColorAlphaBlend(dst, src, tint))
-pub fn get_color(hexValue: u32) Color -> cast<Color>(GetColor(hexValue))
-pub fn get_pixel_color(srcPtr: &mut void, format: i32) Color -> cast<Color>(GetPixelColor(srcPtr, format))
+pub fn color_normalize(color: Color) Vector4 -> ColorNormalize(color)
+pub fn color_from_normalized(normalized: Vector4) Color -> ColorFromNormalized(normalized)
+pub fn color_to_hsv(color: Color) Vector3 -> ColorToHSV(color)
+pub fn color_from_hsv(hue: f32, saturation: f32, value: f32) Color -> ColorFromHSV(hue, saturation, value)
+pub fn color_alpha(color: Color, alpha: f32) Color -> ColorAlpha(color, alpha)
+pub fn color_alpha_blend(dst: Color, src: Color, tint: Color) Color -> ColorAlphaBlend(dst, src, tint)
+pub fn get_color(hexValue: u32) Color -> GetColor(hexValue)
+pub fn get_pixel_color(srcPtr: &mut void, format: i32) Color -> GetPixelColor(srcPtr, format)
 pub fn set_pixel_color(dstPtr: &mut void, color: Color, format: i32) void -> SetPixelColor(dstPtr, color, format)
 pub fn get_pixel_data_size(width: i32, height: i32, format: i32) i32 -> GetPixelDataSize(width, height, format)
-pub fn get_font_default() Font -> cast<Font>(GetFontDefault())
-pub fn load_font(fileName: &c_char) Font -> cast<Font>(LoadFont(fileName))
-pub fn load_font_ex(fileName: &c_char, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font -> cast<Font>(LoadFontEx(fileName, fontSize, fontChars, glyphCount))
-pub fn load_font_from_image(image: Image, key: Color, firstChar: i32) Font -> cast<Font>(LoadFontFromImage(image, key, firstChar))
+pub fn get_font_default() Font -> GetFontDefault()
+pub fn load_font(fileName: &c_char) Font -> LoadFont(fileName)
+pub fn load_font_ex(fileName: &c_char, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font -> LoadFontEx(fileName, fontSize, fontChars, glyphCount)
+pub fn load_font_from_image(image: Image, key: Color, firstChar: i32) Font -> LoadFontFromImage(image, key, firstChar)
 pub fn load_font_from_memory(fileType: &c_char, fileData: &u8, dataSize, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font -> LoadFontFromMemory(fileType, fileData, dataSize, fontSize, fontChars, glyphCount)
 pub fn load_font_data(fileData: &u8, dataSize: i32, fontSize: i32, codepoints: &mut i32, glyphCount: i32, type: i32) &mut GlyphInfo -> LoadFontData(fileData, dataSize, fontSize, codepoints, glyphCount, type)
-pub fn gen_image_font_atlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image -> cast<Image>(GenImageFontAtlas(chars, recs, glyphCount, fontSize, padding, packMethod))
+pub fn gen_image_font_atlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image -> GenImageFontAtlas(chars, recs, glyphCount, fontSize, padding, packMethod)
 pub fn unload_font_data(chars: &mut GlyphInfo, glyphCount: i32) void -> UnloadFontData(chars, glyphCount)
 pub fn unload_font(font: Font) void -> UnloadFont(font)
 pub fn export_font_as_code(font: Font, fileName: &c_char) bool -> ExportFontAsCode(font, fileName)
@@ -2107,10 +2106,10 @@ pub fn draw_text_pro(font: Font, text: &c_char, position: Vector2, origin: Vecto
 pub fn draw_text_codepoint(font: Font, codepoint: i32, position: Vector2, fontSize: f32, tint: Color) void -> DrawTextCodepoint(font, codepoint, position, fontSize, tint)
 pub fn draw_text_codepoints(font: Font, codepoints: &i32, count: i32, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void -> DrawTextCodepoints(font, codepoints, count, position, fontSize, spacing, tint)
 pub fn measure_text(text: &c_char, fontSize: i32) i32 -> MeasureText(text, fontSize)
-pub fn measure_text_ex(font: Font, text: &c_char, fontSize: f32, spacing: f32) Vector2 -> cast<Vector2>(MeasureTextEx(font, text, fontSize, spacing))
+pub fn measure_text_ex(font: Font, text: &c_char, fontSize: f32, spacing: f32) Vector2 -> MeasureTextEx(font, text, fontSize, spacing)
 pub fn get_glyph_index(font: Font, codepoint: i32) i32 -> GetGlyphIndex(font, codepoint)
-pub fn get_glyph_info(font: Font, codepoint: i32) GlyphInfo -> cast<GlyphInfo>(GetGlyphInfo(font, codepoint))
-pub fn get_glyph_atlas_rec(font: Font, codepoint: i32) Rectangle -> cast<Rectangle>(GetGlyphAtlasRec(font, codepoint))
+pub fn get_glyph_info(font: Font, codepoint: i32) GlyphInfo -> GetGlyphInfo(font, codepoint)
+pub fn get_glyph_atlas_rec(font: Font, codepoint: i32) Rectangle -> GetGlyphAtlasRec(font, codepoint)
 pub fn load_codepoints(text: &c_char, count: &mut i32) &mut i32 -> LoadCodepoints(text, count)
 pub fn unload_codepoints(codepoints: &mut i32) void -> UnloadCodepoints(codepoints)
 pub fn get_codepoint_count(text: &c_char) i32 -> GetCodepointCount(text)
@@ -2150,10 +2149,10 @@ pub fn draw_cylinder_wires_ex(startPos: Vector3, endPos: Vector3, startRadius: f
 pub fn draw_plane(centerPos: Vector3, size: Vector2, color: Color) void -> DrawPlane(centerPos, size, color)
 pub fn draw_ray(ray: Ray, color: Color) void -> DrawRay(ray, color)
 pub fn draw_grid(slices: i32, spacing: f32) void -> DrawGrid(slices, spacing)
-pub fn load_model(fileName: &c_char) Model -> cast<Model>(LoadModel(fileName))
-pub fn load_model_from_mesh(mesh: Mesh) Model -> cast<Model>(LoadModelFromMesh(mesh))
+pub fn load_model(fileName: &c_char) Model -> LoadModel(fileName)
+pub fn load_model_from_mesh(mesh: Mesh) Model -> LoadModelFromMesh(mesh)
 pub fn unload_model(model: Model) void -> UnloadModel(model)
-pub fn get_model_bounding_box(model: Model) BoundingBox -> cast<BoundingBox>(GetModelBoundingBox(model))
+pub fn get_model_bounding_box(model: Model) BoundingBox -> GetModelBoundingBox(model)
 pub fn draw_model(model: Model, position: Vector3, scale: f32, tint: Color) void -> DrawModel(model, position, scale, tint)
 pub fn draw_model_ex(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void -> DrawModelEx(model, position, rotationAxis, rotationAngle, scale, tint)
 pub fn draw_model_wires(model: Model, position: Vector3, scale: f32, tint: Color) void -> DrawModelWires(model, position, scale, tint)
@@ -2167,19 +2166,19 @@ pub fn update_mesh_buffer(mesh: Mesh, index: i32, data: &void, dataSize: i32, of
 pub fn unload_mesh(mesh: Mesh) void -> UnloadMesh(mesh)
 pub fn draw_mesh(mesh: Mesh, material: Material, transform: Matrix) void -> DrawMesh(mesh, material, transform)
 pub fn draw_mesh_instanced(mesh: Mesh, material: Material, transforms: &Matrix, instances: i32) void -> DrawMeshInstanced(mesh, material, transforms, instances)
-pub fn get_mesh_bounding_box(mesh: Mesh) BoundingBox -> cast<BoundingBox>(GetMeshBoundingBox(mesh))
+pub fn get_mesh_bounding_box(mesh: Mesh) BoundingBox -> GetMeshBoundingBox(mesh)
 pub fn gen_mesh_tangents(mesh: &mut Mesh) void -> GenMeshTangents(mesh)
-pub fn gen_mesh_poly(sides: i32, radius: f32) Mesh -> cast<Mesh>(GenMeshPoly(sides, radius))
-pub fn gen_mesh_plane(width: f32, length: f32, resX: i32, resZ: i32) Mesh -> cast<Mesh>(GenMeshPlane(width, length, resX, resZ))
-pub fn gen_mesh_cube(width: f32, height: f32, length: f32) Mesh -> cast<Mesh>(GenMeshCube(width, height, length))
-pub fn gen_mesh_sphere(radius: f32, rings: i32, slices: i32) Mesh -> cast<Mesh>(GenMeshSphere(radius, rings, slices))
-pub fn gen_mesh_hemi_sphere(radius: f32, rings: i32, slices: i32) Mesh -> cast<Mesh>(GenMeshHemiSphere(radius, rings, slices))
-pub fn gen_mesh_cylinder(radius: f32, height: f32, slices: i32) Mesh -> cast<Mesh>(GenMeshCylinder(radius, height, slices))
-pub fn gen_mesh_cone(radius: f32, height: f32, slices: i32) Mesh -> cast<Mesh>(GenMeshCone(radius, height, slices))
-pub fn gen_mesh_torus(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh -> cast<Mesh>(GenMeshTorus(radius, size, radSeg, sides))
-pub fn gen_mesh_knot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh -> cast<Mesh>(GenMeshKnot(radius, size, radSeg, sides))
-pub fn gen_mesh_heightmap(heightmap: Image, size: Vector3) Mesh -> cast<Mesh>(GenMeshHeightmap(heightmap, size))
-pub fn gen_mesh_cubicmap(cubicmap: Image, cubeSize: Vector3) Mesh -> cast<Mesh>(GenMeshCubicmap(cubicmap, cubeSize))
+pub fn gen_mesh_poly(sides: i32, radius: f32) Mesh -> GenMeshPoly(sides, radius)
+pub fn gen_mesh_plane(width: f32, length: f32, resX: i32, resZ: i32) Mesh -> GenMeshPlane(width, length, resX, resZ)
+pub fn gen_mesh_cube(width: f32, height: f32, length: f32) Mesh -> GenMeshCube(width, height, length)
+pub fn gen_mesh_sphere(radius: f32, rings: i32, slices: i32) Mesh -> GenMeshSphere(radius, rings, slices)
+pub fn gen_mesh_hemi_sphere(radius: f32, rings: i32, slices: i32) Mesh -> GenMeshHemiSphere(radius, rings, slices)
+pub fn gen_mesh_cylinder(radius: f32, height: f32, slices: i32) Mesh -> GenMeshCylinder(radius, height, slices)
+pub fn gen_mesh_cone(radius: f32, height: f32, slices: i32) Mesh -> GenMeshCone(radius, height, slices)
+pub fn gen_mesh_torus(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh -> GenMeshTorus(radius, size, radSeg, sides)
+pub fn gen_mesh_knot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh -> GenMeshKnot(radius, size, radSeg, sides)
+pub fn gen_mesh_heightmap(heightmap: Image, size: Vector3) Mesh -> GenMeshHeightmap(heightmap, size)
+pub fn gen_mesh_cubicmap(cubicmap: Image, cubeSize: Vector3) Mesh -> GenMeshCubicmap(cubicmap, cubeSize)
 pub fn load_materials(fileName: &c_char, materialCount: &mut i32) &mut Material -> LoadMaterials(fileName, materialCount)
 pub fn unload_material(material: Material) void -> UnloadMaterial(material)
 pub fn set_material_texture(material: &mut Material, mapType: i32, texture: Texture2D) void -> SetMaterialTexture(material, mapType, texture)
@@ -2192,19 +2191,19 @@ pub fn is_model_animation_valid(model: Model, anim: ModelAnimation) bool -> IsMo
 pub fn check_collision_spheres(center1: Vector3, radius1: f32, center2: Vector3, radius2: f32) bool -> CheckCollisionSpheres(center1, radius1, center2, radius2)
 pub fn check_collision_boxes(box1: BoundingBox, box2: BoundingBox) bool -> CheckCollisionBoxes(box1, box2)
 pub fn check_collision_box_sphere(box: BoundingBox, center: Vector3, radius: f32) bool -> CheckCollisionBoxSphere(box, center, radius)
-pub fn get_ray_collision_sphere(ray: Ray, center: Vector3, radius: f32) RayCollision -> cast<RayCollision>(GetRayCollisionSphere(ray, center, radius))
-pub fn get_ray_collision_box(ray: Ray, box: BoundingBox) RayCollision -> cast<RayCollision>(GetRayCollisionBox(ray, box))
-pub fn get_ray_collision_mesh(ray: Ray, mesh: Mesh, transform: Matrix) RayCollision -> cast<RayCollision>(GetRayCollisionMesh(ray, mesh, transform))
-pub fn get_ray_collision_triangle(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3) RayCollision -> cast<RayCollision>(GetRayCollisionTriangle(ray, p1, p2, p3))
-pub fn get_ray_collision_quad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) RayCollision -> cast<RayCollision>(GetRayCollisionQuad(ray, p1, p2, p3, p4))
+pub fn get_ray_collision_sphere(ray: Ray, center: Vector3, radius: f32) RayCollision -> GetRayCollisionSphere(ray, center, radius)
+pub fn get_ray_collision_box(ray: Ray, box: BoundingBox) RayCollision -> GetRayCollisionBox(ray, box)
+pub fn get_ray_collision_mesh(ray: Ray, mesh: Mesh, transform: Matrix) RayCollision -> GetRayCollisionMesh(ray, mesh, transform)
+pub fn get_ray_collision_triangle(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3) RayCollision -> GetRayCollisionTriangle(ray, p1, p2, p3)
+pub fn get_ray_collision_quad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) RayCollision -> GetRayCollisionQuad(ray, p1, p2, p3, p4)
 pub fn init_audio_device() void -> InitAudioDevice()
 pub fn close_audio_device() void -> CloseAudioDevice()
 pub fn is_audio_device_ready() bool -> IsAudioDeviceReady()
 pub fn set_master_volume(volume: f32) void -> SetMasterVolume(volume)
-pub fn load_wave(fileName: &c_char) Wave -> cast<Wave>(LoadWave(fileName))
+pub fn load_wave(fileName: &c_char) Wave -> LoadWave(fileName)
 pub fn load_wave_from_memory(fileType: &c_char, fileData: &u8, dataSize: i32) Wave -> LoadWaveFromMemory(fileType, fileData, dataSize)
-pub fn load_sound(fileName: &c_char) Sound -> cast<Sound>(LoadSound(fileName))
-pub fn load_sound_from_wave(wave: Wave) Sound -> cast<Sound>(LoadSoundFromWave(wave))
+pub fn load_sound(fileName: &c_char) Sound -> LoadSound(fileName)
+pub fn load_sound_from_wave(wave: Wave) Sound -> LoadSoundFromWave(wave)
 pub fn update_sound(sound: Sound, data: &void, sampleCount: i32) void -> UpdateSound(sound, data, sampleCount)
 pub fn unload_wave(wave: Wave) void -> UnloadWave(wave)
 pub fn unload_sound(sound: Sound) void -> UnloadSound(sound)
@@ -2219,11 +2218,11 @@ pub fn set_sound_volume(sound: Sound, volume: f32) void -> SetSoundVolume(sound,
 pub fn set_sound_pitch(sound: Sound, pitch: f32) void -> SetSoundPitch(sound, pitch)
 pub fn set_sound_pan(sound: Sound, pan: f32) void -> SetSoundPan(sound, pan)
 pub fn wave_format(wave: &mut Wave, sampleRate: i32, sampleSize: i32, channels: i32) void -> WaveFormat(wave, sampleRate, sampleSize, channels)
-pub fn wave_copy(wave: Wave) Wave -> cast<Wave>(WaveCopy(wave))
+pub fn wave_copy(wave: Wave) Wave -> WaveCopy(wave)
 pub fn wave_crop(wave: &mut Wave, initSample: i32, finalSample: i32) void -> WaveCrop(wave, initSample, finalSample)
 pub fn load_wave_samples(wave: Wave) &mut f32 -> LoadWaveSamples(wave)
 pub fn unload_wave_samples(samples: &mut f32) void -> UnloadWaveSamples(samples)
-pub fn load_music_stream(fileName: &c_char) Music -> cast<Music>(LoadMusicStream(fileName))
+pub fn load_music_stream(fileName: &c_char) Music -> LoadMusicStream(fileName)
 pub fn load_music_stream_from_memory(fileType: &c_char, data: &u8, dataSize: i32) Music -> LoadMusicStreamFromMemory(fileType, data, dataSize)
 pub fn unload_music_stream(music: Music) void -> UnloadMusicStream(music)
 pub fn play_music_stream(music: Music) void -> PlayMusicStream(music)
@@ -2238,7 +2237,7 @@ pub fn set_music_pitch(music: Music, pitch: f32) void -> SetMusicPitch(music, pi
 pub fn set_music_pan(music: Music, pan: f32) void -> SetMusicPan(music, pan)
 pub fn get_music_time_length(music: Music) f32 -> GetMusicTimeLength(music)
 pub fn get_music_time_played(music: Music) f32 -> GetMusicTimePlayed(music)
-pub fn load_audio_stream(sampleRate: u32, sampleSize: u32, channels: u32) AudioStream -> cast<AudioStream>(LoadAudioStream(sampleRate, sampleSize, channels))
+pub fn load_audio_stream(sampleRate: u32, sampleSize: u32, channels: u32) AudioStream -> LoadAudioStream(sampleRate, sampleSize, channels)
 pub fn unload_audio_stream(stream: AudioStream) void -> UnloadAudioStream(stream)
 pub fn update_audio_stream(stream: AudioStream, data: &void, frameCount: i32) void -> UpdateAudioStream(stream, data, frameCount)
 pub fn is_audio_stream_processed(stream: AudioStream) bool -> IsAudioStreamProcessed(stream)
@@ -2259,7 +2258,7 @@ pub fn detach_audio_stream_processor(stream: AudioStream, processor: AudioCallba
 //------------------------------------------------------------------------------------
 // Window and Graphics Context Functions (Module: core)
 //------------------------------------------------------------------------------------
-bind fn InitWindow(width: i32, height: i32, title: &c_char) void;
+bind fn InitWindow(width, height: c_int, title: &c_char) void;
 bind fn CloseWindow() void;
 bind fn WindowShouldClose() bool;
 bind fn IsWindowReady() bool;
@@ -2269,40 +2268,40 @@ bind fn IsWindowMinimized() bool;
 bind fn IsWindowMaximized() bool;
 bind fn IsWindowFocused() bool;
 bind fn IsWindowResized() bool;
-bind fn IsWindowState(flag: u32) bool;
-bind fn SetWindowState(flags: u32) void;
-bind fn ClearWindowState(flags: u32) void;
+bind fn IsWindowState(flag: c_uint) bool;
+bind fn SetWindowState(flags: c_uint) void;
+bind fn ClearWindowState(flags: c_uint) void;
 bind fn ToggleFullscreen() void;
 bind fn ToggleBorderlessWindowed() void;
 bind fn MaximizeWindow() void;
 bind fn MinimizeWindow() void;
 bind fn RestoreWindow() void;
 bind fn SetWindowIcon(image: Image) void;
-bind fn SetWindowIcons(images: &mut Image, count: i32) void;
+bind fn SetWindowIcons(images: &mut Image, count: c_int) void;
 bind fn SetWindowTitle(title: &c_char) void;
-bind fn SetWindowPosition(x: i32, y: i32) void;
-bind fn SetWindowMonitor(monitor: i32) void;
-bind fn SetWindowMinSize(width: i32, height: i32) void;
-bind fn SetWindowMaxSize(width: i32, height: i32) void;
-bind fn SetWindowSize(width: i32, height: i32) void;
-bind fn SetWindowOpacity(opacity: f32) void;
+bind fn SetWindowPosition(x, y: c_int) void;
+bind fn SetWindowMonitor(monitor: c_int) void;
+bind fn SetWindowMinSize(width, height: c_int) void;
+bind fn SetWindowMaxSize(width, height: c_int) void;
+bind fn SetWindowSize(width, height: c_int) void;
+bind fn SetWindowOpacity(opacity: c_float) void;
 bind fn SetWindowFocused() void;
 bind fn GetWindowHandle() &mut void;
-bind fn GetScreenWidth() i32;
-bind fn GetScreenHeight() i32;
-bind fn GetRenderWidth() i32;
-bind fn GetRenderHeight() i32;
-bind fn GetMonitorCount() i32;
-bind fn GetCurrentMonitor() i32;
-bind fn GetMonitorPosition(monitor: i32) Vector2;
-bind fn GetMonitorWidth(monitor: i32) i32;
-bind fn GetMonitorHeight(monitor: i32) i32;
-bind fn GetMonitorPhysicalWidth(monitor: i32) i32;
-bind fn GetMonitorPhysicalHeight(monitor: i32) i32;
-bind fn GetMonitorRefreshRate(monitor: i32) i32;
+bind fn GetScreenWidth() c_int;
+bind fn GetScreenHeight() c_int;
+bind fn GetRenderWidth() c_int;
+bind fn GetRenderHeight() c_int;
+bind fn GetMonitorCount() c_int;
+bind fn GetCurrentMonitor() c_int;
+bind fn GetMonitorPosition(monitor: c_int) Vector2;
+bind fn GetMonitorWidth(monitor: c_int) c_int;
+bind fn GetMonitorHeight(monitor: c_int) c_int;
+bind fn GetMonitorPhysicalWidth(monitor: c_int) c_int;
+bind fn GetMonitorPhysicalHeight(monitor: c_int) c_int;
+bind fn GetMonitorRefreshRate(monitor: c_int) c_int;
 bind fn GetWindowPosition() Vector2;
 bind fn GetWindowScaleDPI() Vector2;
-bind fn GetMonitorName(monitor: i32) &c_char;
+bind fn GetMonitorName(monitor: c_int) &c_char;
 bind fn SetClipboardText(text: &c_char) void;
 bind fn GetClipboardText() &c_char;
 bind fn GetClipboardImage() Image;
@@ -2333,9 +2332,9 @@ bind fn BeginTextureMode(target: RenderTexture) void;
 bind fn EndTextureMode() void;
 bind fn BeginShaderMode(shader: Shader) void;
 bind fn EndShaderMode() void;
-bind fn BeginBlendMode(mode: i32) void;
+bind fn BeginBlendMode(mode: c_int) void;
 bind fn EndBlendMode() void;
-bind fn BeginScissorMode(x: i32, y: i32, width: i32, height: i32) void;
+bind fn BeginScissorMode(x, y, width, height: c_int) void;
 bind fn EndScissorMode() void;
 bind fn BeginVrStereoMode(config: VrStereoConfig) void;
 bind fn EndVrStereoMode() void;
@@ -2349,24 +2348,24 @@ bind fn UnloadVrStereoConfig(config: VrStereoConfig) void;
 //------------------------------------------------------------------------------------
 // Shader management functions (Module: core)
 //------------------------------------------------------------------------------------
-bind fn LoadShader(vsFileName: &c_char, fsFileName: &c_char) Shader;
-bind fn LoadShaderFromMemory(vsCode: &c_char, fsCode: &c_char) Shader;
+bind fn LoadShader(vsFileName, fsFileName: &c_char) Shader;
+bind fn LoadShaderFromMemory(vsCode, fsCode: &c_char) Shader;
 bind fn IsShaderValid(shader: Shader) bool;
-bind fn GetShaderLocation(shader: Shader, uniformName: &c_char) i32;
-bind fn GetShaderLocationAttrib(shader: Shader, attribName: &c_char) i32;
-bind fn SetShaderValue(shader: Shader, locIndex: i32, value: &void, uniformType: i32) void;
-bind fn SetShaderValueV(shader: Shader, locIndex: i32, value: &void, uniformType: i32, count: i32) void;
-bind fn SetShaderValueMatrix(shader: Shader, locIndex: i32, mat: Matrix) void;
-bind fn SetShaderValueTexture(shader: Shader, locIndex: i32, texture: Texture) void;
+bind fn GetShaderLocation(shader: Shader, uniformName: &c_char) c_int;
+bind fn GetShaderLocationAttrib(shader: Shader, attribName: &c_char) c_int;
+bind fn SetShaderValue(shader: Shader, locIndex: c_int, value: &void, uniformType: c_int) void;
+bind fn SetShaderValueV(shader: Shader, locIndex: c_int, value: &void, uniformType, count: c_int) void;
+bind fn SetShaderValueMatrix(shader: Shader, locIndex: c_int, mat: Matrix) void;
+bind fn SetShaderValueTexture(shader: Shader, locIndex: c_int, texture: Texture) void;
 bind fn UnloadShader(shader: Shader) void;
 
 //------------------------------------------------------------------------------------
 // Screen-space-related functions (Module: core)
 //------------------------------------------------------------------------------------
 bind fn GetScreenToWorldRay(position: Vector2, camera: Camera) Ray;         // Get a ray trace from screen position (i.e mouse)
-bind fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width, height: i32) Ray; // Get a ray trace from screen position (i.e mouse) in a viewport
+bind fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width, height: c_int) Ray; // Get a ray trace from screen position (i.e mouse) in a viewport
 bind fn GetWorldToScreen(position: Vector3, camera: Camera) Vector2;        // Get the screen space position for a 3d world space position
-bind fn GetWorldToScreenEx(position: Vector3, camera: Camera, width, height: i32) Vector2; // Get size position for a 3d world space position
+bind fn GetWorldToScreenEx(position: Vector3, camera: Camera, width, height: c_int) Vector2; // Get size position for a 3d world space position
 bind fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) Vector2;    // Get the screen space position for a 2d camera world space position
 bind fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) Vector2;    // Get the world space position for a 2d camera screen space position
 bind fn GetCameraMatrix(camera: Camera) Matrix;                            // Get camera transform matrix (view matrix)
@@ -2375,44 +2374,44 @@ bind fn GetCameraMatrix2D(camera: Camera2D) Matrix;                        // Ge
 //------------------------------------------------------------------------------------
 // Timing-related functions (Module: core)
 //------------------------------------------------------------------------------------
-bind fn SetTargetFPS(fps: i32) void;
-bind fn GetFrameTime() f32;
-bind fn GetTime() f64;
-bind fn GetFPS() i32;
+bind fn SetTargetFPS(fps: c_int) void;
+bind fn GetFrameTime() c_float;
+bind fn GetTime() c_double;
+bind fn GetFPS() c_int;
 
 //------------------------------------------------------------------------------------
 // Custom frame control functions (Module: core)
 //------------------------------------------------------------------------------------
 bind fn SwapScreenBuffer() void;
 bind fn PollInputEvents() void;
-bind fn WaitTime(seconds: f64) void;
+bind fn WaitTime(seconds: c_double) void;
 
 //------------------------------------------------------------------------------------
 // Random values generation functions (Module: core)
 //------------------------------------------------------------------------------------
-bind fn SetRandomSeed(seed: u32) void;
-bind fn GetRandomValue(min: i32, max: i32) i32;
-bind fn LoadRandomSequence(count: u32, min: i32, max: i32) &mut i32;
-bind fn UnloadRandomSequence(sequence: &mut i32) void;
+bind fn SetRandomSeed(seed: c_uint) void;
+bind fn GetRandomValue(min, max: c_int) c_int;
+bind fn LoadRandomSequence(count, min, max: c_int) &mut c_int;
+bind fn UnloadRandomSequence(sequence: &mut c_int) void;
 
 //------------------------------------------------------------------------------------
 // Misc. functions (Module: core)
 //------------------------------------------------------------------------------------
 bind fn TakeScreenshot(fileName: &c_char) void;
-bind fn SetConfigFlags(flags: u32) void;
+bind fn SetConfigFlags(flags: c_uint) void;
 bind fn OpenURL(url: &c_char) void;
-bind fn SetTraceLogLevel(logLevel: i32) void;
-bind fn TraceLog(logLevel: i32, text: &c_char, args...) void;
+bind fn SetTraceLogLevel(logLevel: c_int) void;
+bind fn TraceLog(logLevel: c_int, text: &c_char, args...) void;
 bind fn SetTraceLogCallback(callback: TraceLogCallback) void;
-bind fn MemAlloc(size: u32) &mut void;
-bind fn MemRealloc(ptr: &mut void, size: u32) &mut void;
+bind fn MemAlloc(size: c_uint) &mut void;
+bind fn MemRealloc(ptr: &mut void, size: c_uint) &mut void;
 bind fn MemFree(ptr: &mut void) void;
 
 // File system management functions
-bind fn LoadFileData(fileName: &c_char, dataSize: &mut i32) &mut u8; // Load file data as byte array (read)
-bind fn UnloadFileData(data: &mut u8) void;                     // Unload file data allocated by LoadFileData()
-bind fn SaveFileData(fileName: &c_char, data: &mut void, dataSize: i32) bool; // Save data to file from byte array (write), returns true on success
-bind fn ExportDataAsCode(data: &u8, dataSize: i32, fileName: &c_char) bool; // Export data to code (.h), returns true on success
+bind fn LoadFileData(fileName: &c_char, dataSize: &mut c_int) &mut c_uchar; // Load file data as byte array (read)
+bind fn UnloadFileData(data: &mut c_uchar) void;                     // Unload file data allocated by LoadFileData()
+bind fn SaveFileData(fileName: &c_char, data: &mut void, dataSize: c_int) bool; // Save data to file from byte array (write), returns true on success
+bind fn ExportDataAsCode(data: &c_uchar, dataSize: c_int, fileName: &c_char) bool; // Export data to code (.h), returns true on success
 bind fn LoadFileText(fileName: &c_char) &mut c_char;                     // Load text data from file (read), returns a '\0' terminated string
 bind fn UnloadFileText(text: &mut c_char) void;                              // Unload file text data allocated by LoadFileText()
 bind fn SaveFileText(fileName, text: &c_char) bool;    // Save text data to file (write), string must be '\0' terminated, returns true on success
@@ -2427,16 +2426,16 @@ bind fn SetSaveFileTextCallback(callback: SaveFileTextCallback) void;  // Set cu
 //------------------------------------------------------------------------------------
 // Files management functions (Module: core)
 //------------------------------------------------------------------------------------
-bind fn FileRename(fileName, fileRename: &c_char) i32; // Rename file (if exists)
-bind fn FileRemove(fileName: &mut c_char) i32;                         // Remove file (if exists)
-bind fn FileCopy(srcPath: &mut c_char, dstPath: &mut c_char) i32;       // Copy file from one path to another, dstPath created if it doesn't exist
-bind fn FileMove(srcPath: &mut c_char, dstPath: &mut c_char) i32;       // Move file from one directory to another, dstPath created if it doesn't exist
-bind fn FileTextReplace(fileName, search, replacement: &mut c_char) i32; // Replace text in an existing file
-bind fn FileTextFindIndex(fileName: &mut c_char, search: &mut c_char) i32; // Find text in existing file
+bind fn FileRename(fileName, fileRename: &c_char) c_int; // Rename file (if exists)
+bind fn FileRemove(fileName: &mut c_char) c_int;                         // Remove file (if exists)
+bind fn FileCopy(srcPath, dstPath: &mut c_char) c_int;       // Copy file from one path to another, dstPath created if it doesn't exist
+bind fn FileMove(srcPath, dstPath: &mut c_char) c_int;       // Move file from one directory to another, dstPath created if it doesn't exist
+bind fn FileTextReplace(fileName, search, replacement: &mut c_char) c_int; // Replace text in an existing file
+bind fn FileTextFindIndex(fileName, search: &mut c_char) c_int; // Find text in existing file
 bind fn FileExists(fileName: &mut c_char) bool;                        // Check if file exists
 bind fn DirectoryExists(dirPath: &mut c_char) bool;                    // Check if a directory path exists
 bind fn IsFileExtension(fileName, ext: &mut c_char) bool;  // Check file extension (recommended include point: .png, .wav)
-bind fn GetFileLength(fileName: &mut c_char) i32;                      // Get file length in bytes (NOTE: GetFileSize() conflicts with windows.h)
+bind fn GetFileLength(fileName: &mut c_char) c_int;                      // Get file length in bytes (NOTE: GetFileSize() conflicts with windows.h)
 bind fn GetFileModTime(fileName: &mut c_char) c_long;                    // Get file modification time (last write time)
 bind fn GetFileExtension(fileName: &mut c_char) &mut c_char;           // Get pointer to extension for a filename string (includes dot: '.png')
 bind fn GetFileName(filePath: &mut c_char) &mut c_char;                // Get pointer to filename for a path string
@@ -2445,7 +2444,7 @@ bind fn GetDirectoryPath(filePath: &mut c_char) &mut c_char;           // Get fu
 bind fn GetPrevDirectoryPath(dirPath: &mut c_char) &mut c_char;        // Get previous directory path for a given path (uses static string)
 bind fn GetWorkingDirectory() &mut c_char;                        // Get current working directory (uses static string)
 bind fn GetApplicationDirectory() &mut c_char;                    // Get the directory of the running application (uses static string)
-bind fn MakeDirectory(dirPath: &mut c_char) i32;                       // Create directories (including full path requested), returns 0 on success
+bind fn MakeDirectory(dirPath: &mut c_char) c_int;                       // Create directories (including full path requested), returns 0 on success
 bind fn ChangeDirectory(dirPath: &mut c_char) bool;                    // Change working directory, return true on success
 bind fn IsPathFile(path: &mut c_char) bool;                            // Check if a given path is a file or a directory
 bind fn IsFileNameValid(fileName: &mut c_char) bool;                   // Check if fileName is valid for the platform/OS
@@ -2455,25 +2454,25 @@ bind fn UnloadDirectoryFiles(files: FilePathList) void;                // Unload
 bind fn IsFileDropped() bool;                                     // Check if a file has been dropped into window
 bind fn LoadDroppedFiles() FilePathList;                          // Load dropped filepaths
 bind fn UnloadDroppedFiles(files: FilePathList) void;                  // Unload dropped filepaths
-bind fn GetDirectoryFileCount(dirPath: &mut c_char) u32;      // Get the file count in a directory
-bind fn GetDirectoryFileCountEx(basePath: &mut c_char, filter: &mut c_char, scanSubdirs: bool) u32;// Get the file count in a directory with extension filtering and recursive directory scan. Use 'DIR' in the filter string to include directories in the result
+bind fn GetDirectoryFileCount(dirPath: &mut c_char) c_uint;      // Get the file count in a directory
+bind fn GetDirectoryFileCountEx(basePath, filter: &mut c_char, scanSubdirs: bool) c_uint;// Get the file count in a directory with extension filtering and recursive directory scan. Use 'DIR' in the filter string to include directories in the result
 
 // Compression/Encoding functionality
-bind fn CompressData(data: &u8, dataLength: i32, compDataLength: &mut i32) &mut u8;        // Compress data (DEFLATE algorithm), memory must be MemFree()
-bind fn DecompressData(data: &u8, dataLength: i32, compDataLength: &mut i32) &mut u8;  // Decompress data (DEFLATE algorithm), memory must be MemFree()
-bind fn EncodeDataBase64(data: &u8, dataSize: i32, outputSize: &mut i32) &mut c_char;               // Encode data to Base64 string (includes NULL terminator), memory must be MemFree()
-bind fn DecodeDataBase64(text: &c_char, outputSize: &mut i32) &mut c_char;                             // Decode Base64 string (expected NULL terminated), memory must be MemFree()
-bind fn ComputeCRC32(data: &mut u32, dataSize: i32) u32;       // Compute CRC32 hash code
-bind fn ComputeMD5(data: &mut u32, dataSize: i32) &mut u32;        // Compute MD5 hash code, returns static int[4] (16 bytes)
-bind fn ComputeSHA1(data: &mut u32, dataSize: i32) &mut u32;       // Compute SHA1 hash code, returns static int[5] (20 bytes)
-bind fn ComputeSHA256(data: &mut u32, dataSize: i32) &mut u32;     // Compute SHA256 hash code, returns static int[8] (32 bytes)
+bind fn CompressData(data: &u8, dataLength: c_int, compDataLength: &mut c_int) &mut u8;        // Compress data (DEFLATE algorithm), memory must be MemFree()
+bind fn DecompressData(data: &u8, dataLength: c_int, compDataLength: &mut c_int) &mut u8;  // Decompress data (DEFLATE algorithm), memory must be MemFree()
+bind fn EncodeDataBase64(data: &u8, dataSize: c_int, outputSize: &mut c_int) &mut c_char;               // Encode data to Base64 string (includes NULL terminator), memory must be MemFree()
+bind fn DecodeDataBase64(text: &c_char, outputSize: &mut c_int) &mut c_char;                             // Decode Base64 string (expected NULL terminated), memory must be MemFree()
+bind fn ComputeCRC32(data: &mut c_uint, dataSize: c_int) c_uint;       // Compute CRC32 hash code
+bind fn ComputeMD5(data: &mut c_uint, dataSize: c_int) &mut c_uint;        // Compute MD5 hash code, returns static int[4] (16 bytes)
+bind fn ComputeSHA1(data: &mut c_uint, dataSize: c_int) &mut c_uint;       // Compute SHA1 hash code, returns static int[5] (20 bytes)
+bind fn ComputeSHA256(data: &mut c_uint, dataSize: c_int) &mut c_uint;     // Compute SHA256 hash code, returns static int[8] (32 bytes)
 
 // Automation events functionality
 bind fn LoadAutomationEventList(fileName: &c_char) AutomationEventList; // Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
 bind fn UnloadAutomationEventList(list: AutomationEventList) void;   // Unload automation events list from file
 bind fn ExportAutomationEventList(list: AutomationEventList, fileName: &mut c_char) bool; // Export automation events list as text file
 bind fn SetAutomationEventList(list: &mut AutomationEventList) void;     // Set automation event list to record to
-bind fn SetAutomationEventBaseFrame(frame: i32) void;                // Set automation event internal base frame to start recording
+bind fn SetAutomationEventBaseFrame(frame: c_int) void;                // Set automation event internal base frame to start recording
 bind fn StartAutomationEventRecording() void;                   // Start recording automation events (AutomationEventList must be set)
 bind fn StopAutomationEventRecording() void;                    // Stop recording automation events
 bind fn PlayAutomationEvent(event: AutomationEvent) void;            // Play a recorded automation event
@@ -2483,229 +2482,229 @@ bind fn PlayAutomationEvent(event: AutomationEvent) void;            // Play a r
 //------------------------------------------------------------------------------------
 
 // Input-related functions: keyboard
-bind fn IsKeyPressed(key: i32) bool;                             // Check if a key has been pressed once
-bind fn IsKeyPressedRepeat(key: i32) bool;                       // Check if a key has been pressed again
-bind fn IsKeyDown(key: i32) bool;                                // Check if a key is being pressed
-bind fn IsKeyReleased(key: i32) bool;                            // Check if a key has been released once
-bind fn IsKeyUp(key: i32) bool;                                  // Check if a key is NOT being pressed
-bind fn GetKeyPressed() i32;                                // Get key pressed (keycode), call it multiple times for keys queued, returns 0 when the queue is empty
-bind fn GetCharPressed() i32;                               // Get char pressed (unicode), call it multiple times for chars queued, returns 0 when the queue is empty
-bind fn GetKeyName(key: i32) &c_char;                        // Get name of a QWERTY key on the current keyboard layout (eg returns string 'q' for KEY_A on an AZERTY keyboard)
-bind fn SetExitKey(key: i32) void;                               // Set a custom key to exit program (default is ESC)
+bind fn IsKeyPressed(key: c_int) bool;                             // Check if a key has been pressed once
+bind fn IsKeyPressedRepeat(key: c_int) bool;                       // Check if a key has been pressed again
+bind fn IsKeyDown(key: c_int) bool;                                // Check if a key is being pressed
+bind fn IsKeyReleased(key: c_int) bool;                            // Check if a key has been released once
+bind fn IsKeyUp(key: c_int) bool;                                  // Check if a key is NOT being pressed
+bind fn GetKeyPressed() c_int;                                // Get key pressed (keycode), call it multiple times for keys queued, returns 0 when the queue is empty
+bind fn GetCharPressed() c_int;                               // Get char pressed (unicode), call it multiple times for chars queued, returns 0 when the queue is empty
+bind fn GetKeyName(key: c_int) &c_char;                        // Get name of a QWERTY key on the current keyboard layout (eg returns string 'q' for KEY_A on an AZERTY keyboard)
+bind fn SetExitKey(key: c_int) void;                               // Set a custom key to exit program (default is ESC)
 
 // Input-related functions: gamepads
-bind fn IsGamepadAvailable(gamepad: i32) bool;                   // Check if a gamepad is available
-bind fn GetGamepadName(gamepad: i32) &c_char;                // Get gamepad internal name id
-bind fn IsGamepadButtonPressed(gamepad, button: i32) bool;   // Check if a gamepad button has been pressed once
-bind fn IsGamepadButtonDown(gamepad, button: i32) bool;      // Check if a gamepad button is being pressed
-bind fn IsGamepadButtonReleased(gamepad, button: i32) bool;  // Check if a gamepad button has been released once
-bind fn IsGamepadButtonUp(gamepad, button: i32) bool;        // Check if a gamepad button is NOT being pressed
-bind fn GetGamepadButtonPressed() i32;                      // Get the last gamepad button pressed
-bind fn GetGamepadAxisCount(gamepad: i32) i32;                   // Get axis count for a gamepad
-bind fn GetGamepadAxisMovement(gamepad, axis: i32) f32;    // Get movement value for a gamepad axis
-bind fn SetGamepadMappings(mappings: &c_char) i32;           // Set internal gamepad mappings (SDL_GameControllerDB)
-bind fn SetGamepadVibration(gamepad: i32, leftMotor, rightMotor, duration: f32) void; // Set gamepad vibration for both motors (duration in seconds)
+bind fn IsGamepadAvailable(gamepad: c_int) bool;                   // Check if a gamepad is available
+bind fn GetGamepadName(gamepad: c_int) &c_char;                // Get gamepad internal name id
+bind fn IsGamepadButtonPressed(gamepad, button: c_int) bool;   // Check if a gamepad button has been pressed once
+bind fn IsGamepadButtonDown(gamepad, button: c_int) bool;      // Check if a gamepad button is being pressed
+bind fn IsGamepadButtonReleased(gamepad, button: c_int) bool;  // Check if a gamepad button has been released once
+bind fn IsGamepadButtonUp(gamepad, button: c_int) bool;        // Check if a gamepad button is NOT being pressed
+bind fn GetGamepadButtonPressed() c_int;                      // Get the last gamepad button pressed
+bind fn GetGamepadAxisCount(gamepad: c_int) c_int;                   // Get axis count for a gamepad
+bind fn GetGamepadAxisMovement(gamepad, axis: c_int) c_float;    // Get movement value for a gamepad axis
+bind fn SetGamepadMappings(mappings: &c_char) c_int;           // Set internal gamepad mappings (SDL_GameControllerDB)
+bind fn SetGamepadVibration(gamepad: c_int, leftMotor, rightMotor, duration: c_float) void; // Set gamepad vibration for both motors (duration in seconds)
 
 // Input-related functions: mouse
-bind fn IsMouseButtonPressed(button: i32) bool;                  // Check if a mouse button has been pressed once
-bind fn IsMouseButtonDown(button: i32) bool;                     // Check if a mouse button is being pressed
-bind fn IsMouseButtonReleased(button: i32) bool;                 // Check if a mouse button has been released once
-bind fn IsMouseButtonUp(button: i32) bool;                       // Check if a mouse button is NOT being pressed
-bind fn GetMouseX() i32;                                    // Get mouse position X
-bind fn GetMouseY() i32;                                    // Get mouse position Y
+bind fn IsMouseButtonPressed(button: c_int) bool;                  // Check if a mouse button has been pressed once
+bind fn IsMouseButtonDown(button: c_int) bool;                     // Check if a mouse button is being pressed
+bind fn IsMouseButtonReleased(button: c_int) bool;                 // Check if a mouse button has been released once
+bind fn IsMouseButtonUp(button: c_int) bool;                       // Check if a mouse button is NOT being pressed
+bind fn GetMouseX() c_int;                                    // Get mouse position X
+bind fn GetMouseY() c_int;                                    // Get mouse position Y
 bind fn GetMousePosition() Vector2;                         // Get mouse position XY
 bind fn GetMouseDelta() Vector2;                            // Get mouse delta between frames
-bind fn SetMousePosition(x, y: i32) void;                    // Set mouse position XY
-bind fn SetMouseOffset(offsetX, offsetY: i32) void;          // Set mouse offset
-bind fn SetMouseScale(scaleX, scaleY: f32) void;         // Set mouse scaling
-bind fn GetMouseWheelMove() f32;                          // Get mouse wheel movement for X or Y, whichever is larger
+bind fn SetMousePosition(x, y: c_int) void;                    // Set mouse position XY
+bind fn SetMouseOffset(offsetX, offsetY: c_int) void;          // Set mouse offset
+bind fn SetMouseScale(scaleX, scaleY: c_float) void;         // Set mouse scaling
+bind fn GetMouseWheelMove() c_float;                          // Get mouse wheel movement for X or Y, whichever is larger
 bind fn GetMouseWheelMoveV() Vector2;                       // Get mouse wheel movement for both X and Y
-bind fn SetMouseCursor(cursor: i32) void;                        // Set mouse cursor
+bind fn SetMouseCursor(cursor: c_int) void;                        // Set mouse cursor
 
 // Input-related functions: touch
-bind fn GetTouchX() i32;                                    // Get touch position X for touch point 0 (relative to screen size)
-bind fn GetTouchY() i32;                                    // Get touch position Y for touch point 0 (relative to screen size)
-bind fn GetTouchPosition(index: i32) Vector2;                    // Get touch position XY for a touch point index (relative to screen size)
-bind fn GetTouchPointId(index: i32) i32;                         // Get touch point identifier for given index
-bind fn GetTouchPointCount() i32;                           // Get number of touch points
+bind fn GetTouchX() c_int;                                    // Get touch position X for touch point 0 (relative to screen size)
+bind fn GetTouchY() c_int;                                    // Get touch position Y for touch point 0 (relative to screen size)
+bind fn GetTouchPosition(index: c_int) Vector2;                    // Get touch position XY for a touch point index (relative to screen size)
+bind fn GetTouchPointId(index: c_int) c_int;                         // Get touch point identifier for given index
+bind fn GetTouchPointCount() c_int;                           // Get number of touch points
 
 //----------------------------------------------------------------------------------
 // Module: rgestures
 //----------------------------------------------------------------------------------
-bind fn SetGesturesEnabled(flags: u32) void;
-bind fn IsGestureDetected(gesture: u32) bool;
-bind fn GetGestureDetected() i32;
-bind fn GetGestureHoldDuration() f32;
+bind fn SetGesturesEnabled(flags: c_uint) void;
+bind fn IsGestureDetected(gesture: c_uint) bool;
+bind fn GetGestureDetected() c_int;
+bind fn GetGestureHoldDuration() c_float;
 bind fn GetGestureDragVector() Vector2;
-bind fn GetGestureDragAngle() f32;
+bind fn GetGestureDragAngle() c_float;
 bind fn GetGesturePinchVector() Vector2;
-bind fn GetGesturePinchAngle() f32;
+bind fn GetGesturePinchAngle() c_float;
 
 //------------------------------------------------------------------------------------
 // Module: rcamera
 //------------------------------------------------------------------------------------
-bind fn UpdateCamera(camera: &mut Camera3D, mode: i32) void;
-bind fn UpdateCameraPro(camera: &mut Camera3D, movement: Vector3, rotation: Vector3, zoom: f32) void;
+bind fn UpdateCamera(camera: &mut Camera3D, mode: c_int) void;
+bind fn UpdateCameraPro(camera: &mut Camera3D, movement: Vector3, rotation: Vector3, zoom: c_float) void;
 
 //------------------------------------------------------------------------------------
 // Module: shapes
 //------------------------------------------------------------------------------------
 bind fn SetShapesTexture(texture: Texture, source: Rectangle) void;
-bind fn DrawPixel(posX: i32, posY: i32, color: Color) void;
+bind fn DrawPixel(posX, posY: c_int, color: Color) void;
 bind fn DrawPixelV(position: Vector2, color: Color) void;
-bind fn DrawLine(startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color) void;
-bind fn DrawLineV(startPos: Vector2, endPos: Vector2, color: Color) void;
-bind fn DrawLineEx(startPos: Vector2, endPos: Vector2, thick: f32, color: Color) void;
-bind fn DrawLineStrip(points: &Vector2, pointCount: i32, color: Color) void;
-bind fn DrawLineBezier(startPos: Vector2, endPos: Vector2, thick: f32, color: Color) void;
-bind fn DrawCircle(centerX: i32, centerY: i32, radius: f32, color: Color) void;
-bind fn DrawCircleSector(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
-bind fn DrawCircleSectorLines(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
-bind fn DrawCircleGradient(centerX: i32, centerY: i32, radius: f32, color1: Color, color2: Color) void;
-bind fn DrawCircleV(center: Vector2, radius: f32, color: Color) void;
-bind fn DrawCircleLines(centerX: i32, centerY: i32, radius: f32, color: Color) void;
-bind fn DrawEllipse(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color) void;
-bind fn DrawEllipseLines(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color) void;
-bind fn DrawRing(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
-bind fn DrawRingLines(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void;
-bind fn DrawRectangle(posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
-bind fn DrawRectangleV(position: Vector2, size: Vector2, color: Color) void;
+bind fn DrawLine(startPosX, startPosY, endPosX, endPosY: c_int, color: Color) void;
+bind fn DrawLineV(startPos, endPos: Vector2, color: Color) void;
+bind fn DrawLineEx(startPos, endPos: Vector2, thick: c_float, color: Color) void;
+bind fn DrawLineStrip(points: &Vector2, pointCount: c_int, color: Color) void;
+bind fn DrawLineBezier(startPos, endPos: Vector2, thick: c_float, color: Color) void;
+bind fn DrawCircle(centerX, centerY: c_int, radius: c_float, color: Color) void;
+bind fn DrawCircleSector(center: Vector2, radius, startAngle, endAngle: c_float, segments: c_int, color: Color) void;
+bind fn DrawCircleSectorLines(center: Vector2, radius, startAngle, endAngle: c_float, segments: c_int, color: Color) void;
+bind fn DrawCircleGradient(centerX, centerY: c_int, radius: c_float, color1, color2: Color) void;
+bind fn DrawCircleV(center: Vector2, radius: c_float, color: Color) void;
+bind fn DrawCircleLines(centerX, centerY: c_int, radius: c_float, color: Color) void;
+bind fn DrawEllipse(centerX, centerY: c_int, radiusH, radiusV: c_float, color: Color) void;
+bind fn DrawEllipseLines(centerX, centerY: c_int, radiusH, radiusV: c_float, color: Color) void;
+bind fn DrawRing(center: Vector2, innerRadius, outerRadius, startAngle, endAngle: c_float, segments: c_int, color: Color) void;
+bind fn DrawRingLines(center: Vector2, innerRadius, outerRadius, startAngle, endAngle: c_float, segments: c_int, color: Color) void;
+bind fn DrawRectangle(posX, posY, width, height, color: Color) void;
+bind fn DrawRectangleV(position, size: Vector2, color: Color) void;
 bind fn DrawRectangleRec(rec: Rectangle, color: Color) void;
-bind fn DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: f32, color: Color) void;
-bind fn DrawRectangleGradientV(posX: i32, posY: i32, width: i32, height: i32, color1: Color, color2: Color) void;
-bind fn DrawRectangleGradientH(posX: i32, posY: i32, width: i32, height: i32, color1: Color, color2: Color) void;
-bind fn DrawRectangleGradientEx(rec: Rectangle, col1: Color, col2: Color, col3: Color, col4: Color) void;
-bind fn DrawRectangleLines(posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
-bind fn DrawRectangleLinesEx(rec: Rectangle, lineThick: f32, color: Color) void;
-bind fn DrawRectangleRounded(rec: Rectangle, roundness: f32, segments: i32, color: Color) void;
-bind fn DrawRectangleRoundedLines(rec: Rectangle, roundness: f32, segments: i32, lineThick: f32, color: Color) void;
-bind fn DrawTriangle(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) void;
-bind fn DrawTriangleLines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) void;
-bind fn DrawTriangleFan(points: &Vector2, pointCount: i32, color: Color) void;
-bind fn DrawTriangleStrip(points: &Vector2, pointCount: i32, color: Color) void;
-bind fn DrawPoly(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void;
-bind fn DrawPolyLines(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void;
-bind fn DrawPolyLinesEx(center: Vector2, sides: i32, radius: f32, rotation: f32, lineThick: f32, color: Color) void;
+bind fn DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: c_float, color: Color) void;
+bind fn DrawRectangleGradientV(posX, posY, width, height: c_int, color1, color2: Color) void;
+bind fn DrawRectangleGradientH(posX, posY, width, height: c_int, color1, color2: Color) void;
+bind fn DrawRectangleGradientEx(rec: Rectangle, col1, col2, col3, col4: Color) void;
+bind fn DrawRectangleLines(posX, posY, width, height: c_int, color: Color) void;
+bind fn DrawRectangleLinesEx(rec: Rectangle, lineThick: c_float, color: Color) void;
+bind fn DrawRectangleRounded(rec: Rectangle, roundness: c_float, segments: c_int, color: Color) void;
+bind fn DrawRectangleRoundedLines(rec: Rectangle, roundness: c_float, segments: c_int, lineThick: c_float, color: Color) void;
+bind fn DrawTriangle(v1, v2, v3: Vector2, color: Color) void;
+bind fn DrawTriangleLines(v1, v2, v3: Vector2, color: Color) void;
+bind fn DrawTriangleFan(points: &Vector2, pointCount: c_int, color: Color) void;
+bind fn DrawTriangleStrip(points: &Vector2, pointCount: c_int, color: Color) void;
+bind fn DrawPoly(center: Vector2, sides: c_int, radius: c_float, rotation: c_float, color: Color) void;
+bind fn DrawPolyLines(center: Vector2, sides: c_int, radius, rotation: c_float, color: Color) void;
+bind fn DrawPolyLinesEx(center: Vector2, sides: c_int, radius, rotation, lineThick: c_float, color: Color) void;
 
 // Splines drawing functions
-bind fn DrawSplineLinear(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-bind fn DrawSplineBasis(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-bind fn DrawSplineCatmullRom(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-bind fn DrawSplineBezierQuadratic(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-bind fn DrawSplineBezierCubic(points: &Vector2, pointCount: i32, thick: f32, color: Color) void;
-bind fn DrawSplineSegmentLinear(p1: Vector2, p2: Vector2, thick: f32, color: Color) void;
-bind fn DrawSplineSegmentBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: f32, color: Color) void;
-bind fn DrawSplineSegmentCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: f32, color: Color) void;
-bind fn DrawSplineSegmentBezierQuadratic(p1: Vector2, c2: Vector2, p3: Vector2, thick: f32, color: Color) void;
-bind fn DrawSplineSegmentBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, thick: f32, color: Color) void;
+bind fn DrawSplineLinear(points: &Vector2, pointCount: c_int, thick: c_float, color: Color) void;
+bind fn DrawSplineBasis(points: &Vector2, pointCount: c_int, thick: c_float, color: Color) void;
+bind fn DrawSplineCatmullRom(points: &Vector2, pointCount: c_int, thick: c_float, color: Color) void;
+bind fn DrawSplineBezierQuadratic(points: &Vector2, pointCount: c_int, thick: c_float, color: Color) void;
+bind fn DrawSplineBezierCubic(points: &Vector2, pointCount: c_int, thick: c_float, color: Color) void;
+bind fn DrawSplineSegmentLinear(p1, p2: Vector2, thick: c_float, color: Color) void;
+bind fn DrawSplineSegmentBasis(p1, p2, p3, p4: Vector2, thick: c_float, color: Color) void;
+bind fn DrawSplineSegmentCatmullRom(p1, p2, p3, p4: Vector2, thick: c_float, color: Color) void;
+bind fn DrawSplineSegmentBezierQuadratic(p1, c2, p3: Vector2, thick: c_float, color: Color) void;
+bind fn DrawSplineSegmentBezierCubic(p1, c2, c3, p4: Vector2, thick: c_float, color: Color) void;
 
 // Spline segment point evaluation functions, for a given t [0.0f .. 1.0f]
-bind fn GetSplinePointLinear(startPos: Vector2, endPos: Vector2, t: f32) Vector2;
-bind fn GetSplinePointBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) Vector2;
-bind fn GetSplinePointCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) Vector2;
-bind fn GetSplinePointBezierQuad(p1: Vector2, c2: Vector2, p3: Vector2, t: f32) Vector2;
-bind fn GetSplinePointBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, t: f32) Vector2;
+bind fn GetSplinePointLinear(startPos, endPos: Vector2, t: c_float) Vector2;
+bind fn GetSplinePointBasis(p1, p2, p3, p4: Vector2, t: c_float) Vector2;
+bind fn GetSplinePointCatmullRom(p1, p2, p3, p4: Vector2, t: c_float) Vector2;
+bind fn GetSplinePointBezierQuad(p1, c2, p3: Vector2, t: c_float) Vector2;
+bind fn GetSplinePointBezierCubic(p1, c2, c3, p4: Vector2, t: c_float) Vector2;
 
 
 // Basic shapes collision detection functions
-bind fn CheckCollisionRecs(rec1: Rectangle, rec2: Rectangle) bool;
-bind fn CheckCollisionCircles(center1: Vector2, radius1: f32, center2: Vector2, radius2: f32) bool;
-bind fn CheckCollisionCircleRec(center: Vector2, radius: f32, rec: Rectangle) bool;
+bind fn CheckCollisionRecs(rec1, rec2: Rectangle) bool;
+bind fn CheckCollisionCircles(center1: Vector2, radius1: c_float, center2: Vector2, radius2: c_float) bool;
+bind fn CheckCollisionCircleRec(center: Vector2, radius: c_float, rec: Rectangle) bool;
 bind fn CheckCollisionPointRec(point: Vector2, rec: Rectangle) bool;
-bind fn CheckCollisionPointCircle(point: Vector2, center: Vector2, radius: f32) bool;
-bind fn CheckCollisionPointTriangle(point: Vector2, p1: Vector2, p2: Vector2, p3: Vector2) bool;
-bind fn CheckCollisionLines(startPos1: Vector2, endPos1: Vector2, startPos2, endPos2: Vector2, collisionPoint: &mut Vector2) bool;
-bind fn CheckCollisionPointLine(point: Vector2, p1: Vector2, p2: Vector2, threshold: i32) bool;
-bind fn CheckCollisionPointPoly(point: Vector2, points: &Vector2, pointCount: i32) bool;                // Check if point is within a polygon described by array of vertices
+bind fn CheckCollisionPointCircle(point, center: Vector2, radius: c_float) bool;
+bind fn CheckCollisionPointTriangle(point, p1, p2: Vector2, p3: Vector2) bool;
+bind fn CheckCollisionLines(startPos1, endPos1, startPos2, endPos2: Vector2, collisionPoint: &mut Vector2) bool;
+bind fn CheckCollisionPointLine(point, p1, p2: Vector2, threshold: c_int) bool;
+bind fn CheckCollisionPointPoly(point: Vector2, points: &Vector2, pointCount: c_int) bool;                // Check if point is within a polygon described by array of vertices
 bind fn GetCollisionRec(rec1: Rectangle, rec2: Rectangle) Rectangle;
 
 //------------------------------------------------------------------------------------
 // Module: textures
 //------------------------------------------------------------------------------------
 bind fn LoadImage(fileName: &c_char) Image;
-bind fn LoadImageRaw(fileName: &c_char, width: i32, height: i32, format: i32, headerSize: i32) Image;
-bind fn LoadImageAnim(fileName: &c_char, frames: &mut i32) Image;
-bind fn LoadImageAnimFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32, frames: &mut i32) Image; // Load image sequence from memory buffer
-bind fn LoadImageFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32) Image;
+bind fn LoadImageRaw(fileName: &c_char, width, height, format, headerSize: c_int) Image;
+bind fn LoadImageAnim(fileName: &c_char, frames: &mut c_int) Image;
+bind fn LoadImageAnimFromMemory(fileType: &c_char, fileData: &c_uchar, dataSize: c_int, frames: &mut c_int) Image; // Load image sequence from memory buffer
+bind fn LoadImageFromMemory(fileType: &c_char, fileData: &c_uchar, dataSize: c_int) Image;
 bind fn LoadImageFromTexture(texture: Texture) Image;
 bind fn LoadImageFromScreen() Image;
 bind fn IsImageValid(image: Image) bool;
 bind fn UnloadImage(image: Image) void;
 bind fn ExportImage(image: Image, fileName: &c_char) bool;
 bind fn ExportImageAsCode(image: Image, fileName: &c_char) bool;
-bind fn GenImageColor(width: i32, height: i32, color: Color) Image;
-bind fn GenImageGradientLinear(width: i32, height: i32, direction: i32, start: Color, end: Color) Image;
-bind fn GenImageGradientRadial(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image;
-bind fn GenImageGradientSquare(width: i32, height: i32, density: f32, inner: Color, outer: Color) Image;
-bind fn GenImageChecked(width: i32, height: i32, checksX: i32, checksY: i32, col1: Color, col2: Color) Image;
-bind fn GenImageWhiteNoise(width: i32, height: i32, factor: f32) Image;
-bind fn GenImagePerlinNoise(width: i32, height: i32, offsetX: i32, offsetY: i32, scale: f32) Image;
-bind fn GenImageCellular(width: i32, height: i32, tileSize: i32) Image;
-bind fn GenImageText(width: i32, height: i32, text: &c_char) Image;
+bind fn GenImageColor(width: c_int, height: c_int, color: Color) Image;
+bind fn GenImageGradientLinear(width, height, direction: c_int, start, end: Color) Image;
+bind fn GenImageGradientRadial(width, height: c_int, density: c_float, inner, outer: Color) Image;
+bind fn GenImageGradientSquare(width, height: c_int, density: c_float, inner, outer: Color) Image;
+bind fn GenImageChecked(width, height, checksX, checksY: c_int, col1, col2: Color) Image;
+bind fn GenImageWhiteNoise(width, height: c_int, factor: c_float) Image;
+bind fn GenImagePerlinNoise(width, height, offsetX, offsetY: c_int, scale: c_float) Image;
+bind fn GenImageCellular(width, height: c_int, tileSize: c_int) Image;
+bind fn GenImageText(width, height: c_int, text: &c_char) Image;
 
 
 bind fn ImageCopy(image: Image) Image;
 bind fn ImageFromImage(image: Image, rec: Rectangle) Image;
-bind fn ImageFromChannel(image: Image, selectedChannel: i32) Image;                                          // Create an image from a selected channel of another image (GRAYSCALE)
-bind fn ImageText(text: &c_char, fontSize: i32, color: Color) Image;
-bind fn ImageTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32, tint: Color) Image;
-bind fn ImageFormat(image: &mut Image, newFormat: i32) void;
+bind fn ImageFromChannel(image: Image, selectedChannel: c_int) Image;                                          // Create an image from a selected channel of another image (GRAYSCALE)
+bind fn ImageText(text: &c_char, fontSize: c_int, color: Color) Image;
+bind fn ImageTextEx(font: Font, text: &c_char, fontSize, spacing: c_float, tint: Color) Image;
+bind fn ImageFormat(image: &mut Image, newFormat: c_int) void;
 bind fn ImageToPOT(image: &mut Image, fill: Color) void;
 bind fn ImageCrop(image: &mut Image, crop: Rectangle) void;
-bind fn ImageAlphaCrop(image: &mut Image, threshold: f32) void;
-bind fn ImageAlphaClear(image: &mut Image, color: Color, threshold: f32) void;
+bind fn ImageAlphaCrop(image: &mut Image, threshold: c_float) void;
+bind fn ImageAlphaClear(image: &mut Image, color: Color, threshold: c_float) void;
 bind fn ImageAlphaMask(image: &mut Image, alphaMask: Image) void;
 bind fn ImageAlphaPremultiply(image: &mut Image) void;
-bind fn ImageBlurGaussian(image: &mut Image, blurSize: i32) void;
-bind fn ImageKernelConvolution(image: &mut Image, kernel: &f32, kernelSize: i32) void;                    // Apply custom square convolution kernel to image
-bind fn ImageResize(image: &mut Image, newWidth: i32, newHeight: i32) void;
-bind fn ImageResizeNN(image: &mut Image, newWidth: i32, newHeight: i32) void;
-bind fn ImageResizeCanvas(image: &mut Image, newWidth: i32, newHeight: i32, offsetX: i32, offsetY: i32, fill: Color) void;
+bind fn ImageBlurGaussian(image: &mut Image, blurSize: c_int) void;
+bind fn ImageKernelConvolution(image: &mut Image, kernel: &c_float, kernelSize: c_int) void;                    // Apply custom square convolution kernel to image
+bind fn ImageResize(image: &mut Image, newWidth, newHeight: c_int) void;
+bind fn ImageResizeNN(image: &mut Image, newWidth, newHeight: c_int) void;
+bind fn ImageResizeCanvas(image: &mut Image, newWidth, newHeight, offsetX, offsetY: c_int, fill: Color) void;
 bind fn ImageMipmaps(image: &mut Image) void;
-bind fn ImageDither(image: &mut Image, rBpp: i32, gBpp: i32, bBpp: i32, aBpp: i32) void;
+bind fn ImageDither(image: &mut Image, rBpp, gBpp, bBpp, aBpp: c_int) void;
 bind fn ImageFlipVertical(image: &mut Image) void;
 bind fn ImageFlipHorizontal(image: &mut Image) void;
-bind fn ImageRotate(image: &mut Image, degrees: i32) void;
+bind fn ImageRotate(image: &mut Image, degrees: c_int) void;
 bind fn ImageRotateCW(image: &mut Image) void;
 bind fn ImageRotateCCW(image: &mut Image) void;
 bind fn ImageColorTint(image: &mut Image, color: Color) void;
 bind fn ImageColorInvert(image: &mut Image) void;
 bind fn ImageColorGrayscale(image: &mut Image) void;
-bind fn ImageColorContrast(image: &mut Image, contrast: f32) void;
-bind fn ImageColorBrightness(image: &mut Image, brightness: i32) void;
-bind fn ImageColorReplace(image: &mut Image, color: Color, replace: Color) void;
+bind fn ImageColorContrast(image: &mut Image, contrast: c_float) void;
+bind fn ImageColorBrightness(image: &mut Image, brightness: c_int) void;
+bind fn ImageColorReplace(image: &mut Image, color, replace: Color) void;
 bind fn LoadImageColors(image: Image) &mut Color;
-bind fn LoadImagePalette(image: Image, maxPaletteSize: i32, colorCount: &mut i32) &mut Color;
+bind fn LoadImagePalette(image: Image, maxPaletteSize: c_int, colorCount: &mut c_int) &mut Color;
 bind fn UnloadImageColors(colors: &mut Color) void;
 bind fn UnloadImagePalette(colors: &mut Color) void;
-bind fn GetImageAlphaBorder(image: Image, threshold: f32) Rectangle;
-bind fn GetImageColor(image: Image, x: i32, y: i32) Color;
+bind fn GetImageAlphaBorder(image: Image, threshold: c_float) Rectangle;
+bind fn GetImageColor(image: Image, x, y: c_int) Color;
 bind fn ImageClearBackground(dst: &mut Image, color: Color) void;
-bind fn ImageDrawPixel(dst: &mut Image, posX: i32, posY: i32, color: Color) void;
+bind fn ImageDrawPixel(dst: &mut Image, posX, posY: c_int, color: Color) void;
 bind fn ImageDrawPixelV(dst: &mut Image, position: Vector2, color: Color) void;
-bind fn ImageDrawLine(dst: &mut Image, startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color) void;
-bind fn ImageDrawLineV(dst: &mut Image, start: Vector2, end: Vector2, color: Color) void;
-bind fn ImageDrawLineEx(dst: &mut Image, start, end: Vector2, thick: i32, color: Color) void;              // Draw a line defining thickness within an image
-bind fn ImageDrawCircle(dst: &mut Image, centerX: i32, centerY: i32, radius: i32, color: Color) void;
-bind fn ImageDrawCircleV(dst: &mut Image, center: Vector2, radius: i32, color: Color) void;
-bind fn ImageDrawCircleLines(dst: &mut Image, centerX: i32, centerY: i32, radius: i32, color: Color) void;
-bind fn ImageDrawCircleLinesV(dst: &mut Image, center: Vector2, radius: i32, color: Color) void;
-bind fn ImageDrawRectangle(dst: &mut Image, posX: i32, posY: i32, width: i32, height: i32, color: Color) void;
-bind fn ImageDrawRectangleV(dst: &mut Image, position: Vector2, size: Vector2, color: Color) void;
+bind fn ImageDrawLine(dst: &mut Image, startPosX, startPosY, endPosX, endPosY: c_int, color: Color) void;
+bind fn ImageDrawLineV(dst: &mut Image, start, end: Vector2, color: Color) void;
+bind fn ImageDrawLineEx(dst: &mut Image, start, end: Vector2, thick: c_int, color: Color) void;              // Draw a line defining thickness within an image
+bind fn ImageDrawCircle(dst: &mut Image, centerX, centerY, radius: c_int, color: Color) void;
+bind fn ImageDrawCircleV(dst: &mut Image, center: Vector2, radius: c_int, color: Color) void;
+bind fn ImageDrawCircleLines(dst: &mut Image, centerX, centerY, radius: c_int, color: Color) void;
+bind fn ImageDrawCircleLinesV(dst: &mut Image, center: Vector2, radius: c_int, color: Color) void;
+bind fn ImageDrawRectangle(dst: &mut Image, posX, posY, width, height: c_int, color: Color) void;
+bind fn ImageDrawRectangleV(dst: &mut Image, position, size: Vector2, color: Color) void;
 bind fn ImageDrawRectangleRec(dst: &mut Image, rec: Rectangle, color: Color) void;
-bind fn ImageDrawRectangleLines(dst: &mut Image, rec: Rectangle, thick: i32, color: Color) void;
+bind fn ImageDrawRectangleLines(dst: &mut Image, rec: Rectangle, thick: c_int, color: Color) void;
 bind fn ImageDrawTriangle(dst: &mut Image, v1, v2, v3: Vector2, color: Color) void;               // Draw triangle within an image
 bind fn ImageDrawTriangleEx(dst: &mut Image, v1, v2, v3: Vector2, c1, c2, c3: Color) void; // Draw triangle with interpolated colors within an image
 bind fn ImageDrawTriangleLines(dst: &mut Image, v1, v2, v3: Vector2, color: Color) void;          // Draw triangle outline within an image
-bind fn ImageDrawTriangleFan(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color) void;               // Draw a triangle fan defined by points within an image (first vertex is the center)
-bind fn ImageDrawTriangleStrip(dst: &mut Image, points: &Vector2, pointCount: i32, color: Color) void;             // Draw a triangle strip defined by points within an image
+bind fn ImageDrawTriangleFan(dst: &mut Image, points: &Vector2, pointCount: c_int, color: Color) void;               // Draw a triangle fan defined by points within an image (first vertex is the center)
+bind fn ImageDrawTriangleStrip(dst: &mut Image, points: &Vector2, pointCount: c_int, color: Color) void;             // Draw a triangle strip defined by points within an image
 bind fn ImageDraw(dst: &mut Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color) void;
-bind fn ImageDrawText(dst: &mut Image, text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
-bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+bind fn ImageDrawText(dst: &mut Image, text: &c_char, posX, posY: c_int, fontSize: c_int, color: Color) void;
+bind fn ImageDrawTextEx(dst: &mut Image, font: Font, text: &c_char, position: Vector2, fontSize, spacing: c_float, tint: Color) void;
 bind fn LoadTexture(fileName: &c_char) Texture;
 bind fn LoadTextureFromImage(image: Image) Texture;
-bind fn LoadTextureCubemap(image: Image, layout: i32) Texture;
-bind fn LoadRenderTexture(width: i32, height: i32) RenderTexture;
+bind fn LoadTextureCubemap(image: Image, layout: c_int) Texture;
+bind fn LoadRenderTexture(width, height: c_int) RenderTexture;
 bind fn IsTextureValid(texture: Texture) bool;
 bind fn UnloadTexture(texture: Texture) void;
 bind fn IsRenderTextureValid(target: RenderTexture) bool;
@@ -2713,122 +2712,122 @@ bind fn UnloadRenderTexture(target: RenderTexture) void;
 bind fn UpdateTexture(texture: Texture, pixels: &void) void;
 bind fn UpdateTextureRec(texture: Texture, rec: Rectangle, pixels: &void) void;
 bind fn GenTextureMipmaps(texture: &mut Texture) void;
-bind fn SetTextureFilter(texture: Texture, filter: i32) void;
-bind fn SetTextureWrap(texture: Texture, wrap: i32) void;
-bind fn DrawTexture(texture: Texture, posX: i32, posY: i32, tint: Color) void;
+bind fn SetTextureFilter(texture: Texture, filter: c_int) void;
+bind fn SetTextureWrap(texture: Texture, wrap: c_int) void;
+bind fn DrawTexture(texture: Texture, posX, posY: c_int, tint: Color) void;
 bind fn DrawTextureV(texture: Texture, position: Vector2, tint: Color) void;
-bind fn DrawTextureEx(texture: Texture, position: Vector2, rotation: f32, scale: f32, tint: Color) void;
+bind fn DrawTextureEx(texture: Texture, position: Vector2, rotation, scale: c_float, tint: Color) void;
 bind fn DrawTextureRec(texture: Texture, source: Rectangle, position: Vector2, tint: Color) void;
-bind fn DrawTexturePro(texture: Texture, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
-bind fn DrawTextureNPatch(texture: Texture, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) void;
+bind fn DrawTexturePro(texture: Texture, source, dest: Rectangle, origin: Vector2, rotation: c_float, tint: Color) void;
+bind fn DrawTextureNPatch(texture: Texture, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: c_float, tint: Color) void;
 
 // Color/pixel related functions
 bind fn ColorIsEqual(col1, col2: Color) bool;                            // Check if two colors are equal
-bind fn Fade(color: Color, alpha: f32) Color;
-bind fn ColorToInt(color: Color) i32;
+bind fn Fade(color: Color, alpha: c_float) Color;
+bind fn ColorToInt(color: Color) c_int;
 bind fn ColorNormalize(color: Color) Vector4;
 bind fn ColorFromNormalized(normalized: Vector4) Color;
 bind fn ColorToHSV(color: Color) Vector3;
-bind fn ColorFromHSV(hue: f32, saturation: f32, value: f32) Color;
+bind fn ColorFromHSV(hue, saturation, value: c_float) Color;
 bind fn ColorTint(color: Color, tint: Color) Color;
-bind fn ColorBrightness(color: Color, factor: f32) Color;
-bind fn ColorContrast(color: Color, contrast: f32) Color;
-bind fn ColorAlpha(color: Color, alpha: f32) Color;
-bind fn ColorAlphaBlend(dst: Color, src: Color, tint: Color) Color;
-bind fn ColorLerp(color1, color2: Color, factor: f32) Color;            // Get color lerp interpolation between two colors, factor [0.0f..1.0f]
-bind fn GetColor(hexValue: u32) Color;
-bind fn GetPixelColor(srcPtr: &mut void, format: i32) Color;
-bind fn SetPixelColor(dstPtr: &mut void, color: Color, format: i32) void;
-bind fn GetPixelDataSize(width: i32, height: i32, format: i32) i32;
+bind fn ColorBrightness(color: Color, factor: c_float) Color;
+bind fn ColorContrast(color: Color, contrast: c_float) Color;
+bind fn ColorAlpha(color: Color, alpha: c_float) Color;
+bind fn ColorAlphaBlend(dst, src, tint: Color) Color;
+bind fn ColorLerp(color1, color2: Color, factor: c_float) Color;            // Get color lerp interpolation between two colors, factor [0.0f..1.0f]
+bind fn GetColor(hexValue: c_uint) Color;
+bind fn GetPixelColor(srcPtr: &mut void, format: c_int) Color;
+bind fn SetPixelColor(dstPtr: &mut void, color: Color, format: c_int) void;
+bind fn GetPixelDataSize(width, height, format: c_int) c_int;
 
 //------------------------------------------------------------------------------------
 // Module: text
 //------------------------------------------------------------------------------------
 bind fn GetFontDefault() Font;
 bind fn LoadFont(fileName: &c_char) Font;
-bind fn LoadFontEx(fileName: &c_char, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
-bind fn LoadFontFromImage(image: Image, key: Color, firstChar: i32) Font;
-bind fn LoadFontFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32) Font;
+bind fn LoadFontEx(fileName: &c_char, fontSize: c_int, fontChars: &mut c_int, glyphCount: c_int) Font;
+bind fn LoadFontFromImage(image: Image, key: Color, firstChar: c_int) Font;
+bind fn LoadFontFromMemory(fileType: &c_char, fileData: &c_uchar, dataSize, fontSize: c_int, fontChars: &mut c_int, glyphCount: c_int) Font;
 bind fn IsFontValid(font: Font) bool;
-bind fn LoadFontData(fileData: &u8, dataSize: i32, fontSize: i32, fontChars: &mut i32, glyphCount: i32, type: i32) &mut GlyphInfo;
-bind fn GenImageFontAtlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image;
-bind fn UnloadFontData(chars: &mut GlyphInfo, glyphCount: i32) void;
+bind fn LoadFontData(fileData: &c_uchar, dataSize, fontSize: c_int, fontChars: &mut c_int, glyphCount, type: c_int) &mut GlyphInfo;
+bind fn GenImageFontAtlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount, fontSize, padding, packMethod: c_int) Image;
+bind fn UnloadFontData(chars: &mut GlyphInfo, glyphCount: c_int) void;
 bind fn UnloadFont(font: Font) void;
 bind fn ExportFontAsCode(font: Font, fileName: &c_char) bool;
 
 // Text drawing functions
-bind fn DrawFPS(posX: i32, posY: i32) void;
-bind fn DrawText(text: &c_char, posX: i32, posY: i32, fontSize: i32, color: Color) void;
-bind fn DrawTextEx(font: Font, text: &c_char, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
-bind fn DrawTextPro(font: Font, text: &c_char, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color) void;
-bind fn DrawTextCodepoint(font: Font, codepoint: i32, position: Vector2, fontSize: f32, tint: Color) void;
-bind fn DrawTextCodepoints(font: Font, codepoints: &i32, count: i32, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void;
+bind fn DrawFPS(posX, posY: c_int) void;
+bind fn DrawText(text: &c_char, posX, posY, fontSize: c_int, color: Color) void;
+bind fn DrawTextEx(font: Font, text: &c_char, position: Vector2, fontSize, spacing: c_float, tint: Color) void;
+bind fn DrawTextPro(font: Font, text: &c_char, position, origin: Vector2, rotation, fontSize, spacing: c_float, tint: Color) void;
+bind fn DrawTextCodepoint(font: Font, codepoint: c_int, position: Vector2, fontSize: c_float, tint: Color) void;
+bind fn DrawTextCodepoints(font: Font, codepoints: &c_int, count: c_int, position: Vector2, fontSize, spacing: c_float, tint: Color) void;
 
 // Text font info functions
-bind fn SetTextLineSpacing(spacing: i32) void;
-bind fn MeasureText(text: &c_char, fontSize: i32) i32;
-bind fn MeasureTextEx(font: Font, text: &c_char, fontSize: f32, spacing: f32) Vector2;
-bind fn GetGlyphIndex(font: Font, codepoint: i32) i32;
-bind fn GetGlyphInfo(font: Font, codepoint: i32) GlyphInfo;
-bind fn GetGlyphAtlasRec(font: Font, codepoint: i32) Rectangle;
+bind fn SetTextLineSpacing(spacing: c_int) void;
+bind fn MeasureText(text: &c_char, fontSize: c_int) c_int;
+bind fn MeasureTextEx(font: Font, text: &c_char, fontSize, spacing: c_float) Vector2;
+bind fn GetGlyphIndex(font: Font, codepoint: c_int) c_int;
+bind fn GetGlyphInfo(font: Font, codepoint: c_int) GlyphInfo;
+bind fn GetGlyphAtlasRec(font: Font, codepoint: c_int) Rectangle;
 
 // Text codepoint functions
-bind fn LoadUTF8(codepoints: &i32, length: i32) &mut u8;
-bind fn UnloadUTF8(text: &mut u8) void;
-bind fn LoadCodepoints(text: &c_char, count: &mut i32) &mut i32;
-bind fn UnloadCodepoints(codepoints: &mut i32) void;
-bind fn GetCodepointCount(text: &c_char) i32;
-bind fn GetCodepoint(text: &c_char, codepointSize: &mut i32) i32;
-bind fn GetCodepointNext(text: &c_char, codepointSize: &mut i32) i32;                           // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-bind fn GetCodepointPrevious(text: &c_char, codepointSize: &mut i32) i32;                           // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-bind fn CodepointToUTF8(codepoint: i32, utf8Size: &mut i32) &c_char;
+bind fn LoadUTF8(codepoints: &c_int, length: c_int) &mut c_uchar;
+bind fn UnloadUTF8(text: &mut c_uchar) void;
+bind fn LoadCodepoints(text: &c_char, count: &mut c_int) &mut c_int;
+bind fn UnloadCodepoints(codepoints: &mut c_int) void;
+bind fn GetCodepointCount(text: &c_char) c_int;
+bind fn GetCodepoint(text: &c_char, codepointSize: &mut c_int) c_int;
+bind fn GetCodepointNext(text: &c_char, codepointSize: &mut c_int) c_int;                           // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
+bind fn GetCodepointPrevious(text: &c_char, codepointSize: &mut c_int) c_int;                           // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
+bind fn CodepointToUTF8(codepoint: c_int, utf8Size: &mut c_int) &c_char;
 
 // Text strings management functions
-bind fn TextCopy(dst: &mut c_char, src: &c_char) i32;
+bind fn TextCopy(dst: &mut c_char, src: &c_char) c_int;
 bind fn TextIsEqual(text1: &c_char, text2: &c_char) bool;
-bind fn TextLength(text: &c_char) u32;
+bind fn TextLength(text: &c_char) c_uint;
 bind fn TextFormat(text: &c_char, args...) &c_char;
-bind fn TextSubtext(text: &c_char, position: i32, length: i32) &c_char;
+bind fn TextSubtext(text: &c_char, position: c_int, length: c_int) &c_char;
 bind fn TextRemoveSpaces(text: &c_char) &c_char;                                       // Remove text spaces, concat words
 bind fn GetTextBetween(text, begin, end: &c_char) &mut c_char;           // Get text between two strings
-bind fn TextReplace(text: &mut u8, replace: &c_char, search: &c_char) &mut c_char;
+bind fn TextReplace(text: &mut u8, replace, search: &c_char) &mut c_char;
 bind fn TextReplaceBetween(text, begin, end, replacement: &c_char) &mut c_char; // Replace text between two specific strings (WARNING: memory must be freed!)
-bind fn TextInsert(text: &c_char, insert: &c_char, position: i32) &mut c_char;
-bind fn TextJoin(textList: &mut &c_char, count: i32, delimiter: &c_char) &mut c_char;
-bind fn TextSplit(text: &c_char, delimiter: u8, count: &mut i32) &mut &c_char;
-bind fn TextAppend(text: &mut u8, append: &c_char, position: &mut i32) void;
-bind fn TextFindIndex(text: &c_char, find: &c_char) i32;
+bind fn TextInsert(text: &c_char, insert: &c_char, position: c_int) &mut c_char;
+bind fn TextJoin(textList: &mut &c_char, count: c_int, delimiter: &c_char) &mut c_char;
+bind fn TextSplit(text: &c_char, delimiter: u8, count: &mut c_int) &mut &c_char;
+bind fn TextAppend(text: &mut u8, append: &c_char, position: &mut c_int) void;
+bind fn TextFindIndex(text: &c_char, find: &c_char) c_int;
 bind fn TextToUpper(text: &c_char) &c_char;
 bind fn TextToLower(text: &c_char) &c_char;
 bind fn TextToPascal(text: &c_char) &c_char;
 bind fn TextToSnake(text: &c_char) &mut c_char;                                                  // Get Snake case notation version of provided string
 bind fn TextToCamel(text: &c_char) &mut c_char;                                                  // Get Camel case notation version of provided string
-bind fn TextToInteger(text: &c_char) i32;
+bind fn TextToInteger(text: &c_char) c_int;
 
 //------------------------------------------------------------------------------------
 // Module: models
 //------------------------------------------------------------------------------------
-bind fn DrawLine3D(startPos: Vector3, endPos: Vector3, color: Color) void;
+bind fn DrawLine3D(startPos, endPos: Vector3, color: Color) void;
 bind fn DrawPoint3D(position: Vector3, color: Color) void;
-bind fn DrawCircle3D(center: Vector3, radius: f32, rotationAxis: Vector3, rotationAngle: f32, color: Color) void;
-bind fn DrawTriangle3D(v1: Vector3, v2: Vector3, v3: Vector3, color: Color) void;
-bind fn DrawTriangleStrip3D(points: &Vector3, pointCount: i32, color: Color) void;
-bind fn DrawCube(position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
-bind fn DrawCubeV(position: Vector3, size: Vector3, color: Color) void;
-bind fn DrawCubeWires(position: Vector3, width: f32, height: f32, length: f32, color: Color) void;
+bind fn DrawCircle3D(center: Vector3, radius: c_float, rotationAxis: Vector3, rotationAngle: c_float, color: Color) void;
+bind fn DrawTriangle3D(v1, v2, v3: Vector3, color: Color) void;
+bind fn DrawTriangleStrip3D(points: &Vector3, pointCount: c_int, color: Color) void;
+bind fn DrawCube(position: Vector3, width, height, length: c_float, color: Color) void;
+bind fn DrawCubeV(position, size: Vector3, color: Color) void;
+bind fn DrawCubeWires(position: Vector3, width, height, length: c_float, color: Color) void;
 bind fn DrawCubeWiresV(position: Vector3, size: Vector3, color: Color) void;
-bind fn DrawSphere(centerPos: Vector3, radius: f32, color: Color) void;
-bind fn DrawSphereEx(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color) void;
-bind fn DrawSphereWires(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color) void;
-bind fn DrawCylinder(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color) void;
-bind fn DrawCylinderEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color) void;
-bind fn DrawCylinderWires(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color) void;
-bind fn DrawCylinderWiresEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color) void;
-bind fn DrawCapsule(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color) void;
-bind fn DrawCapsuleWires(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color) void;
+bind fn DrawSphere(centerPos: Vector3, radius: c_float, color: Color) void;
+bind fn DrawSphereEx(centerPos: Vector3, radius: c_float, rings, slices: c_int, color: Color) void;
+bind fn DrawSphereWires(centerPos: Vector3, radius: c_float, rings, slices: c_int, color: Color) void;
+bind fn DrawCylinder(position: Vector3, radiusTop, radiusBottom, height: c_float, slices: c_int, color: Color) void;
+bind fn DrawCylinderEx(startPos, endPos: Vector3, startRadius, endRadius: c_float, sides: c_int, color: Color) void;
+bind fn DrawCylinderWires(position: Vector3, radiusTop, radiusBottom, height: c_float, slices: c_int, color: Color) void;
+bind fn DrawCylinderWiresEx(startPos, endPos: Vector3, startRadius, endRadius: c_float, sides: c_int, color: Color) void;
+bind fn DrawCapsule(startPos, endPos: Vector3, radius: c_float, slices, rings: c_int, color: Color) void;
+bind fn DrawCapsuleWires(startPos, endPos: Vector3, radius: c_float, slices, rings: c_int, color: Color) void;
 bind fn DrawPlane(centerPos: Vector3, size: Vector2, color: Color) void;
 bind fn DrawRay(ray: Ray, color: Color) void;
-bind fn DrawGrid(slices: i32, spacing: f32) void;
+bind fn DrawGrid(slices: c_int, spacing: c_float) void;
 
 // Model management functions
 bind fn LoadModel(fileName: &c_char) Model;
@@ -2838,82 +2837,82 @@ bind fn UnloadModel(model: Model) void;
 bind fn GetModelBoundingBox(model: Model) BoundingBox;
 
 // Model drawing functions
-bind fn DrawModel(model: Model, position: Vector3, scale: f32, tint: Color) void;
-bind fn DrawModelEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void;
-bind fn DrawModelWires(model: Model, position: Vector3, scale: f32, tint: Color) void;
-bind fn DrawModelWiresEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color) void;
+bind fn DrawModel(model: Model, position: Vector3, scale: c_float, tint: Color) void;
+bind fn DrawModelEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: c_float, scale: Vector3, tint: Color) void;
+bind fn DrawModelWires(model: Model, position: Vector3, scale: c_float, tint: Color) void;
+bind fn DrawModelWiresEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: c_float, scale: Vector3, tint: Color) void;
 bind fn DrawBoundingBox(box: BoundingBox, color: Color) void;
-bind fn DrawBillboard(camera: Camera3D, texture: Texture, position: Vector3, size: f32, tint: Color) void;
+bind fn DrawBillboard(camera: Camera3D, texture: Texture, position: Vector3, size: c_float, tint: Color) void;
 bind fn DrawBillboardRec(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, size: Vector2, tint: Color) void;
-bind fn DrawBillboardPro(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: f32, tint: Color) void;
+bind fn DrawBillboardPro(camera: Camera3D, texture: Texture, source: Rectangle, position, up: Vector3, size, origin: Vector2, rotation: c_float, tint: Color) void;
 
 // Mesh management functions
 bind fn UploadMesh(mesh: &mut Mesh, dynamic: bool) void;
-bind fn UpdateMeshBuffer(mesh: Mesh, index: i32, data: &void, dataSize: i32, offset: i32) void;
+bind fn UpdateMeshBuffer(mesh: Mesh, index: c_int, data: &void, dataSize, offset: c_int) void;
 bind fn UnloadMesh(mesh: Mesh) void;
 bind fn DrawMesh(mesh: Mesh, material: Material, transform: Matrix) void;
-bind fn DrawMeshInstanced(mesh: Mesh, material: Material, transforms: &Matrix, instances: i32) void;
+bind fn DrawMeshInstanced(mesh: Mesh, material: Material, transforms: &Matrix, instances: c_int) void;
 bind fn ExportMesh(mesh: Mesh, fileName: &c_char) bool;
 bind fn GetMeshBoundingBox(mesh: Mesh) BoundingBox;
 bind fn GenMeshTangents(mesh: &mut Mesh) void;
 
 // Mesh generation functions
-bind fn GenMeshPoly(sides: i32, radius: f32) Mesh;
-bind fn GenMeshPlane(width: f32, length: f32, resX: i32, resZ: i32) Mesh;
-bind fn GenMeshCube(width: f32, height: f32, length: f32) Mesh;
-bind fn GenMeshSphere(radius: f32, rings: i32, slices: i32) Mesh;
-bind fn GenMeshHemiSphere(radius: f32, rings: i32, slices: i32) Mesh;
-bind fn GenMeshCylinder(radius: f32, height: f32, slices: i32) Mesh;
-bind fn GenMeshCone(radius: f32, height: f32, slices: i32) Mesh;
-bind fn GenMeshTorus(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
-bind fn GenMeshKnot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh;
+bind fn GenMeshPoly(sides: c_int, radius: c_float) Mesh;
+bind fn GenMeshPlane(width, length: c_float, resX, resZ: c_int) Mesh;
+bind fn GenMeshCube(width, height, length: c_float) Mesh;
+bind fn GenMeshSphere(radius: c_float, rings, slices: c_int) Mesh;
+bind fn GenMeshHemiSphere(radius: c_float, rings, slices: c_int) Mesh;
+bind fn GenMeshCylinder(radius, height: c_float, slices: c_int) Mesh;
+bind fn GenMeshCone(radius, height: c_float, slices: c_int) Mesh;
+bind fn GenMeshTorus(radius, size: c_float, radSeg, sides: c_int) Mesh;
+bind fn GenMeshKnot(radius, size: c_float, radSeg, sides: c_int) Mesh;
 bind fn GenMeshHeightmap(heightmap: Image, size: Vector3) Mesh;
 bind fn GenMeshCubicmap(cubicmap: Image, cubeSize: Vector3) Mesh;
 
 // Material loading/unloading functions
-bind fn LoadMaterials(fileName: &c_char, materialCount: &mut i32) &mut Material;
+bind fn LoadMaterials(fileName: &c_char, materialCount: &mut c_int) &mut Material;
 bind fn LoadMaterialDefault() Material;
 bind fn IsMaterialValid(material: Material) bool;
 bind fn UnloadMaterial(material: Material) void;
-bind fn SetMaterialTexture(material: &mut Material, mapType: i32, texture: Texture) void;
-bind fn SetModelMeshMaterial(model: &mut Model, meshId: i32, materialId: i32) void;
+bind fn SetMaterialTexture(material: &mut Material, mapType: c_int, texture: Texture) void;
+bind fn SetModelMeshMaterial(model: &mut Model, meshId, materialId: c_int) void;
 
 // Model animation loading/unloading functions
-bind fn LoadModelAnimations(fileName: &c_char, animCount: &mut u32) &mut ModelAnimation;
-bind fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: i32) void;
-bind fn UpdateModelAnimationBones(model: Model, anim: ModelAnimation, frame: i32) void;          // Update model animation mesh bone matrices (GPU skinning)
+bind fn LoadModelAnimations(fileName: &c_char, animCount: &mut c_uint) &mut ModelAnimation;
+bind fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: c_int) void;
+bind fn UpdateModelAnimationBones(model: Model, anim: ModelAnimation, frame: c_int) void;          // Update model animation mesh bone matrices (GPU skinning)
 bind fn UnloadModelAnimation(anim: ModelAnimation) void;
-bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: i32) void;                // Unload animation array data
+bind fn UnloadModelAnimations(animations: &mut ModelAnimation, animCount: c_int) void;                // Unload animation array data
 bind fn IsModelAnimationValid(model: Model, anim: ModelAnimation) bool;
 
 // Collision detection functions
-bind fn CheckCollisionSpheres(center1: Vector3, radius1: f32, center2: Vector3, radius2: f32) bool;
+bind fn CheckCollisionSpheres(center1: Vector3, radius1: c_float, center2: Vector3, radius2: c_float) bool;
 bind fn CheckCollisionBoxes(box1: BoundingBox, box2: BoundingBox) bool;
-bind fn CheckCollisionBoxSphere(box: BoundingBox, center: Vector3, radius: f32) bool;
-bind fn GetRayCollisionSphere(ray: Ray, center: Vector3, radius: f32) RayCollision;
+bind fn CheckCollisionBoxSphere(box: BoundingBox, center: Vector3, radius: c_float) bool;
+bind fn GetRayCollisionSphere(ray: Ray, center: Vector3, radius: c_float) RayCollision;
 bind fn GetRayCollisionBox(ray: Ray, box: BoundingBox) RayCollision;
 bind fn GetRayCollisionMesh(ray: Ray, mesh: Mesh, transform: Matrix) RayCollision;
-bind fn GetRayCollisionTriangle(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3) RayCollision;
-bind fn GetRayCollisionQuad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) RayCollision;
+bind fn GetRayCollisionTriangle(ray: Ray, p1, p2, p3: Vector3) RayCollision;
+bind fn GetRayCollisionQuad(ray: Ray, p1, p2, p3, p4: Vector3) RayCollision;
 
 //------------------------------------------------------------------------------------
 // Module: audio
 //------------------------------------------------------------------------------------
-const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
+const AudioCallback = fn (bufferData: &mut void, frames: c_uint) void;
 bind fn InitAudioDevice() void;
 bind fn CloseAudioDevice() void;
 bind fn IsAudioDeviceReady() bool;
-bind fn SetMasterVolume(volume: f32) void;
+bind fn SetMasterVolume(volume: c_float) void;
 
 // Wave/Sound loading/unloading functions
 bind fn LoadWave(fileName: &c_char) Wave;
-bind fn LoadWaveFromMemory(fileType: &c_char, fileData: &u8, dataSize: i32) Wave;
+bind fn LoadWaveFromMemory(fileType: &c_char, fileData: &c_uchar, dataSize: c_int) Wave;
 bind fn IsWaveValid(wave: Wave) bool;
 bind fn LoadSound(fileName: &c_char) Sound;
 bind fn LoadSoundFromWave(wave: Wave) Sound;
 bind fn LoadSoundAlias(source: Sound) Sound;                             // Create a new sound that shares the same sample data as the source sound, does not own the sound data
 bind fn IsSoundValid(sound: Sound) bool;
-bind fn UpdateSound(sound: Sound, data: &void, sampleCount: i32) void;
+bind fn UpdateSound(sound: Sound, data: &void, sampleCount: c_int) void;
 bind fn UnloadWave(wave: Wave) void;
 bind fn UnloadSound(sound: Sound) void;
 bind fn UnloadSoundAlias(alias: Sound) void;                             // Unload a sound alias (does not deallocate sample data)
@@ -2926,18 +2925,18 @@ bind fn StopSound(sound: Sound) void;
 bind fn PauseSound(sound: Sound) void;
 bind fn ResumeSound(sound: Sound) void;
 bind fn IsSoundPlaying(sound: Sound) bool;
-bind fn SetSoundVolume(sound: Sound, volume: f32) void;
-bind fn SetSoundPitch(sound: Sound, pitch: f32) void;
-bind fn SetSoundPan(sound: Sound, pan: f32) void;
+bind fn SetSoundVolume(sound: Sound, volume: c_float) void;
+bind fn SetSoundPitch(sound: Sound, pitch: c_float) void;
+bind fn SetSoundPan(sound: Sound, pan: c_float) void;
 bind fn WaveCopy(wave: Wave) Wave;
-bind fn WaveCrop(wave: &mut Wave, initFrame: i32, finalFrame: i32) void;
-bind fn WaveFormat(wave: &mut Wave, sampleRate: i32, sampleSize: i32, channels: i32) void;
-bind fn LoadWaveSamples(wave: Wave) &mut f32;
-bind fn UnloadWaveSamples(samples: &mut f32) void;
+bind fn WaveCrop(wave: &mut Wave, initFrame, finalFrame: c_int) void;
+bind fn WaveFormat(wave: &mut Wave, sampleRate, sampleSize, channels: c_int) void;
+bind fn LoadWaveSamples(wave: Wave) &mut c_float;
+bind fn UnloadWaveSamples(samples: &mut c_float) void;
 
 // Music management functions
 bind fn LoadMusicStream(fileName: &c_char) Music;
-bind fn LoadMusicStreamFromMemory(fileType: &c_char, data: &u8, dataSize: i32) Music;
+bind fn LoadMusicStreamFromMemory(fileType: &c_char, data: &c_uchar, dataSize: c_int) Music;
 bind fn IsMusicValid(music: Music) bool;
 bind fn UnloadMusicStream(music: Music) void;
 bind fn PlayMusicStream(music: Music) void;
@@ -2946,28 +2945,28 @@ bind fn UpdateMusicStream(music: Music) void;
 bind fn StopMusicStream(music: Music) void;
 bind fn PauseMusicStream(music: Music) void;
 bind fn ResumeMusicStream(music: Music) void;
-bind fn SeekMusicStream(music: Music, position: f32) void;
-bind fn SetMusicVolume(music: Music, volume: f32) void;
-bind fn SetMusicPitch(music: Music, pitch: f32) void;
-bind fn SetMusicPan(music: Music, pan: f32) void;
-bind fn GetMusicTimeLength(music: Music) f32;
-bind fn GetMusicTimePlayed(music: Music) f32;
+bind fn SeekMusicStream(music: Music, position: c_float) void;
+bind fn SetMusicVolume(music: Music, volume: c_float) void;
+bind fn SetMusicPitch(music: Music, pitch: c_float) void;
+bind fn SetMusicPan(music: Music, pan: c_float) void;
+bind fn GetMusicTimeLength(music: Music) c_float;
+bind fn GetMusicTimePlayed(music: Music) c_float;
 
 // AudioStream management functions
-bind fn LoadAudioStream(sampleRate: u32, sampleSize: u32, channels: u32) AudioStream;
+bind fn LoadAudioStream(sampleRate, sampleSize, channels: c_uint) AudioStream;
 bind fn IsAudioStreamReady(stream: AudioStream) bool;
 bind fn UnloadAudioStream(stream: AudioStream) void;
-bind fn UpdateAudioStream(stream: AudioStream, data: &void, frameCount: i32) void;
+bind fn UpdateAudioStream(stream: AudioStream, data: &void, frameCount: c_int) void;
 bind fn IsAudioStreamProcessed(stream: AudioStream) bool;
 bind fn PlayAudioStream(stream: AudioStream) void;
 bind fn PauseAudioStream(stream: AudioStream) void;
 bind fn ResumeAudioStream(stream: AudioStream) void;
 bind fn IsAudioStreamPlaying(stream: AudioStream) bool;
 bind fn StopAudioStream(stream: AudioStream) void;
-bind fn SetAudioStreamVolume(stream: AudioStream, volume: f32) void;
-bind fn SetAudioStreamPitch(stream: AudioStream, pitch: f32) void;
-bind fn SetAudioStreamPan(stream: AudioStream, pan: f32) void;
-bind fn SetAudioStreamBufferSizeDefault(size: i32) void;
+bind fn SetAudioStreamVolume(stream: AudioStream, volume: c_float) void;
+bind fn SetAudioStreamPitch(stream: AudioStream, pitch: c_float) void;
+bind fn SetAudioStreamPan(stream: AudioStream, pan: c_float) void;
+bind fn SetAudioStreamBufferSizeDefault(size: c_int) void;
 bind fn SetAudioStreamCallback(stream: AudioStream, callback: AudioCallback) void;
 
 bind fn AttachAudioStreamProcessor(stream: AudioStream, processor: AudioCallback) void;

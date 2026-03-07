@@ -379,6 +379,9 @@ export default grammar({
       "c_uint",
       "c_ushort",
       "c_ulong",
+
+      "c_float",
+      "c_double",
     ),
 
     optional_type: $ => prec.right(8, seq(

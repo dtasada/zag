@@ -18,7 +18,6 @@ const Self = @This();
 
 pub const Module = @import("Module.zig");
 
-
 const CompilerError = errors.CompilerError;
 
 const Section = struct {
@@ -1148,6 +1147,9 @@ fn registerConstants(self: *Self) !void {
     try self.registerSymbol("c_uchar", .{ .type = .c_uchar }, .{ .inner_name = "unsigned char" });
     try self.registerSymbol("c_ulong", .{ .type = .c_ulong }, .{ .inner_name = "unsigned long" });
     try self.registerSymbol("c_ushort", .{ .type = .c_ushort }, .{ .inner_name = "unsigned short" });
+
+    try self.registerSymbol("c_float", .{ .type = .c_float }, .{ .inner_name = "float" });
+    try self.registerSymbol("c_double", .{ .type = .c_double }, .{ .inner_name = "double" });
 
     try self.registerSymbol("c_null", .{ .symbol = .{ .type = .{ .reference = .{ .inner = &.void, .is_mut = false } } } }, .{ .inner_name = "NULL" });
 
