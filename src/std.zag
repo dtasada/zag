@@ -31,6 +31,15 @@ pub fn slice_to_sentinel<T>(slice: []T, sentinel: T) &mut T {
     return buf.ptr;
 }
 
+pub fn sentinel_to_slice<T>(start: &T, sentinel: T) []mut T {
+    let mut end = start;
+    while (end.* != sentinel) end = cast<&T>(cast<usize>(end) + sizeof<T>());
+    let length = (cast<usize>(end) - cast<usize>(start)) / sizeof<T>();
+    let buf: []mut T = alloc_slice<T>(length);
+    memcpy<T>(buf.ptr, start);
+    return buf;
+}
+
 pub fn abs<T>(x: T) T -> if (x >= 0) x else -x
 pub fn acos<T>(x: T) T -> c.acos(x)
 pub fn asin<T>(x: T) T -> c.asin(x)
@@ -48,7 +57,7 @@ pub fn alloc<T>() &mut T {
     return ptr;
 }
 
-pub fn free<T>(ptr: &T) void -> c.free(ptr);
+pub fn free<T>(ptr: &T) void -> c.free(cast<&mut void>(ptr));
 
 pub fn free_slice<T>(slice: []mut T) void -> c.free(cast<&mut void>(slice.ptr));
 

@@ -1770,9 +1770,10 @@ pub const LoadFileTextCallback = fn (fileName: &c_char) &c_char;
 pub const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool;
 pub const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
 
-pub fn init_window(width, height: i32, title: &c_char) void {
-    let title_cstr = void;
-    InitWindow(width, height, title);
+pub fn init_window(width, height: i32, title: []u8) void {
+    let title_cstr = std.slice_to_sentinel<u8>(title, 0);
+    defer std.free<u8>(title_cstr);
+    InitWindow(width, height, cast<&mut c_char>(title_cstr));
 } 
 pub fn close_window() void -> CloseWindow()
 pub fn window_should_close() bool -> WindowShouldClose()
@@ -1803,7 +1804,11 @@ pub fn maximize_window() void -> MaximizeWindow()
 pub fn minimize_window() void -> MinimizeWindow()
 pub fn restore_window() void -> RestoreWindow()
 pub fn set_window_icon(image: Image) void -> SetWindowIcon(image)
-pub fn set_window_title(title: &c_char) void -> SetWindowTitle(title)
+pub fn set_window_title(title: []u8) void {
+    let title_cstr = std.slice_to_sentinel<u8>(title, 0);
+    defer std.free<u8>(title_cstr);
+    SetWindowTitle(cast<&mut c_char>(title_cstr));
+}
 pub fn set_window_position(x, y: i32) void -> SetWindowPosition(x, y)
 pub fn set_window_monitor(monitor: i32) void -> SetWindowMonitor(monitor)
 pub fn set_window_min_size(width, height: i32) void -> SetWindowMinSize(width, height)
@@ -1821,9 +1826,15 @@ pub fn get_monitor_physical_height(monitor: i32) i32 -> GetMonitorPhysicalHeight
 pub fn get_monitor_refresh_rate(monitor: i32) i32 -> GetMonitorRefreshRate(monitor)
 pub fn get_window_position() Vector2 -> GetWindowPosition()
 pub fn get_window_scale_dpi() Vector2 -> GetWindowScaleDPI()
-pub fn get_monitor_name(monitor: i32) &c_char -> GetMonitorName(monitor)
-pub fn set_clipboard_text(text: &c_char) void -> SetClipboardText(text)
-pub fn get_clipboard_text() &c_char -> GetClipboardText()
+pub fn get_monitor_name(monitor: i32) []u8 ->
+    cast<[]u8>(std.sentinel_to_slice<c_char>(GetMonitorName(monitor), 0))
+pub fn set_clipboard_text(text: []u8) void {
+    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
+    defer std.free<u8>(text_cstr);
+    SetClipboardText(cast<&mut c_char>(text_cstr));
+} 
+pub fn get_clipboard_text() []u8 ->
+    cast<[]u8>(std.sentinel_to_slice<c_char>(GetClipboardText(), 0))
 pub fn show_cursor() void -> ShowCursor()
 pub fn hide_cursor() void -> HideCursor()
 pub fn is_cursor_hidden() bool -> IsCursorHidden()
@@ -1841,17 +1852,37 @@ pub fn begin_texture_mode(target: RenderTexture2D) void -> BeginTextureMode(targ
 pub fn end_texture_mode() void -> EndTextureMode()
 pub fn begin_shader_mode(shader: Shader) void -> BeginShaderMode(shader)
 pub fn end_shader_mode() void -> EndShaderMode()
-pub fn begin_blend_mode(mode: i32) void -> BeginBlendMode(mode)
+pub fn begin_blend_mode(mode: BlendMode) void -> BeginBlendMode(cast<c_int>(mode))
 pub fn end_blend_mode() void -> EndBlendMode()
-pub fn begin_scissor_mode(x: i32, y: i32, width: i32, height: i32) void -> BeginScissorMode(x, y, width, height)
+pub fn begin_scissor_mode(x, y, width, height: i32) void -> BeginScissorMode(x, y, width, height)
 pub fn end_scissor_mode() void -> EndScissorMode()
 pub fn begin_vr_stereo_mode(config: VrStereoConfig) void -> BeginVrStereoMode(config)
 pub fn end_vr_stereo_mode() void -> EndVrStereoMode()
 pub fn load_vr_stereo_config(device: VrDeviceInfo) VrStereoConfig -> LoadVrStereoConfig(device)
 pub fn unload_vr_stereo_config(config: VrStereoConfig) void -> UnloadVrStereoConfig(config)
-pub fn load_shader(vsFileName: &c_char, fsFileName: &c_char) Shader -> LoadShader(vsFileName, fsFileName)
-pub fn load_shader_from_memory(vsCode: &c_char, fsCode: &c_char) Shader -> LoadShaderFromMemory(vsCode, fsCode)
-pub fn get_shader_location(shader: Shader, uniformName: &c_char) i32 -> GetShaderLocation(cast<Shader>(shader), uniformName)
+pub fn load_shader(vs_file_name, fs_file_name: []u8) Shader {
+    let vs_file_name_cstr = std.slice_to_sentinel<u8>(vs_file_name, 0);
+    defer std.free<u8>(vs_file_name_cstr);
+
+    let fs_file_name_cstr = std.slice_to_sentinel<u8>(fs_file_name, 0);
+    defer std.free<u8>(fs_file_name_cstr);
+
+    return LoadShader(cast<&mut c_char>(vs_file_name_cstr), cast<&mut c_char>(fs_file_name_cstr));
+}
+pub fn load_shader_from_memory(vs_code, fs_code: []u8) Shader {
+    let vs_code_cstr = std.slice_to_sentinel<u8>(vs_code, 0);
+    defer std.free<u8>(vs_code_cstr);
+
+    let fs_code_cstr = std.slice_to_sentinel<u8>(fs_code, 0);
+    defer std.free<u8>(fs_code_cstr);
+
+    return LoadShaderFromMemory(cast<&mut c_char>(vs_code_cstr), cast<&mut c_char>(fs_code_cstr));
+}
+pub fn get_shader_location(shader: Shader, uniform_name: []u8) i32 {
+    let uniform_name_cstr = std.slice_to_sentinel<u8>(uniform_name, 0);
+    defer std.free<u8>(uniform_name_cstr);
+    return GetShaderLocation(cast<Shader>(shader), cast<&mut c_char>(uniform_name_cstr));
+}
 pub fn get_shader_location_attrib(shader: Shader, attribName: &c_char) i32 -> GetShaderLocationAttrib(cast<Shader>(shader), attribName)
 pub fn set_shader_value(shader: Shader, locIndex: i32, value: &void, uniformType: i32) void -> SetShaderValue(cast<Shader>(shader), locIndex, value, uniformType)
 pub fn set_shader_value_v(shader: Shader, locIndex: i32, value: &void, uniformType: i32, count: i32) void -> SetShaderValueV(cast<Shader>(shader), locIndex, value, uniformType, count)
