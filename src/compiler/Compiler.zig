@@ -807,12 +807,12 @@ pub fn compileType(
                 try self.beginTypeDefEmit(t);
 
                 try self.write("typedef struct {\n");
-                try self.compileType(slice.inner.*, .{
-                    .binding_mut = slice.is_mut,
-                    .is_top_level = true,
-                });
-                try self.write(" *ptr;\n");
-                try self.write("size_t len;\n");
+                try self.compileVariableSignature(
+                    "ptr",
+                    .{ .reference = .{ .is_mut = slice.is_mut, .inner = slice.inner } },
+                    .{ .binding_mut = true },
+                );
+                try self.write(";\nsize_t len;\n");
                 try self.print("}} {s};\n", .{type_name});
 
                 self.endTypeDefEmit();
@@ -873,9 +873,11 @@ pub fn compileVariableSignature(
 
     if (opts.is_const) try self.write("static ");
 
+    const binding_mut = opts.binding_mut or t == .slice and t.slice.is_mut;
+
     switch (t) {
         .array => |array| {
-            try self.compileType(array.inner.*, .{ .binding_mut = opts.binding_mut });
+            try self.compileType(array.inner.*, .{ .binding_mut = binding_mut });
             try self.print(" {s}[{}]", .{ name, array.size });
         },
         .function => |function| {
@@ -894,7 +896,7 @@ pub fn compileVariableSignature(
         },
         .variadic => try self.write("..."),
         else => {
-            try self.compileType(t, .{ .binding_mut = opts.binding_mut });
+            try self.compileType(t, .{ .binding_mut = binding_mut });
             try self.print(" {s}", .{name});
         },
     }

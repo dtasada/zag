@@ -631,14 +631,13 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
                 else => continue :b m.parent.*,
             }
         },
-        .index => |idx| {
+        inline .index, .slice => |idx| {
             const assignee_t: Type = try .infer(self, idx.lhs.*);
             switch (assignee_t) {
                 .slice => |slc| if (!slc.is_mut) continue :b idx.lhs.*,
                 else => continue :b idx.lhs.*,
             }
         },
-        .slice => |slc| continue :b slc.lhs.*,
         .dereference => |deref| {
             if (deref.parent.* != .ident) continue :b deref.parent.*;
             const t = try self.getSymbolType(deref.parent.ident.ident);
@@ -650,6 +649,14 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
             .{ @tagName(other), expr.pos },
             .red,
         ),
+    }
+
+    switch (expr.assignee.*) {
+        .index => |idx| switch (try Type.infer(self, idx.lhs.*)) {
+            .slice => |slc| if (!slc.is_mut) return errors.badMutability(expr.pos),
+            else => {},
+        },
+        else => {},
     }
 
     switch (expr.op) {
@@ -1005,6 +1012,36 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
                 call_expr.args.items.len,
                 call_expr.pos,
             );
+
+            const source_type = try Type.infer(self, call_expr.args.items[0]);
+            const target_type = inst.args[0].type;
+
+            switch (source_type) {
+                .slice => switch (target_type) {
+                    .reference => {
+                        // cast from slice to pointer: cast the ptr field
+                        try self.write("((");
+                        try self.compileType(target_type, .{});
+                        try self.write(")((");
+                        try compile(self, &call_expr.args.items[0], .{});
+                        try self.write(").ptr))");
+                        return;
+                    },
+                    .slice => {
+                        // cast from slice to slice: cast ptr field and keep len
+                        try self.write("((");
+                        try self.compileType(target_type, .{});
+                        try self.write("){ .ptr = (void*)((");
+                        try compile(self, &call_expr.args.items[0], .{});
+                        try self.write(").ptr), .len = (");
+                        try compile(self, &call_expr.args.items[0], .{});
+                        try self.write(").len })");
+                        return;
+                    },
+                    else => {},
+                },
+                else => {},
+            }
 
             try self.write("(");
             try self.compileType(inst.args[0].type, .{});

@@ -1,7 +1,7 @@
 import c;
 
 pub struct String {
-    bytes: []u8,
+    bytes: []mut u8,
 
     pub fn init(bytes: []u8) String {
         let buf = alloc_slice<u8>(bytes.len);
@@ -21,12 +21,14 @@ pub struct String {
     pub fn is_empty(self: String) bool -> self.bytes.len == 0
 
     // Caller owns memory
-    pub fn to_sentinel(self: String) &mut c_char {
-        let buf = alloc_slice<c_char>(self.len() + 1);
-        memcpy_slice<c_char>(buf[..self.len()], cast<[]c_char>(self.bytes));
-        buf[self.len()] = 0;
-        return buf.ptr;
-    }
+    pub fn to_sentinel(self: String) &mut c_char -> cast<&mut c_char>(slice_to_sentinel<u8>(self.bytes, 0))
+}
+
+pub fn slice_to_sentinel<T>(slice: []T, sentinel: T) &mut T {
+    let buf: []mut T = alloc_slice<T>(slice.len + 1);
+    memcpy_slice<T>(buf[..slice.len], cast<[]T>(slice));
+    buf[slice.len] = sentinel;
+    return buf.ptr;
 }
 
 pub fn abs<T>(x: T) T -> if (x >= 0) x else -x

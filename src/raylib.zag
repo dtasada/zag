@@ -1770,7 +1770,10 @@ pub const LoadFileTextCallback = fn (fileName: &c_char) &c_char;
 pub const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool;
 pub const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
 
-pub fn init_window(width, height: i32, title: &c_char) void -> InitWindow(width, height, title)
+pub fn init_window(width, height: i32, title: &c_char) void {
+    let title_cstr = void;
+    InitWindow(width, height, title);
+} 
 pub fn close_window() void -> CloseWindow()
 pub fn window_should_close() bool -> WindowShouldClose()
 pub fn is_window_ready() bool -> IsWindowReady()
@@ -1780,9 +1783,21 @@ pub fn is_window_minimized() bool -> IsWindowMinimized()
 pub fn is_window_maximized() bool -> IsWindowMaximized()
 pub fn is_window_focused() bool -> IsWindowFocused()
 pub fn is_window_resized() bool -> IsWindowResized()
-pub fn is_window_state(flag: u32) bool -> IsWindowState(flag)
-pub fn set_window_state(flags: u32) void -> SetWindowState(flags)
-pub fn clear_window_state(flags: u32) void -> ClearWindowState(flags)
+pub fn is_window_state(flags: []ConfigFlags) bool {
+    let mut flag_int = 0;
+    for (flags) |f| flag_int |= cast<i32>(f);
+    return IsWindowState(flag_int);
+}
+pub fn set_window_state(flags: []ConfigFlags) void {
+    let mut flag_int = 0;
+    for (flags) |f| flag_int |= cast<i32>(f);
+    SetWindowState(flag_int);
+}
+pub fn clear_window_state(flags: []ConfigFlags) void {
+    let mut flag_int = 0;
+    for (flags) |f| flag_int |= cast<i32>(f);
+    ClearWindowState(flag_int);
+}
 pub fn toggle_fullscreen() void -> ToggleFullscreen()
 pub fn maximize_window() void -> MaximizeWindow()
 pub fn minimize_window() void -> MinimizeWindow()
