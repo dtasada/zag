@@ -378,6 +378,19 @@ pub fn mangle(self: *const Self, name: []const u8) ![]const u8 {
     return try std.fmt.allocPrint(self.alloc, "{s}_{s}", .{ module_name, name });
 }
 
+fn processFunctionDefinitionSymbol(self: *Self, func: *const ast.Statement.FunctionDefinition) !void {
+    var t = try Type.fromAst(self, func.getType());
+    t.function.definition = func;
+    try self.registerSymbol(
+        func.name,
+        .{ .symbol = .{ .type = t } },
+        .{
+            .inner_name = try self.mangle(func.name),
+            .is_defined = false,
+        },
+    );
+}
+
 pub fn scan(self: *Self) CompilerError!void {
     for (self.input.items) |*statement| switch (statement.*) {
         .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }, .{}),
@@ -445,18 +458,7 @@ pub fn scan(self: *Self) CompilerError!void {
         .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl),
         .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl),
         .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl),
-        .function_definition => |*func| {
-            var t = try Type.fromAst(self, func.getType());
-            t.function.definition = func;
-            try self.registerSymbol(
-                func.name,
-                .{ .symbol = .{ .type = t } },
-                .{
-                    .inner_name = try self.mangle(func.name),
-                    .is_defined = false,
-                },
-            );
-        },
+        .function_definition => |*func| try processFunctionDefinitionSymbol(self, func),
         .binding_function_declaration => |*func| {
             var t: Type = try .fromAst(self, func.getType());
             t.function.is_bind = true;
@@ -484,19 +486,13 @@ pub fn analyze(self: *Self) CompilerError!void {
                 try self.imported_modules.put(name, mod);
             },
             .function_definition => |*func| {
-                var t = try Type.fromAst(self, func.getType());
-                t.function.definition = func;
-                try self.registerSymbol(
-                    func.name,
-                    .{ .symbol = .{ .type = t } },
-                    .{ .is_defined = false, .inner_name = try self.mangle(func.name) },
-                );
+                try processFunctionDefinitionSymbol(self, func);
 
                 if (func.is_pub) try self.exported_symbols.put(func.name, .{
                     .name = func.name,
                     .inner_name = try self.mangle(func.name),
                     .is_pub = func.is_pub,
-                    .type = t,
+                    .type = try self.getSymbolType(func.name),
                 });
             },
             .binding_function_declaration => |*func| {

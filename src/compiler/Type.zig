@@ -377,6 +377,45 @@ pub const Type = union(enum) {
         return ptr;
     }
 
+    fn instantiateBuiltin(
+        compiler: *Compiler,
+        base_function: Type.Function,
+        name: []const u8,
+        base_name: []const u8,
+        args: []const Value,
+        comptime modify_return_type: bool,
+    ) !Type {
+        var new_f = base_function;
+        new_f.name = name;
+        new_f.generic_params = .empty;
+        new_f.generic_instantiation = .{
+            .base_name = base_name,
+            .args = try compiler.alloc.dupe(Value, args),
+        };
+
+        if (modify_return_type and args.len > 0) {
+            switch (args[0]) {
+                .type => |t| {
+                    const ret_ptr = try compiler.alloc.create(Type);
+                    ret_ptr.* = t;
+                    new_f.return_type = ret_ptr;
+                },
+                else => {},
+            }
+        }
+
+        const new_type: Type = .{ .function = new_f };
+
+        // Register globally
+        try compiler.scopes.items[0].items.put(name, .{ .type = .{
+            .type = new_type,
+            .inner_name = name,
+            .is_defined = true,
+        } });
+
+        return new_type;
+    }
+
     fn instantiateGeneric(
         compiler: *Compiler,
         base_type: Type,
@@ -577,81 +616,9 @@ pub const Type = union(enum) {
 
             return new_type;
         } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "sizeof")) {
-            var new_f = base_type.function;
-            new_f.name = name;
-            new_f.generic_params = .empty;
-            new_f.generic_instantiation = .{
-                .base_name = base_name,
-                .args = try compiler.alloc.dupe(Value, args.items),
-            };
-            const new_type: Type = .{ .function = new_f };
-
-            // Register globally
-            try compiler.scopes.items[0].items.put(name, .{ .type = .{
-                .type = new_type,
-                .inner_name = name,
-                .is_defined = true,
-            } });
-
-            return new_type;
-        } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "cast")) {
-            var new_f = base_type.function;
-            new_f.name = name;
-            new_f.generic_params = .empty;
-            new_f.generic_instantiation = .{
-                .base_name = base_name,
-                .args = try compiler.alloc.dupe(Value, args.items),
-            };
-
-            // Set the return type to T (args[0])
-            if (args.items.len > 0) switch (args.items[0]) {
-                .type => |t| {
-                    const ret_ptr = try compiler.alloc.create(Type);
-                    ret_ptr.* = t;
-                    new_f.return_type = ret_ptr;
-                },
-                else => {},
-            };
-
-            const new_type: Type = .{ .function = new_f };
-
-            // Register globally
-            try compiler.scopes.items[0].items.put(name, .{ .type = .{
-                .type = new_type,
-                .inner_name = name,
-                .is_defined = true,
-            } });
-
-            return new_type;
-        } else if (base_type == .function and std.mem.eql(u8, base_type.function.name, "xor")) {
-            var new_f = base_type.function;
-            new_f.name = name;
-            new_f.generic_params = .empty;
-            new_f.generic_instantiation = .{
-                .base_name = base_name,
-                .args = try compiler.alloc.dupe(Value, args.items),
-            };
-
-            // Set the return type to T (args[0])
-            if (args.items.len > 0) switch (args.items[0]) {
-                .type => |t| {
-                    const ret_ptr = try compiler.alloc.create(Type);
-                    ret_ptr.* = t;
-                    new_f.return_type = ret_ptr;
-                },
-                else => {},
-            };
-
-            const new_type: Type = .{ .function = new_f };
-
-            // Register globally
-            try compiler.scopes.items[0].items.put(name, .{ .type = .{
-                .type = new_type,
-                .inner_name = name,
-                .is_defined = true,
-            } });
-
-            return new_type;
+            return instantiateBuiltin(compiler, base_type.function, name, base_name, args.items, false);
+        } else if (base_type == .function and (std.mem.eql(u8, base_type.function.name, "cast") or std.mem.eql(u8, base_type.function.name, "xor"))) {
+            return instantiateBuiltin(compiler, base_type.function, name, base_name, args.items, true);
         } else return utils.printErr(
             error.GenericInstantiationFailed,
             "comperr: Cannot instantiate {f} (missing definition or unsupported) ({f})\n",
@@ -917,51 +884,8 @@ pub const Type = union(enum) {
             // If type mismatch or not found (logic error in scan?), create new.
             // But strict forward decl implies we should find it.
             // However, we fallback to init for safety/standalone usage.
-            break :b try .init(compiler, type_decl.name, inner_name, switch (T) {
-                .@"struct" => null,
-                .@"enum" => getTagType(type_decl.members.items.len),
-                .@"union" => b2: {
-                    const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
-                    enum_decl.* = .{
-                        .pos = type_decl.pos,
-                        .is_pub = false,
-                        .name = tag_type_inner_name,
-                        .variables = .empty,
-                        .subtypes = .empty,
-                        .members = .empty,
-                        .methods = .empty,
-                    };
-
-                    for (type_decl.members.items) |member|
-                        try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
-
-                    // Create the tag type but DON'T compile/emit it yet
-                    // It will be emitted when the union itself is compiled in statements.zig
-                    break :b2 .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
-                },
-            });
-        } else |_| try .init(compiler, type_decl.name, inner_name, switch (T) {
-            .@"struct" => null,
-            .@"enum" => getTagType(type_decl.members.items.len),
-            .@"union" => b: {
-                const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
-                enum_decl.* = .{
-                    .pos = type_decl.pos,
-                    .is_pub = false,
-                    .name = tag_type_inner_name,
-                    .variables = .empty,
-                    .subtypes = .empty,
-                    .members = .empty,
-                    .methods = .empty,
-                };
-
-                for (type_decl.members.items) |member|
-                    try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
-
-                // Create the tag type but DON'T compile/emit it yet
-                break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
-            },
-        });
+            break :b try compoundTypeInit(compiler, T, type_decl, inner_name, tag_type_inner_name);
+        } else |_| try compoundTypeInit(compiler, T, type_decl, inner_name, tag_type_inner_name);
 
         // If definition is set, it means we already populated this type.
         if (compound_type.definition != null) return compound_type;
@@ -1106,6 +1030,45 @@ pub const Type = union(enum) {
         }
 
         return compound_type;
+    }
+
+    fn compoundTypeInit(
+        compiler: *Compiler,
+        comptime T: utils.CompoundTypeTag,
+        type_decl: *const switch (T) {
+            .@"struct" => ast.Statement.StructDeclaration,
+            .@"union" => ast.Statement.UnionDeclaration,
+            .@"enum" => ast.Statement.EnumDeclaration,
+        },
+        inner_name: []const u8,
+        tag_type_inner_name: []const u8,
+    ) !switch (T) {
+        .@"struct" => Type.Struct,
+        .@"union" => Type.Union,
+        .@"enum" => Type.Enum,
+    } {
+        return try Type.CompoundType(T).init(compiler, type_decl.name, inner_name, switch (T) {
+            .@"struct" => null,
+            .@"enum" => getTagType(type_decl.members.items.len),
+            .@"union" => b: {
+                const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
+                enum_decl.* = .{
+                    .pos = type_decl.pos,
+                    .is_pub = false,
+                    .name = tag_type_inner_name,
+                    .variables = .empty,
+                    .subtypes = .empty,
+                    .members = .empty,
+                    .methods = .empty,
+                };
+
+                for (type_decl.members.items) |member|
+                    try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
+
+                // Create the tag type but DON'T compile/emit it yet
+                break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
+            },
+        });
     }
 
     fn inferArrayInstantiationExpression(compiler: *Compiler, array: ast.Expression.ArrayInstantiation) !Self {

@@ -58,6 +58,27 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
     }
 }
 
+fn handleArrayReturnType(self: *Self, return_type: *Type) !bool {
+    const is_array = return_type.* == .array;
+    if (is_array) {
+        const inner_type = return_type.*;
+        const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{return_type.hash()});
+        return_type.* = .{ .@"struct" = try Type.Struct.init(self, return_type_name, return_type_name, null) };
+        try return_type.@"struct".members.put("items", inner_type);
+
+        if (self.zag_header_contents.get(return_type.*) == null) {
+            try self.beginTypeDefEmit(return_type.*);
+            try self.write("typedef struct {\n");
+            try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
+            try self.print(";\n}} {s};\n", .{return_type_name});
+            self.endTypeDefEmit();
+
+            try self.zag_header_contents.put(return_type.*, return_type_name);
+        }
+    }
+    return is_array;
+}
+
 fn compoundTypeDeclaration(
     self: *Self,
     comptime T: utils.CompoundTypeTag,
@@ -188,25 +209,7 @@ fn compoundTypeDeclaration(
         );
 
         var return_type: Type = try .fromAst(self, method.return_type);
-        const return_type_is_array = return_type == .array;
-        if (return_type == .array) {
-            const inner_type = return_type;
-            const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{return_type.hash()});
-            return_type = .{ .@"struct" = try .init(self, return_type_name, return_type_name, null) };
-            try return_type.@"struct".members.put("items", return_type);
-
-            if (self.zag_header_contents.get(return_type) == null) {
-                try self.beginTypeDefEmit(return_type);
-                try self.write("typedef struct {\n");
-                try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
-                try self.print(";\n}} {s};\n", .{return_type_name});
-                self.endTypeDefEmit();
-
-                try self.zag_header_contents.put(return_type, return_type_name);
-            }
-
-            try self.write(return_type_name);
-        } else try self.compileType(return_type, .{ .binding_mut = true });
+        const return_type_is_array = try handleArrayReturnType(self, &return_type);
 
         if (type_decl.is_pub) {
             self.switchSection(.header_function_decls);
@@ -222,6 +225,7 @@ fn compoundTypeDeclaration(
             self.switchSection(.source_function_impls);
         }
 
+        try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
         for (method.parameters.items, 0..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
@@ -547,23 +551,7 @@ fn functionDefinition(
     defer self.current_return_type = previous_return_type;
     self.current_return_type = try .fromAst(self, function_def.return_type);
 
-    const return_type_is_array = return_type == .array;
-    if (return_type == .array) {
-        const inner_type = return_type;
-        const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{return_type.hash()});
-        return_type = .{ .@"struct" = try .init(self, return_type_name, return_type_name, null) };
-        try return_type.@"struct".members.put("items", return_type);
-
-        if (self.zag_header_contents.get(return_type) == null) {
-            try self.beginTypeDefEmit(return_type);
-            try self.write("typedef struct {\n");
-            try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
-            try self.print(";\n}} {s};\n", .{return_type_name});
-            self.endTypeDefEmit();
-
-            try self.zag_header_contents.put(return_type, return_type_name);
-        }
-    }
+    const return_type_is_array = try handleArrayReturnType(self, &return_type);
 
     if (binding_function or function_def.is_pub) {
         const saved_section = self.current_section;
