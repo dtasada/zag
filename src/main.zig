@@ -9,23 +9,6 @@ const Compiler = @import("Compiler");
 
 const build = @import("build.zig");
 
-const BuildError = error{
-    FailedToReadSource,
-    FailedToTokenizeSource,
-    FailedToCreateParser,
-    FailedToParseSource,
-    FailedToCreateCompiler,
-    FailedToCompileTarget,
-    FailedToBuildProject,
-    CompilationError,
-    InvalidArgument,
-};
-
-const Args = enum {
-    build,
-    run,
-};
-
 /// program entry point. sets up the cli app.
 pub fn main() void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;

@@ -17,7 +17,7 @@ const Value = @import("Value.zig").Value;
 const Self = @This();
 
 pub const Module = @import("Module.zig");
-pub const Mode = enum { emit, analysis };
+
 
 const CompilerError = errors.CompilerError;
 
@@ -363,7 +363,6 @@ fn writeOutputFiles(self: *Self) !void {
     try header_file_writer.interface.print("#ifndef {s}\n#define {s}\n\n", .{ guard_name, guard_name });
     try header_file_writer.interface.writeAll("#include <zag.h>\n\n");
     try header_file_writer.interface.writeAll(self.sections.get(.header_includes).buffer.items);
-    try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_forward_decls).buffer.items);
     try header_file_writer.interface.writeAll(self.sections.get(.header_primitives).buffer.items);
     try self.emitTypeDefsInOrder(&header_file_writer.interface);
@@ -1286,12 +1285,6 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         if (scope.items.get(symbol)) |item| {
             return switch (item) {
                 .module => |module| module.name,
-                .constant => utils.printErr(
-                    error.SymbolNotVariable,
-                    "comperr: Symbol '{s}' is a constant, not a variable\n",
-                    .{symbol},
-                    .red,
-                ),
                 inline else => |s| s.inner_name,
             };
         }

@@ -604,16 +604,14 @@ pub const Type = union(enum) {
             };
 
             // Set the return type to T (args[0])
-            if (args.items.len > 0) {
-                switch (args.items[0]) {
-                    .type => |t| {
-                        const ret_ptr = try compiler.alloc.create(Type);
-                        ret_ptr.* = t;
-                        new_f.return_type = ret_ptr;
-                    },
-                    else => {},
-                }
-            }
+            if (args.items.len > 0) switch (args.items[0]) {
+                .type => |t| {
+                    const ret_ptr = try compiler.alloc.create(Type);
+                    ret_ptr.* = t;
+                    new_f.return_type = ret_ptr;
+                },
+                else => {},
+            };
 
             const new_type: Type = .{ .function = new_f };
 
@@ -1544,7 +1542,7 @@ pub const Type = union(enum) {
     };
 
     /// returns an unsigned integer type given a length
-    pub fn uintFromBits(bits: u6) Type {
+    pub fn uintFromBits(bits: u7) Type {
         return if (bits <= 8)
             .u8
         else if (bits <= 16)
