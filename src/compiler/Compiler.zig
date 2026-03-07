@@ -220,7 +220,10 @@ pub fn beginTypeDefEmit(self: *Self, t: Type) !void {
 }
 
 pub fn endTypeDefEmit(self: *Self) void {
-    const idx = self.type_def_stack.pop().?;
+    const idx = self.type_def_stack.pop() orelse {
+        std.debug.print("popping failed, returning early\n", .{});
+        return;
+    };
     self.switchSection(self.type_def_blocks.items[idx].saved_section);
 }
 

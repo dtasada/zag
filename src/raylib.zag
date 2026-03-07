@@ -1969,7 +1969,7 @@ pub fn draw_ellipse(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, colo
 pub fn draw_ellipse_lines(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color) void -> DrawEllipseLines(centerX, centerY, radiusH, radiusV, color)
 pub fn draw_ring(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void -> DrawRing(center, innerRadius, outerRadius, startAngle, endAngle, segments, color)
 pub fn draw_ring_lines(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color) void -> DrawRingLines(center, innerRadius, outerRadius, startAngle, endAngle, segments, color)
-pub fn draw_rectangle(posX: i32, posY: i32, width: i32, height: i32, color: Color) void -> DrawRectangle(posX, posY, width, height, color)
+pub fn draw_rectangle(posX, posY, width, height: i32, color: Color) void -> DrawRectangle(posX, posY, width, height, color)
 pub fn draw_rectangle_v(position: Vector2, size: Vector2, color: Color) void -> DrawRectangleV(position, size, color)
 pub fn draw_rectangle_rec(rec: Rectangle, color: Color) void -> DrawRectangleRec(rec, color)
 pub fn draw_rectangle_pro(rec: Rectangle, origin: Vector2, rotation: f32, color: Color) void -> DrawRectanglePro(rec, origin, rotation, color)
@@ -2567,7 +2567,7 @@ bind fn DrawEllipse(centerX, centerY: c_int, radiusH, radiusV: c_float, color: C
 bind fn DrawEllipseLines(centerX, centerY: c_int, radiusH, radiusV: c_float, color: Color) void;
 bind fn DrawRing(center: Vector2, innerRadius, outerRadius, startAngle, endAngle: c_float, segments: c_int, color: Color) void;
 bind fn DrawRingLines(center: Vector2, innerRadius, outerRadius, startAngle, endAngle: c_float, segments: c_int, color: Color) void;
-bind fn DrawRectangle(posX, posY, width, height, color: Color) void;
+bind fn DrawRectangle(posX, posY, width, height: c_int, color: Color) void;
 bind fn DrawRectangleV(position, size: Vector2, color: Color) void;
 bind fn DrawRectangleRec(rec: Rectangle, color: Color) void;
 bind fn DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: c_float, color: Color) void;

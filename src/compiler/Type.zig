@@ -1189,18 +1189,13 @@ pub const Type = union(enum) {
         if (expected == .any or received.eql(expected)) return true;
 
         const fallback = switch (expected) {
-            .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => switch (received) {
-                .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
-                else => false,
-            },
-            .f32, .f64 => switch (received) {
-                .f32, .f64, .i8, .i16, .i32, .i64, .u8, .u16, .u32, .u64, .usize => true,
-                else => false,
-            },
             .optional => |inner| inner.check(received),
             .error_union => |error_union| received.check(error_union.success.*) or
                 received.check(error_union.failure.*),
-            else => received.eql(expected),
+            else => if (expected.isNumeric() and received.isNumeric())
+                true
+            else
+                received.eql(expected),
         };
 
         return switch (received) {

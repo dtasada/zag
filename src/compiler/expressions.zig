@@ -22,19 +22,26 @@ pub fn compile(
         is_variable_declaration: bool = false,
     },
 ) CompilerError!void {
+    const expr_t: Type = try .infer(self, expression.*);
+    if (expr_t == .error_union and !expr_t.check(self.current_return_type.?))
+        return utils.printErr(
+            error.TypeMismatch,
+            "comperr: Expression of type '{f}' must be tried or caught ({f}).\n",
+            .{ expr_t, expression.getPosition() },
+            .red,
+        );
+
     if (opts.expected_type) |expected_type| {
-        const received_type: Type = try .infer(self, expression.*);
+        if (!expr_t.check(expected_type))
+            return errors.typeMismatch(expected_type, expr_t, expression.getPosition());
 
-        if (!received_type.check(expected_type))
-            return errors.typeMismatch(expected_type, received_type, expression.getPosition());
-
-        if (!expected_type.eql(received_type)) switch (expected_type) {
-            .optional => |opt| switch (received_type) {
+        if (!expected_type.eql(expr_t)) switch (expected_type) {
+            .optional => |opt| switch (expr_t) {
                 .@"typeof(nil)" => try self.print(
                     "({s}){{ .is_some = false }}",
                     .{self.zag_header_contents.get(expected_type).?},
                 ),
-                else => if (opt.check(received_type)) {
+                else => if (opt.check(expr_t)) {
                     try self.print(
                         "({s}){{ .is_some = true, .payload = ",
                         .{self.zag_header_contents.get(expected_type).?},
@@ -43,27 +50,27 @@ pub fn compile(
                     try self.write(" }");
                 } else return errors.typeMismatch(
                     expected_type,
-                    received_type,
+                    expr_t,
                     expression.getPosition(),
                 ),
             },
             .error_union => |error_union| {
                 const error_union_type_name = self.zag_header_contents.get(expected_type).?;
 
-                if (received_type.check(error_union.success.*)) {
+                if (expr_t.check(error_union.success.*)) {
                     try self.print("({s}){{ .is_success = true, .payload.success = ", .{error_union_type_name});
                     try compile(self, expression, .{});
                     try self.write(" }");
-                } else if (received_type.check(error_union.failure.*)) {
+                } else if (expr_t.check(error_union.failure.*)) {
                     try self.print("({s}){{ .is_success = false, .payload.failure = ", .{error_union_type_name});
                     try compile(self, expression, .{});
                     try self.write(" }");
-                } else if (error_union.success.* == .void and received_type == .i32) {
+                } else if (error_union.success.* == .void and expr_t == .i32) {
                     try self.print("({s}){{ .is_success = true, .payload.success = 0 }}", .{error_union_type_name});
                 } else unreachable;
             },
-            .reference => |ref| if (received_type == .slice and
-                received_type.slice.inner.* == .u8 and
+            .reference => |ref| if (expr_t == .slice and
+                expr_t.slice.inner.* == .u8 and
                 ref.inner.* == .c_char)
                 try self.print("\"{s}\"", .{expression.string.string})
             else
@@ -624,7 +631,13 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
                 else => continue :b m.parent.*,
             }
         },
-        .index => |idx| continue :b idx.lhs.*,
+        .index => |idx| {
+            const assignee_t: Type = try .infer(self, idx.lhs.*);
+            switch (assignee_t) {
+                .slice => |slc| if (!slc.is_mut) continue :b idx.lhs.*,
+                else => continue :b idx.lhs.*,
+            }
+        },
         .slice => |slc| continue :b slc.lhs.*,
         .dereference => |deref| {
             if (deref.parent.* != .ident) continue :b deref.parent.*;

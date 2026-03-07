@@ -1,10 +1,5 @@
 import c;
 
-pub enum Error {
-    ALLOC_ERROR,
-    INDEX_OUT_OF_BOUNDS,
-}
-
 pub struct String {
     bytes: []u8,
 
@@ -24,6 +19,14 @@ pub struct String {
 
     pub fn len(self: String) usize -> self.bytes.len
     pub fn is_empty(self: String) bool -> self.bytes.len == 0
+
+    // Caller owns memory
+    pub fn to_sentinel(self: String) &mut c_char {
+        let buf = alloc_slice<c_char>(self.len() + 1);
+        memcpy_slice<c_char>(buf[..self.len()], cast<[]c_char>(self.bytes));
+        buf[self.len()] = 0;
+        return buf.ptr;
+    }
 }
 
 pub fn abs<T>(x: T) T -> if (x >= 0) x else -x
@@ -37,9 +40,9 @@ pub fn sin<T>(x: T) T -> c.sin(x)
 pub fn sqrt<T>(x: T) T -> c.sqrt(x)
 pub fn tan<T>(x: T) T -> c.tan(x)
 
-pub fn alloc<T>() Error!&mut T {
+pub fn alloc<T>() &mut T {
     let ptr = c.malloc(sizeof<T>());
-    if (ptr == c_null) return Error.ALLOC_ERROR;
+    if (ptr == c_null) c.panic("Allocation failed\n");
     return ptr;
 }
 
@@ -64,15 +67,13 @@ pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
 
 pub fn memcpy<T>(dst: &mut T, src: &T) void -> c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>());
 
-pub fn memcpy_slice<T>(dst: []mut T, src: []T) Error!void {
-    if (dst.len != src.len) return Error.ALLOC_ERROR;
-
+pub fn memcpy_slice<T>(dst: []mut T, src: []T) void {
+    if (dst.len != src.len) c.panic("Size mismatch\n");
     c.memcpy(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
 }
 
-pub fn memmove<T>(dst: []mut T, src: []T) Error!void {
-    if (dst.len != src.len) return Error.ALLOC_ERROR;
-
+pub fn memmove<T>(dst: []mut T, src: []T) void {
+    if (dst.len != src.len) c.panic("Size mismatch\n");
     c.memmove(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
 }
 
@@ -168,8 +169,8 @@ pub struct ArrayList<T> {
     //     return c_null;
     // }
 
-    pub fn remove(self: &mut ArrayList<T>, index: usize) Error!void {
-        if (index >= self.items.len) return Error.INDEX_OUT_OF_BOUNDS;
+    pub fn remove(self: &mut ArrayList<T>, index: usize) void {
+        if (index >= self.items.len) c.panic("Index out of bounds\n")
 
         if (index < self.items.len - 1) {
             // Only memmove if it's not the last element
