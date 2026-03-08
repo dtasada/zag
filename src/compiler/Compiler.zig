@@ -707,6 +707,13 @@ pub fn compileBlock(
     };
 
     if (return_expr) |*e| {
+        if (self.current_return_type.? == .void) return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Cannot return value in a void function ({f}).\n",
+            .{e.getPosition()},
+            .red,
+        );
+
         const return_type = opts.return_type_override orelse self.current_return_type.?;
         self.currentSection().current_statement = self.currentWriter().items.len;
         try self.compileVariableSignature("__zag_ret_val", return_type, .{ .binding_mut = true });

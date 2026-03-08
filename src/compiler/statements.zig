@@ -271,6 +271,13 @@ pub fn @"return"(self: *Self, return_expr: ast.Statement.Return) CompilerError!v
     );
 
     if (return_expr.@"return") |expr| {
+        if (expected_type == .void) return utils.printErr(
+            error.IllegalExpression,
+            "comperr: Cannot return value in a void function ({f}).\n",
+            .{expr.getPosition()},
+            .red,
+        );
+
         try self.write("return ");
         try expressions.compile(self, &expr, .{ .expected_type = expected_type });
         try self.write(";\n");

@@ -1200,14 +1200,15 @@ pub const Type = union(enum) {
 
         return switch (received) {
             .@"typeof(undefined)" => true,
-            .@"typeof(nil)" => expected == .optional,
+            .@"typeof(nil)" => true,
             .slice => |rs| switch (expected) {
                 .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
                 else => fallback,
             },
             .reference => |received_ref| switch (expected) {
-                .reference => |expected_ref| received_ref.inner.check(expected_ref.inner.*) and
-                    (received_ref.is_mut or !expected_ref.is_mut),
+                .reference => |expected_ref| received_ref.inner.eql(expected_ref.inner.*) and
+                    (received_ref.is_mut or !expected_ref.is_mut) or
+                    expected_ref.inner.* == .void or received_ref.inner.* == .void,
                 else => fallback,
             },
             else => fallback,

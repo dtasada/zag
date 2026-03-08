@@ -71,10 +71,10 @@ pub fn compile(
             },
             .reference => |ref| if (expr_t == .slice and
                 expr_t.slice.inner.* == .u8 and
-                ref.inner.* == .c_char)
-                try self.print("\"{s}\"", .{expression.string.string})
-            else
-                try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
+                ref.inner.* == .c_char) switch (expression.*) {
+                .string => |str| try self.print("\"{s}\"", .{str.string}),
+                else => try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
+            } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
             else => try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
         } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration });
     } else switch (expression.*) {
@@ -639,7 +639,9 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
 fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
     const lhs_t: Type = try .infer(self, expr.lhs.*);
     const rhs_t: Type = try .infer(self, expr.rhs.*);
-    if ((!lhs_t.isNumeric() or !rhs_t.isNumeric()) and (lhs_t != .bool or rhs_t != .bool))
+    if ((!lhs_t.isNumeric() or !rhs_t.isNumeric()) and
+        (lhs_t != .bool or rhs_t != .bool) and
+        (lhs_t != .reference or rhs_t != .reference))
         return utils.printErr(
             error.IllegalExpression,
             "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
