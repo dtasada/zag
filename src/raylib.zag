@@ -1188,7 +1188,7 @@ pub struct NPatchInfo {
     top: i32,                // Top border offset
     right: i32,              // Right border offset
     bottom: i32,             // Bottom border offset
-    layout: i32,             // Layout of the n-patch: 3x3, 1x3 or 3x1
+    layout: NPatchLayout,             // Layout of the n-patch: 3x3, 1x3 or 3x1
 }
 
 // GlyphInfo, font characters glyphs info
@@ -1216,7 +1216,7 @@ pub struct Camera3D {
     target: Vector3,         // Camera target it looks-at
     up: Vector3,             // Camera up vector (rotation over its axis)
     fovy: f32,             // Camera field-of-view aperture in Y (degrees) in perspective, used as near plane height in world units in orthographic
-    projection: i32,         // Camera projection: CAMERA_PERSPECTIVE or CAMERA_ORTHOGRAPHIC
+    projection: CameraProjection,         // Camera projection: CAMERA_PERSPECTIVE or CAMERA_ORTHOGRAPHIC
 }
 
 const Camera = Camera3D;
@@ -1844,10 +1844,10 @@ pub fn is_cursor_on_screen() bool -> IsCursorOnScreen()
 pub fn clear_background(color: Color) void -> ClearBackground(color)
 pub fn begin_drawing() void -> BeginDrawing()
 pub fn end_drawing() void -> EndDrawing()
-pub fn begin_mode2_d(camera: Camera2D) void -> BeginMode2D(camera)
-pub fn end_mode2_d() void -> EndMode2D()
-pub fn begin_mode3_d(camera: Camera3D) void -> BeginMode3D(camera)
-pub fn end_mode3_d() void -> EndMode3D()
+pub fn begin_mode_2d(camera: Camera2D) void -> BeginMode2D(camera)
+pub fn end_mode_2d() void -> EndMode2D()
+pub fn begin_mode_3d(camera: Camera3D) void -> BeginMode3D(camera)
+pub fn end_mode_3d() void -> EndMode3D()
 pub fn begin_texture_mode(target: RenderTexture2D) void -> BeginTextureMode(target)
 pub fn end_texture_mode() void -> EndTextureMode()
 pub fn begin_shader_mode(shader: Shader) void -> BeginShaderMode(shader)
@@ -1889,22 +1889,22 @@ pub fn get_shader_location_attrib(shader: Shader, attrib_name: []u8) i32 {
     return GetShaderLocationAttrib(cast<Shader>(shader), cast<&mut c_char>(attrib_name_cstr));
 }
 pub fn set_shader_value(shader: Shader, locIndex: ShaderLocationIndex, value: &void, uniformType: ShaderUniformDataType) void -> SetShaderValue(cast<Shader>(shader), cast<c_int>(locIndex), value, cast<c_int>(uniformType))
-pub fn set_shader_value_v(shader: Shader, locIndex: i32, value: &void, uniformType: i32, count: i32) void -> SetShaderValueV(cast<Shader>(shader), locIndex, value, uniformType, count)
-pub fn set_shader_value_matrix(shader: Shader, locIndex: i32, mat: Matrix) void -> SetShaderValueMatrix(cast<Shader>(shader), locIndex, mat)
-pub fn set_shader_value_texture(shader: Shader, locIndex: i32, texture: Texture2D) void -> SetShaderValueTexture(cast<Shader>(shader), locIndex, texture)
+pub fn set_shader_value_v(shader: Shader, locIndex: ShaderLocationIndex, value: &void, uniformType: ShaderUniformDataType, count: i32) void -> SetShaderValueV(cast<Shader>(shader), locIndex, value, uniformType, count)
+pub fn set_shader_value_matrix(shader: Shader, locIndex: ShaderLocationIndex, mat: Matrix) void -> SetShaderValueMatrix(cast<Shader>(shader), cast<c_int>(locIndex), mat)
+pub fn set_shader_value_texture(shader: Shader, locIndex: ShaderLocationIndex, texture: Texture2D) void -> SetShaderValueTexture(cast<Shader>(shader), cast<c_int>(locIndex), texture)
 pub fn unload_shader(shader: Shader) void -> UnloadShader(cast<Shader>(shader))
 pub fn get_screen_to_world_ray(mousePosition: Vector2, camera: Camera) Ray -> GetScreenToWorldRay(mousePosition, camera)
 pub fn get_camera_matrix(camera: Camera) Matrix -> GetCameraMatrix(camera)
-pub fn get_camera_matrix2_d(camera: Camera2D) Matrix -> GetCameraMatrix2D(camera)
+pub fn get_camera_matrix_2d(camera: Camera2D) Matrix -> GetCameraMatrix2D(camera)
 pub fn get_world_to_screen(position: Vector3, camera: Camera) Vector2 -> GetWorldToScreen(position, camera)
-pub fn get_world_to_screen_ex(position: Vector3, camera: Camera, width: i32, height: i32) Vector2 -> GetWorldToScreenEx(position, camera, width, height)
-pub fn get_world_to_screen2_d(position: Vector2, camera: Camera2D) Vector2 -> GetWorldToScreen2D(position, camera)
-pub fn get_screen_to_world2_d(position: Vector2, camera: Camera2D) Vector2 -> GetScreenToWorld2D(position, camera)
+pub fn get_world_to_screen_ex(position: Vector3, camera: Camera, width, height: i32) Vector2 -> GetWorldToScreenEx(position, camera, width, height)
+pub fn get_world_to_screen_2d(position: Vector2, camera: Camera2D) Vector2 -> GetWorldToScreen2D(position, camera)
+pub fn get_screen_to_world_2d(position: Vector2, camera: Camera2D) Vector2 -> GetScreenToWorld2D(position, camera)
 pub fn set_target_fps(fps: i32) void -> SetTargetFPS(fps)
 pub fn get_fps() i32 -> GetFPS()
 pub fn get_frame_time() f32 -> GetFrameTime()
 pub fn get_time() f64 -> GetTime()
-pub fn get_random_value(min: i32, max: i32) i32 -> GetRandomValue(min, max)
+pub fn get_random_value(min, max: i32) i32 -> GetRandomValue(min, max)
 pub fn set_random_seed(seed: u32) void -> SetRandomSeed(seed)
 pub fn take_screenshot(file_name: []u8) void {
     let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
@@ -1913,7 +1913,7 @@ pub fn take_screenshot(file_name: []u8) void {
 }
 pub fn set_config_flags(flags: u32) void -> SetConfigFlags(flags)
 // pub fn trace_log(logLevel: i32, text: &c_char, args...) void -> TraceLog(logLevel, text, args...)
-pub fn set_trace_log_level(logLevel: i32) void -> SetTraceLogLevel(logLevel)
+pub fn set_trace_log_level(logLevel: TraceLogLevel) void -> SetTraceLogLevel(cast<c_int>(logLevel))
 pub fn mem_alloc(size: u32) &mut void -> MemAlloc(size)
 pub fn mem_realloc(ptr: &mut void, size: u32) &mut void -> MemRealloc(ptr, size)
 pub fn mem_free(ptr: &mut void) void -> MemFree(ptr)
@@ -2095,44 +2095,41 @@ pub fn set_automation_event_base_frame(frame: i32) void -> SetAutomationEventBas
 pub fn start_automation_event_recording() void -> StartAutomationEventRecording()
 pub fn stop_automation_event_recording() void -> StopAutomationEventRecording()
 pub fn play_automation_event(event: AutomationEvent) void -> PlayAutomationEvent(event)
-pub fn is_key_pressed(key: i32) bool -> IsKeyPressed(key)
-pub fn is_key_down(key: i32) bool -> IsKeyDown(key)
-pub fn is_key_released(key: i32) bool -> IsKeyReleased(key)
-pub fn is_key_up(key: i32) bool -> IsKeyUp(key)
-pub fn set_exit_key(key: i32) void -> SetExitKey(key)
-pub fn get_key_pressed() i32 -> GetKeyPressed()
-pub fn get_char_pressed() i32 -> GetCharPressed()
+pub fn is_key_pressed(key: KeyboardKey) bool -> IsKeyPressed(cast<c_int>(key))
+pub fn is_key_down(key: KeyboardKey) bool -> IsKeyDown(cast<c_int>(key))
+pub fn is_key_released(key: KeyboardKey) bool -> IsKeyReleased(cast<c_int>(key))
+pub fn is_key_up(key: KeyboardKey) bool -> IsKeyUp(cast<c_int>(key))
+pub fn set_exit_key(key: KeyboardKey) void -> SetExitKey(cast<c_int>(key))
+pub fn get_key_pressed() KeyboardKey -> cast<KeyboardKey>(GetKeyPressed())
+pub fn get_char_pressed() u8 -> GetCharPressed()
 pub fn is_gamepad_available(gamepad: i32) bool -> IsGamepadAvailable(gamepad)
-pub fn get_gamepad_name(gamepad: i32) []u8 {
-    let result_cstr = GetGamepadName(gamepad);
-    return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
-}
-pub fn is_gamepad_button_pressed(gamepad: i32, button: i32) bool -> IsGamepadButtonPressed(gamepad, button)
-pub fn is_gamepad_button_down(gamepad: i32, button: i32) bool -> IsGamepadButtonDown(gamepad, button)
-pub fn is_gamepad_button_released(gamepad: i32, button: i32) bool -> IsGamepadButtonReleased(gamepad, button)
-pub fn is_gamepad_button_up(gamepad: i32, button: i32) bool -> IsGamepadButtonUp(gamepad, button)
+pub fn get_gamepad_name(gamepad: i32) []u8 -> cast<[]u8>(std.sentinel_to_slice<c_char>(GetGamepadName(gamepad), 0))
+pub fn is_gamepad_button_pressed(gamepad: i32, button: GamepadButton) bool -> IsGamepadButtonPressed(gamepad, cast<c_int>(button))
+pub fn is_gamepad_button_down(gamepad: i32, button: GamepadButton) bool -> IsGamepadButtonDown(gamepad, cast<c_int>(button))
+pub fn is_gamepad_button_released(gamepad: i32, button: GamepadButton) bool -> IsGamepadButtonReleased(gamepad, cast<c_int>(button))
+pub fn is_gamepad_button_up(gamepad: i32, button: GamepadButton) bool -> IsGamepadButtonUp(gamepad, cast<c_int>(button))
 pub fn get_gamepad_button_pressed() i32 -> GetGamepadButtonPressed()
 pub fn get_gamepad_axis_count(gamepad: i32) i32 -> GetGamepadAxisCount(gamepad)
-pub fn get_gamepad_axis_movement(gamepad: i32, axis: i32) f32 -> GetGamepadAxisMovement(gamepad, axis)
+pub fn get_gamepad_axis_movement(gamepad: i32, axis: GamepadAxis) f32 -> GetGamepadAxisMovement(gamepad, cast<c_int>(axis))
 pub fn set_gamepad_mappings(mappings: []u8) i32 {
     let mappings_cstr = std.slice_to_sentinel<u8>(mappings, 0);
     defer std.free<u8>(mappings_cstr);
     return SetGamepadMappings(cast<&c_char>(mappings_cstr));
 }
-pub fn is_mouse_button_pressed(button: i32) bool -> IsMouseButtonPressed(button)
-pub fn is_mouse_button_down(button: i32) bool -> IsMouseButtonDown(button)
-pub fn is_mouse_button_released(button: i32) bool -> IsMouseButtonReleased(button)
-pub fn is_mouse_button_up(button: i32) bool -> IsMouseButtonUp(button)
+pub fn is_mouse_button_pressed(button: MouseButton) bool -> IsMouseButtonPressed(cast<c_int>(button))
+pub fn is_mouse_button_down(button: MouseButton) bool -> IsMouseButtonDown(cast<c_int>(button))
+pub fn is_mouse_button_released(button: MouseButton) bool -> IsMouseButtonReleased(cast<c_int>(button))
+pub fn is_mouse_button_up(button: MouseButton) bool -> IsMouseButtonUp(cast<c_int>(button))
 pub fn get_mouse_x() i32 -> GetMouseX()
 pub fn get_mouse_y() i32 -> GetMouseY()
 pub fn get_mouse_position() Vector2 -> GetMousePosition()
 pub fn get_mouse_delta() Vector2 -> GetMouseDelta()
-pub fn set_mouse_position(x: i32, y: i32) void -> SetMousePosition(x, y)
-pub fn set_mouse_offset(offsetX: i32, offsetY: i32) void -> SetMouseOffset(offsetX, offsetY)
-pub fn set_mouse_scale(scaleX: f32, scaleY: f32) void -> SetMouseScale(scaleX, scaleY)
+pub fn set_mouse_position(x, y: i32) void -> SetMousePosition(x, y)
+pub fn set_mouse_offset(offsetX, offsetY: i32) void -> SetMouseOffset(offsetX, offsetY)
+pub fn set_mouse_scale(scaleX, scaleY: f32) void -> SetMouseScale(scaleX, scaleY)
 pub fn get_mouse_wheel_move() f32 -> GetMouseWheelMove()
 pub fn get_mouse_wheel_move_v() Vector2 -> GetMouseWheelMoveV()
-pub fn set_mouse_cursor(cursor: i32) void -> SetMouseCursor(cursor)
+pub fn set_mouse_cursor(cursor: MouseCursor) void -> SetMouseCursor(cast<c_int>(cursor))
 pub fn get_touch_x() i32 -> GetTouchX()
 pub fn get_touch_y() i32 -> GetTouchY()
 pub fn get_touch_position(index: i32) Vector2 -> GetTouchPosition(index)
@@ -2359,11 +2356,11 @@ pub fn load_font_from_memory(file_type: []u8, fileData: []u8, fontSize: i32, cod
 
     return LoadFontFromMemory(cast<&c_char>(file_type_cstr), cast<&c_uchar>(fileData.ptr), fileData.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len);
 }
-pub fn load_font_data(file_data: []u8, fontSize: i32, codepoints: []i32, type: i32) &mut GlyphInfo {
+pub fn load_font_data(file_data: []u8, fontSize: i32, codepoints: []i32, type: FontType) &mut GlyphInfo {
     let file_data_cstr = std.slice_to_sentinel<u8>(file_data, 0);
     defer std.free<u8>(file_data_cstr);
 
-    return LoadFontData(cast<&c_uchar>(file_data_cstr), file_data.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len, type);
+    return LoadFontData(cast<&c_uchar>(file_data_cstr), file_data.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len, cast<c_int>(type));
 }
 pub fn gen_image_font_atlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image -> GenImageFontAtlas(chars, recs, glyphCount, fontSize, padding, packMethod)
 pub fn unload_font_data(chars: &mut GlyphInfo, glyphCount: i32) void -> UnloadFontData(chars, glyphCount)
@@ -2567,13 +2564,11 @@ pub fn text_to_integer(text: []u8) i32 {
     defer std.free<u8>(text_cstr);
     return TextToInteger(cast<&c_char>(text_cstr));
 }
-pub fn draw_line3_d(startPos: Vector3, endPos: Vector3, color: Color) void -> DrawLine3D(startPos, endPos, color)
-pub fn draw_point3_d(position: Vector3, color: Color) void -> DrawPoint3D(position, color)
-pub fn draw_circle3_d(center: Vector3, radius: f32, rotationAxis: Vector3, rotationAngle: f32, color: Color) void -> DrawCircle3D(center, radius, rotationAxis, rotationAngle, color)
-pub fn draw_triangle3_d(v1: Vector3, v2: Vector3, v3: Vector3, color: Color) void -> DrawTriangle3D(v1, v2, v3, color)
-pub fn draw_triangle_strip3_d(points: []Vector3, color: Color) void {
-    DrawTriangleStrip3D(points.ptr, cast<c_int>(points.len), color);
-}
+pub fn draw_line_3d(startPos: Vector3, endPos: Vector3, color: Color) void -> DrawLine3D(startPos, endPos, color)
+pub fn draw_point_3d(position: Vector3, color: Color) void -> DrawPoint3D(position, color)
+pub fn draw_circle_3d(center: Vector3, radius: f32, rotationAxis: Vector3, rotationAngle: f32, color: Color) void -> DrawCircle3D(center, radius, rotationAxis, rotationAngle, color)
+pub fn draw_triangle_3d(v1: Vector3, v2: Vector3, v3: Vector3, color: Color) void -> DrawTriangle3D(v1, v2, v3, color)
+pub fn draw_triangle_strip_3d(points: []Vector3, color: Color) void -> DrawTriangleStrip3D(points.ptr, cast<c_int>(points.len), color)
 pub fn draw_cube(position: Vector3, width: f32, height: f32, length: f32, color: Color) void -> DrawCube(position, width, height, length, color)
 pub fn draw_cube_v(position: Vector3, size: Vector3, color: Color) void -> DrawCubeV(position, size, color)
 pub fn draw_cube_wires(position: Vector3, width: f32, height: f32, length: f32, color: Color) void -> DrawCubeWires(position, width, height, length, color)
@@ -2631,7 +2626,7 @@ pub fn load_materials(file_name: []u8) []mut Material {
     return slice;
 }
 pub fn unload_material(material: Material) void -> UnloadMaterial(material)
-pub fn set_material_texture(material: &mut Material, mapType: i32, texture: Texture2D) void -> SetMaterialTexture(material, mapType, texture)
+pub fn set_material_texture(material: &mut Material, mapType: MaterialMapIndex, texture: Texture2D) void -> SetMaterialTexture(material, cast<c_int>(mapType), texture)
 pub fn set_model_mesh_material(model: &mut Model, meshId: i32, materialId: i32) void -> SetModelMeshMaterial(model, meshId, materialId)
 pub fn load_model_animations(file_name: []u8) []mut ModelAnimation {
     let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
