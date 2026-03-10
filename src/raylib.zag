@@ -2157,9 +2157,7 @@ pub fn draw_line(startPosX, startPosY, endPosX, endPosY: i32, color: Color) void
 pub fn draw_line_v(startPos, endPos: Vector2, color: Color) void -> DrawLineV(startPos, endPos, color)
 pub fn draw_line_ex(startPos, endPos: Vector2, thick: f32, color: Color) void -> DrawLineEx(startPos, endPos, thick, color)
 pub fn draw_line_bezier(startPos, endPos: Vector2, thick: f32, color: Color) void -> DrawLineBezier(startPos, endPos, thick, color)
-pub fn draw_line_strip(points: []Vector2, color: Color) void {
-    DrawLineStrip(points.ptr, cast<c_int>(points.len), color);
-}
+pub fn draw_line_strip(points: []Vector2, color: Color) void -> DrawLineStrip(points.ptr, cast<c_int>(points.len), color)
 pub fn draw_circle(centerX, centerY: i32, radius: f32, color: Color) void -> DrawCircle(centerX, centerY, radius, color)
 pub fn draw_circle_sector(center: Vector2, radius, startAngle, endAngle: f32, segments: i32, color: Color) void -> DrawCircleSector(center, radius, startAngle, endAngle, segments, color)
 pub fn draw_circle_sector_lines(center: Vector2, radius, startAngle, endAngle: f32, segments: i32, color: Color) void -> DrawCircleSectorLines(center, radius, startAngle, endAngle, segments, color)
@@ -2180,20 +2178,20 @@ pub fn draw_rectangle_gradient_ex(rec: Rectangle, col1, col2, col3, col4: Color)
 pub fn draw_rectangle_lines(posX, posY, width, height: i32, color: Color) void -> DrawRectangleLines(posX, posY, width, height, color)
 pub fn draw_rectangle_lines_ex(rec: Rectangle, lineThick: i32, color: Color) void -> DrawRectangleLinesEx(rec, lineThick, color)
 pub fn draw_rectangle_rounded(rec: Rectangle, roundness: f32, segments: i32, color: Color) void -> DrawRectangleRounded(rec, roundness, segments, color)
-pub fn draw_rectangle_rounded_lines(rec: Rectangle, roundness: f32, segments: i32, lineThick: i32, color: Color) void -> DrawRectangleRoundedLines(rec, roundness, segments, lineThick, color)
+pub fn draw_rectangle_rounded_lines(rec: Rectangle, roundness: f32, segments, lineThick: i32, color: Color) void -> DrawRectangleRoundedLines(rec, roundness, segments, lineThick, color)
 pub fn draw_triangle(v1, v2, v3: Vector2, color: Color) void -> DrawTriangle(v1, v2, v3, color)
 pub fn draw_triangle_lines(v1, v2, v3: Vector2, color: Color) void -> DrawTriangleLines(v1, v2, v3, color)
 pub fn draw_triangle_fan(points: []Vector2, color: Color) void -> DrawTriangleFan(points.ptr, points.len, color)
 pub fn draw_triangle_strip(points: []Vector2, color: Color) void -> DrawTriangleStrip(points.ptr, points.len, color)
-pub fn draw_poly(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void -> DrawPoly(center, sides, radius, rotation, color)
-pub fn draw_poly_lines(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color) void -> DrawPolyLines(center, sides, radius, rotation, color)
+pub fn draw_poly(center: Vector2, sides: i32, radius, rotation: f32, color: Color) void -> DrawPoly(center, sides, radius, rotation, color)
+pub fn draw_poly_lines(center: Vector2, sides: i32, radius, rotation: f32, color: Color) void -> DrawPolyLines(center, sides, radius, rotation, color)
 pub fn draw_poly_lines_ex(center: Vector2, sides: i32, radius: f32, rotation: f32, lineThickness: f32, color: Color) void -> DrawPolyLinesEx(center, sides, radius, rotation, lineThickness, color)
-pub fn check_collision_recs(rec1: Rectangle, rec2: Rectangle) bool -> CheckCollisionRecs(rec1, rec2)
+pub fn check_collision_recs(rec1, rec2: Rectangle) bool -> CheckCollisionRecs(rec1, rec2)
 pub fn check_collision_circles(center1: Vector2, radius1: f32, center2: Vector2, radius2: f32) bool -> CheckCollisionCircles(center1, radius1, center2, radius2)
 pub fn check_collision_circle_rec(center: Vector2, radius: f32, rec: Rectangle) bool -> CheckCollisionCircleRec(center, radius, rec)
 pub fn check_collision_point_rec(point: Vector2, rec: Rectangle) bool -> CheckCollisionPointRec(point, rec)
-pub fn check_collision_point_circle(point: Vector2, center: Vector2, radius: f32) bool -> CheckCollisionPointCircle(point, center, radius)
-pub fn check_collision_point_triangle(point: Vector2, p1: Vector2, p2: Vector2, p3: Vector2) bool -> CheckCollisionPointTriangle(point, p1, p2, p3)
+pub fn check_collision_point_circle(point, center: Vector2, radius: f32) bool -> CheckCollisionPointCircle(point, center, radius)
+pub fn check_collision_point_triangle(point, p1, p2, p3: Vector2) bool -> CheckCollisionPointTriangle(point, p1, p2, p3)
 pub fn check_collision_lines(startPos1, endPos1, startPos2, endPos2: Vector2) ?Vector2 {
     let mut collision_point: Vector2 = undefined;
     return if (CheckCollisionLines(startPos1, endPos1, startPos2, endPos2, &mut collision_point))
@@ -2345,14 +2343,14 @@ pub fn load_font(file_name: []u8) Font {
     defer std.free<u8>(file_name_cstr);
     return LoadFont(cast<&mut c_char>(file_name_cstr));
 }
-pub fn load_font_ex(file_name: []u8, font_size: i32, codepoints: ?[]i32, glyphCount: i32) Font {
+pub fn load_font_ex(file_name: []u8, font_size: i32, codepoints: ?[]i32) Font {
     let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
     defer std.free<u8>(file_name_cstr);
 
     let cp = if (codepoints) |cp| cast<&mut c_int>(cp.ptr) else c_null;
     let count = if (codepoints) |cp| cp.len else 0;
 
-    return LoadFontEx(cast<&mut c_char>(file_name_cstr), font_size, cp, glyphCount);
+    return LoadFontEx(cast<&mut c_char>(file_name_cstr), font_size, cp, count);
 }
 pub fn load_font_from_image(image: Image, key: Color, firstChar: i32) Font -> LoadFontFromImage(image, key, firstChar)
 pub fn load_font_from_memory(file_type: []u8, fileData: []u8, fontSize: i32, codepoints: []i32) Font {

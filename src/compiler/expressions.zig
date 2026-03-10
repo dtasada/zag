@@ -154,42 +154,7 @@ pub fn compile(
             try self.write("}");
         },
         .index => |idx| try index(self, idx),
-        .@"if" => |@"if"| {
-            const @"else" = @"if".@"else" orelse
-                return errors.ifExpressionMustContainElseClause(@"if".pos);
-
-            const condition_type: Type = try .infer(self, @"if".condition.*);
-            try self.pushScope();
-            if (@"if".capture) |capture| try self.registerSymbol(capture.name, .{
-                .symbol = .{
-                    .type = switch (condition_type) {
-                        .optional => |optional| optional.*,
-                        else => |other| other,
-                    },
-                },
-            }, .{});
-
-            const body_type: Type = try .infer(self, @"if".body.*);
-            const else_type: Type = try .infer(self, @"else".*);
-
-            if (!body_type.check(else_type) and !else_type.check(body_type))
-                return errors.typeMismatchIfExpression(body_type, else_type, @"if".pos);
-
-            try self.write("((");
-            try compile(self, @"if".condition, .{});
-            try self.write(")");
-            if (condition_type == .optional) try self.write(".is_some");
-            try self.write(" ? ");
-
-            try compile(self, @"if".body, .{});
-            self.popScope();
-
-            try self.pushScope();
-            defer self.popScope();
-            try self.write(" : ");
-            try compile(self, @"else", .{});
-            try self.write(")");
-        },
+        .@"if" => |i| try @"if"(self, i),
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
         .type => |t| try self.compileType(try .fromAst(self, t), .{}),
@@ -247,6 +212,94 @@ pub fn compile(
             try self.write(")");
         },
         .bad_node => unreachable,
+    }
+}
+
+fn @"if"(self: *Self) !void {
+    const @"else" = @"if".@"else" orelse
+        return errors.ifExpressionMustContainElseClause(@"if".pos);
+
+    const condition_type: Type = try .infer(self, @"if".condition.*);
+    // if there's a capture group, it can't be a ternary expression.
+    if (@"if".capture) |capture| {
+        self.currentSection().pos = self.currentSection().current_statement;
+
+        // Infer result type
+        try self.pushScope();
+        const capture_type = switch (condition_type) {
+            .optional => |optional| optional.*,
+            else => |other| other,
+        };
+        try self.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
+        const body_type = try Type.infer(self, @"if".body.*);
+        self.popScope();
+
+        const else_type = try Type.infer(self, @"else".*);
+
+        if (!body_type.check(else_type) and !else_type.check(body_type))
+            return errors.typeMismatchIfExpression(body_type, else_type, @"if".pos);
+
+        var temp_name: ?[]const u8 = null;
+        if (body_type != .void) {
+            try self.compileType(body_type, .{ .binding_mut = true });
+            temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&@"if"))});
+            try self.print(" {s};\n", .{temp_name.?});
+        }
+
+        // Use a temporary for the condition expression to avoid re-evaluation.
+        const cond_var = try std.fmt.allocPrint(self.alloc, "_if_cond_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(@"if".condition))});
+        try self.compileType(condition_type, .{});
+        try self.print(" {s} = ", .{cond_var});
+        try compile(self, @"if".condition, .{});
+        try self.write(";\n");
+
+        try self.print("if ({s}.is_some) {{\n", .{cond_var});
+        try self.pushScope();
+
+        try self.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
+        try self.compileType(capture_type, .{});
+        try self.print(" {s} = {s}.payload;\n", .{ capture.name, cond_var });
+
+        if (temp_name) |tn| try self.print("{s} = ", .{tn});
+        try compile(self, @"if".body, .{ .expected_type = body_type });
+        try self.write(";\n");
+
+        self.popScope();
+        try self.write("} else {\n");
+        try self.pushScope();
+
+        if (temp_name) |tn| try self.print("{s} = ", .{tn});
+        try compile(self, @"else", .{ .expected_type = body_type });
+        try self.write(";\n");
+
+        self.popScope();
+        try self.write("}\n");
+
+        self.currentSection().pos = self.currentWriter().items.len;
+
+        if (temp_name) |tn| try self.write(tn);
+    } else {
+        const body_type: Type = try .infer(self, @"if".body.*);
+        const else_type: Type = try .infer(self, @"else".*);
+
+        if (!body_type.check(else_type) and !else_type.check(body_type))
+            return errors.typeMismatchIfExpression(body_type, else_type, @"if".pos);
+
+        try self.write("((");
+        try compile(self, @"if".condition, .{});
+        try self.write(")");
+        if (condition_type == .optional) try self.write(".is_some");
+        try self.write(" ? ");
+
+        try self.pushScope();
+        try compile(self, @"if".body, .{});
+        self.popScope();
+
+        try self.pushScope();
+        defer self.popScope();
+        try self.write(" : ");
+        try compile(self, @"else", .{});
+        try self.write(")");
     }
 }
 
@@ -678,7 +731,8 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 
     try self.write("(");
 
-    var variables: std.ArrayList(u64) = try .initCapacity(self.alloc, comp.comparisons.items.len);
+    var variables = try std.ArrayList(u64).initCapacity(self.alloc, comp.comparisons.items.len);
+    defer variables.deinit(self.alloc);
     for (comp.comparisons.items) |i|
         variables.appendAssumeCapacity(std.hash.Wyhash.hash(0, std.mem.asBytes(i.right)));
 

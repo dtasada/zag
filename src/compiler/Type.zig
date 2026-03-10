@@ -738,7 +738,10 @@ pub const Type = union(enum) {
                 if (!received.check(expected))
                     return errors.typeMismatchIfExpression(expected, received, @"if".pos);
 
-                return expected;
+                return if (received == .optional or received == .error_union)
+                    received
+                else
+                    expected;
             } else return errors.ifExpressionMustContainElseClause(@"if".pos),
             .index => |index| switch (try infer(compiler, index.lhs.*)) {
                 .array => |array| array.inner.*,
