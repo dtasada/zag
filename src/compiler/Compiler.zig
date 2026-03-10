@@ -208,25 +208,6 @@ pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) CompilerError
     try self.write(bytes);
 }
 
-pub fn beginTypeDefEmit(self: *Self, t: Type) !void {
-    const idx = self.type_def_blocks.items.len;
-    try self.type_def_blocks.append(self.alloc, .{
-        .type = t,
-        .code = .empty,
-        .saved_section = self.current_section,
-    });
-    try self.type_def_stack.append(self.alloc, idx);
-    self.switchSection(.header_type_defs);
-}
-
-pub fn endTypeDefEmit(self: *Self) void {
-    const idx = self.type_def_stack.pop() orelse {
-        std.debug.print("popping failed, returning early\n", .{});
-        return;
-    };
-    self.switchSection(self.type_def_blocks.items[idx].saved_section);
-}
-
 /// initializes a new `Compiler`.
 /// creates `.zag-out` folder and mirrors the `src` directory with compiled C code.
 /// also creates `.zag-out/bin` folder but doesn't write anything to it.
@@ -816,7 +797,7 @@ pub fn compileType(
                 try self.write("typedef struct {\n");
                 try self.compileVariableSignature(
                     "ptr",
-                    .{ .reference = .{ .is_mut = slice.is_mut, .inner = slice.inner } },
+                    .{ .reference = .{ .is_mut = true, .inner = slice.inner } },
                     .{ .binding_mut = true },
                 );
                 try self.write(";\nsize_t len;\n");
@@ -1436,4 +1417,23 @@ fn appendIfConcrete(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
         .@"struct", .@"union", .@"enum", .error_union, .slice => try out.append(self.alloc, t),
         else => {},
     }
+}
+
+pub fn beginTypeDefEmit(self: *Self, t: Type) !void {
+    const idx = self.type_def_blocks.items.len;
+    try self.type_def_blocks.append(self.alloc, .{
+        .type = t,
+        .code = .empty,
+        .saved_section = self.current_section,
+    });
+    try self.type_def_stack.append(self.alloc, idx);
+    self.switchSection(.header_type_defs);
+}
+
+pub fn endTypeDefEmit(self: *Self) void {
+    const idx = self.type_def_stack.pop() orelse {
+        std.debug.print("popping failed, returning early\n", .{});
+        return;
+    };
+    self.switchSection(self.type_def_blocks.items[idx].saved_section);
 }

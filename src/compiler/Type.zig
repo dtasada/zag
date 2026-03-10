@@ -738,10 +738,14 @@ pub const Type = union(enum) {
                 if (!received.check(expected))
                     return errors.typeMismatchIfExpression(expected, received, @"if".pos);
 
-                return if (received == .optional or received == .error_union)
-                    received
-                else
-                    expected;
+                if (expected == .@"typeof(nil)" or received == .@"typeof(nil)") {
+                    const value_type = if (received == .@"typeof(nil)") expected else received;
+                    const inner = try compiler.alloc.create(Type);
+                    inner.* = value_type;
+                    return .{ .optional = inner };
+                }
+
+                return expected;
             } else return errors.ifExpressionMustContainElseClause(@"if".pos),
             .index => |index| switch (try infer(compiler, index.lhs.*)) {
                 .array => |array| array.inner.*,
@@ -1206,6 +1210,7 @@ pub const Type = union(enum) {
             .@"typeof(nil)" => true,
             .slice => |rs| switch (expected) {
                 .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
+                .slice => |es| rs.inner.eql(es.inner.*) and (rs.is_mut or !es.is_mut),
                 else => fallback,
             },
             .reference => |received_ref| switch (expected) {
@@ -1490,6 +1495,7 @@ pub const Type = union(enum) {
                 },
                 .optional => |ta| ctx.eql(ta.*, b.optional.*),
                 .reference => |ta| ctx.eql(ta.inner.*, b.reference.inner.*) and ta.is_mut == b.reference.is_mut,
+                .slice => |ta| ctx.eql(ta.inner.*, b.slice.inner.*) and ta.is_mut == b.slice.is_mut,
                 .array => |ta| ctx.eql(ta.inner.*, b.array.inner.*) and ta.size == b.array.size,
                 .error_union => |ta| ctx.eql(ta.success.*, b.error_union.success.*) and
                     ctx.eql(ta.failure.*, b.error_union.failure.*),

@@ -1888,7 +1888,7 @@ pub fn get_shader_location_attrib(shader: Shader, attrib_name: []u8) i32 {
     defer std.free<u8>(attrib_name_cstr);
     return GetShaderLocationAttrib(cast<Shader>(shader), cast<&mut c_char>(attrib_name_cstr));
 }
-pub fn set_shader_value(shader: Shader, locIndex: i32, value: &void, uniformType: i32) void -> SetShaderValue(cast<Shader>(shader), locIndex, value, uniformType)
+pub fn set_shader_value(shader: Shader, locIndex: ShaderLocationIndex, value: &void, uniformType: ShaderUniformDataType) void -> SetShaderValue(cast<Shader>(shader), cast<c_int>(locIndex), value, cast<c_int>(uniformType))
 pub fn set_shader_value_v(shader: Shader, locIndex: i32, value: &void, uniformType: i32, count: i32) void -> SetShaderValueV(cast<Shader>(shader), locIndex, value, uniformType, count)
 pub fn set_shader_value_matrix(shader: Shader, locIndex: i32, mat: Matrix) void -> SetShaderValueMatrix(cast<Shader>(shader), locIndex, mat)
 pub fn set_shader_value_texture(shader: Shader, locIndex: i32, texture: Texture2D) void -> SetShaderValueTexture(cast<Shader>(shader), locIndex, texture)

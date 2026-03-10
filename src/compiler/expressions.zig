@@ -239,6 +239,13 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         if (!body_type.check(else_type) and !else_type.check(body_type))
             return errors.typeMismatchIfExpression(body_type, else_type, expr.pos);
 
+        const opt_type: ?Type = if (body_type == .@"typeof(nil)" or else_type == .@"typeof(nil)") b: {
+            const value_type = if (else_type == .@"typeof(nil)") body_type else else_type;
+            const inner = try self.alloc.create(Type);
+            inner.* = value_type;
+            break :b .{ .optional = inner };
+        } else null;
+
         var temp_name: ?[]const u8 = null;
         if (body_type != .void) {
             try self.compileType(body_type, .{ .binding_mut = true });
@@ -250,7 +257,7 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         const cond_var = try std.fmt.allocPrint(self.alloc, "_if_cond_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.condition))});
         try self.compileType(condition_type, .{});
         try self.print(" {s} = ", .{cond_var});
-        try compile(self, expr.condition, .{});
+        try compile(self, expr.condition, .{ .expected_type = opt_type });
         try self.write(";\n");
 
         try self.print("if ({s}.is_some) {{\n", .{cond_var});
@@ -261,7 +268,7 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         try self.print(" {s} = {s}.payload;\n", .{ capture.name, cond_var });
 
         if (temp_name) |tn| try self.print("{s} = ", .{tn});
-        try compile(self, expr.body, .{ .expected_type = body_type });
+        try compile(self, expr.body, .{ .expected_type = opt_type });
         try self.write(";\n");
 
         self.popScope();
@@ -269,7 +276,7 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         try self.pushScope();
 
         if (temp_name) |tn| try self.print("{s} = ", .{tn});
-        try compile(self, @"else", .{ .expected_type = body_type });
+        try compile(self, @"else", .{ .expected_type = opt_type });
         try self.write(";\n");
 
         self.popScope();
@@ -285,20 +292,22 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         if (!body_type.check(else_type) and !else_type.check(body_type))
             return errors.typeMismatchIfExpression(body_type, else_type, expr.pos);
 
+        const opt_type: ?Type = if (body_type == .@"typeof(nil)" or else_type == .@"typeof(nil)") b: {
+            const value_type = if (else_type == .@"typeof(nil)") body_type else else_type;
+            const inner = try self.alloc.create(Type);
+            inner.* = value_type;
+            break :b .{ .optional = inner };
+        } else null;
+
         try self.write("((");
         try compile(self, expr.condition, .{});
         try self.write(")");
         if (condition_type == .optional) try self.write(".is_some");
+
         try self.write(" ? ");
-
-        try self.pushScope();
-        try compile(self, expr.body, .{});
-        self.popScope();
-
-        try self.pushScope();
-        defer self.popScope();
+        try compile(self, expr.body, .{ .expected_type = opt_type });
         try self.write(" : ");
-        try compile(self, @"else", .{});
+        try compile(self, @"else", .{ .expected_type = opt_type });
         try self.write(")");
     }
 }
