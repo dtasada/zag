@@ -1408,13 +1408,15 @@ pub fn collectTypeDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
             try self.appendIfConcrete(eu.success.*, out);
             try self.appendIfConcrete(eu.failure.*, out);
         },
+        .optional => |inner| try self.appendIfConcrete(inner.*, out),
+        .array => |array| try self.appendIfConcrete(array.inner.*, out),
         else => {},
     }
 }
 
 fn appendIfConcrete(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
     switch (t) {
-        .@"struct", .@"union", .@"enum", .error_union, .slice => try out.append(self.alloc, t),
+        .@"struct", .@"union", .@"enum", .error_union, .slice, .optional, .array => try out.append(self.alloc, t),
         else => {},
     }
 }
