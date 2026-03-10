@@ -215,13 +215,13 @@ pub fn compile(
     }
 }
 
-fn @"if"(self: *Self) !void {
-    const @"else" = @"if".@"else" orelse
-        return errors.ifExpressionMustContainElseClause(@"if".pos);
+fn @"if"(self: *Self, expr: ast.Expression.If) !void {
+    const @"else" = expr.@"else" orelse
+        return errors.ifExpressionMustContainElseClause(expr.pos);
 
-    const condition_type: Type = try .infer(self, @"if".condition.*);
+    const condition_type: Type = try .infer(self, expr.condition.*);
     // if there's a capture group, it can't be a ternary expression.
-    if (@"if".capture) |capture| {
+    if (expr.capture) |capture| {
         self.currentSection().pos = self.currentSection().current_statement;
 
         // Infer result type
@@ -231,26 +231,26 @@ fn @"if"(self: *Self) !void {
             else => |other| other,
         };
         try self.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
-        const body_type = try Type.infer(self, @"if".body.*);
+        const body_type = try Type.infer(self, expr.body.*);
         self.popScope();
 
         const else_type = try Type.infer(self, @"else".*);
 
         if (!body_type.check(else_type) and !else_type.check(body_type))
-            return errors.typeMismatchIfExpression(body_type, else_type, @"if".pos);
+            return errors.typeMismatchIfExpression(body_type, else_type, expr.pos);
 
         var temp_name: ?[]const u8 = null;
         if (body_type != .void) {
             try self.compileType(body_type, .{ .binding_mut = true });
-            temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&@"if"))});
+            temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&expr))});
             try self.print(" {s};\n", .{temp_name.?});
         }
 
         // Use a temporary for the condition expression to avoid re-evaluation.
-        const cond_var = try std.fmt.allocPrint(self.alloc, "_if_cond_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(@"if".condition))});
+        const cond_var = try std.fmt.allocPrint(self.alloc, "_if_cond_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.condition))});
         try self.compileType(condition_type, .{});
         try self.print(" {s} = ", .{cond_var});
-        try compile(self, @"if".condition, .{});
+        try compile(self, expr.condition, .{});
         try self.write(";\n");
 
         try self.print("if ({s}.is_some) {{\n", .{cond_var});
@@ -261,7 +261,7 @@ fn @"if"(self: *Self) !void {
         try self.print(" {s} = {s}.payload;\n", .{ capture.name, cond_var });
 
         if (temp_name) |tn| try self.print("{s} = ", .{tn});
-        try compile(self, @"if".body, .{ .expected_type = body_type });
+        try compile(self, expr.body, .{ .expected_type = body_type });
         try self.write(";\n");
 
         self.popScope();
@@ -279,20 +279,20 @@ fn @"if"(self: *Self) !void {
 
         if (temp_name) |tn| try self.write(tn);
     } else {
-        const body_type: Type = try .infer(self, @"if".body.*);
+        const body_type: Type = try .infer(self, expr.body.*);
         const else_type: Type = try .infer(self, @"else".*);
 
         if (!body_type.check(else_type) and !else_type.check(body_type))
-            return errors.typeMismatchIfExpression(body_type, else_type, @"if".pos);
+            return errors.typeMismatchIfExpression(body_type, else_type, expr.pos);
 
         try self.write("((");
-        try compile(self, @"if".condition, .{});
+        try compile(self, expr.condition, .{});
         try self.write(")");
         if (condition_type == .optional) try self.write(".is_some");
         try self.write(" ? ");
 
         try self.pushScope();
-        try compile(self, @"if".body, .{});
+        try compile(self, expr.body, .{});
         self.popScope();
 
         try self.pushScope();

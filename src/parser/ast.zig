@@ -204,7 +204,7 @@ pub const Expression = union(enum) {
         is_mut: bool,
     };
 
-    const If = struct {
+    pub const If = struct {
         pos: utils.Position,
         condition: *const Expression,
         capture: ?utils.Capture,
