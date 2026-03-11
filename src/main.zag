@@ -15,10 +15,10 @@ struct Player {
     fn update(self: &mut Player) void {
         rl.draw_circle_v(self.position, 20.0, self.color);
 
-        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.W))) self.position.y -= 6;
-        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.A))) self.position.x -= 6;
-        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.S))) self.position.y += 6;
-        if (rl.is_key_down(cast<i32>(rl.KeyboardKey.D))) self.position.x += 6;
+        if (rl.is_key_down(rl.KeyboardKey.W)) self.position.y -= 6;
+        if (rl.is_key_down(rl.KeyboardKey.A)) self.position.x -= 6;
+        if (rl.is_key_down(rl.KeyboardKey.S)) self.position.y += 6;
+        if (rl.is_key_down(rl.KeyboardKey.D)) self.position.x += 6;
     }
 }
 
@@ -26,11 +26,9 @@ struct Zombie {
     position: rl.Vector2,
     color: rl.Color,
 
-    pub fn init(x: f32, y: f32) Zombie {
-        return Zombie {
-            position: rl.Vector2.init(x, y),
-            color: rl.Color.GREEN,
-        };
+    pub fn init(x: f32, y: f32) Zombie -> Zombie {
+        position: rl.Vector2.init(x, y),
+        color: rl.Color.GREEN,
     }
 
     fn update(self: &mut Zombie, player: &Player) void {
@@ -61,7 +59,7 @@ fn main() void {
         rl.begin_drawing();
         defer rl.end_drawing();
 
-        rl.clear_background(rl.Color { r: 0, g: 0, b: 0, a: 255 });
+        rl.clear_background(rl.Color.BLACK);
 
         for (zombies.items) |&mut zombie| zombie.update(&player);
 
