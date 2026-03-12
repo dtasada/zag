@@ -145,7 +145,7 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     });
 
     const cmd_args = try std.mem.concat(alloc, []const u8, &.{
-        &.{ "/usr/bin/cc", "-o", main_obj },
+        &.{ "/usr/bin/cc", "-g", "-o", main_obj },
         files.items,
         &.{
             @"-Iinclude",

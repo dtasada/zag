@@ -671,23 +671,25 @@ pub fn compileBlock(
         try self.registerSymbol(iterator.capture.name, .{ .symbol = .{ .type = inner_type } }, .{});
     }
 
+    var returns = false;
     var return_expr: ?ast.Expression = null;
     for (block.items) |*statement| switch (statement.*) {
         .@"return" => |r| {
             return_expr = r.@"return";
+            returns = true;
             break;
         },
         .block_eval => |be| {
-            if (try Type.infer(self, be) != .void)
-                return_expr = be
-            else
-                try statements.compile(self, statement);
+            if (try Type.infer(self, be) != .void) {
+                return_expr = be;
+                returns = true;
+            } else try statements.compile(self, statement);
             break;
         },
         else => try statements.compile(self, statement),
     };
 
-    if (return_expr) |*e| {
+    if (returns) if (return_expr) |*e| {
         if (self.current_return_type.? == .void) return utils.printErr(
             error.IllegalExpression,
             "comperr: Cannot return value in a void function ({f}).\n",
@@ -706,13 +708,15 @@ pub fn compileBlock(
         });
         if (opts.return_type_override_is_array) try self.write("}");
         try self.write(";\n");
-    }
+    };
 
     for (self.scopes.getLast().pending_defers.items) |pd| try statements.compile(self, pd);
 
     if (return_expr) |_| {
         self.currentSection().current_statement = self.currentWriter().items.len;
         try self.write("return __zag_ret_val;");
+    } else if (returns) {
+        try self.write("return;\n");
     } else if (opts.return_implicit_success) |ris| {
         self.currentSection().current_statement = self.currentWriter().items.len;
         try self.write("return (");

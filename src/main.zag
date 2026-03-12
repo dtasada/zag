@@ -3,13 +3,24 @@ import c;
 
 import raylib as rl;
 
+struct Bullet {
+    position: rl.Vector2,
+    velocity: rl.Vector2,
+}
+
 struct Player {
     position: rl.Vector2,
     color: rl.Color,
+    bullets: std.ArrayList<Bullet>,
 
     pub fn init(x: f32, y: f32) Player -> Player {
         position: rl.Vector2.init(x, y),
         color: rl.Color.RED,
+        bullets: std.ArrayList<Bullet>.init(),
+    }
+
+    pub fn deinit(self: &Player) void {
+        self.bullets.deinit();
     }
 
     fn update(self: &mut Player) void {
@@ -19,6 +30,18 @@ struct Player {
         if (rl.is_key_down(rl.KeyboardKey.A)) self.position.x -= 6;
         if (rl.is_key_down(rl.KeyboardKey.S)) self.position.y += 6;
         if (rl.is_key_down(rl.KeyboardKey.D)) self.position.x += 6;
+
+        if (rl.is_mouse_button_pressed(rl.MouseButton.LEFT)) {
+            self.bullets.append(Bullet {
+                position: self.position,
+                velocity: rl.get_mouse_position().subtract(self.position).normalize(),
+            });
+        }
+
+        for (self.bullets.items) |&mut bullet| {
+            bullet.position = bullet.position.add(bullet.velocity.scale(10.0));
+            rl.draw_circle_v(bullet.position, 5.0, rl.Color.WHITE);
+        }
     }
 }
 
@@ -46,6 +69,7 @@ fn main() void {
     rl.set_target_fps(60);
 
     let mut player = Player.init(640, 360);
+    defer player.deinit();
 
     let mut zombies = std.ArrayList<Zombie>.init();
     defer zombies.deinit();

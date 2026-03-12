@@ -93,8 +93,11 @@ pub struct ArrayList<T> {
     capacity: usize,
 
     pub fn init() ArrayList<T> {
+        let mut items: []mut T = undefined;
+        items.ptr = c_null;
+        items.len = 0;
         return ArrayList<T> {
-            items: alloc_slice<T>(0),
+            items: items,
             capacity: 0,
         };
     }
@@ -103,16 +106,10 @@ pub struct ArrayList<T> {
         if (self.capacity >= min_cap) return;
 
         let new_cap = max<usize>(min_cap, if (self.capacity == 0) 16 else self.capacity * 2);
+        let old_len = self.items.len;
 
-        let new_buf = if (self.capacity == 0)
-            alloc_slice<T>(new_cap)
-        else
-            // `realloc_slice` only cares about the pointer, so passing `self.items` is fine.
-            realloc_slice<T>(self.items, new_cap);
-
-        // The new buffer (`new_buf`) has length `new_cap`. We want our `items` slice
-        // to point to this new buffer, but maintain its old logical length.
-        self.items = new_buf[0..self.items.len];
+        self.items = realloc_slice<T>(self.items, new_cap);
+        self.items.len = old_len;
         self.capacity = new_cap;
     }
 
@@ -126,8 +123,8 @@ pub struct ArrayList<T> {
         self.items[self.items.len - 1] = item;
     }
 
-    pub fn pop(self: &mut ArrayList<T>) ?T {
-        if (self.items.len == 0) return nil;
+    pub fn pop(self: &mut ArrayList<T>) T {
+        if (self.items.len == 0) c.panic("Empty arraylist!\n");
 
         let idx = self.items.len - 1;
         let val = self.items[idx];
@@ -138,12 +135,12 @@ pub struct ArrayList<T> {
     }
 
 
-    pub fn clear(self: &mut ArrayList<T>) void -> self.items = self.items[..0]
+    pub fn clear(self: &mut ArrayList<T>) void -> self.items = self.items[0..0]
 
-    pub fn deinit(self: &mut ArrayList<T>) void {
+    pub fn deinit(self: &ArrayList<T>) void {
         if (self.capacity != 0)
             // To free the whole buffer, we must create a slice representing the full capacity.
-            free_slice<T>(self.items[..self.capacity]);
+            free_slice<T>(self.items[0..self.capacity]);
     }
 
     // pub fn contains(self: &ArrayList<T>, item: T) bool {
@@ -192,5 +189,15 @@ pub struct ArrayList<T> {
         
         // Correctly shrink the slice.
         self.items = self.items[0..self.items.len - 1];
+    }
+    
+    pub fn swap_remove(self: &mut ArrayList<T>, index: usize) void {
+        if (index >= self.items.len) c.panic("Index out of bounds\n");
+
+        let last_index = self.items.len - 1;
+        if (index < last_index) {
+            self.items[index] = self.items[last_index];
+        }
+        self.items = self.items[0..last_index];
     }
 }
