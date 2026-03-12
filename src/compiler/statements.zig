@@ -88,7 +88,7 @@ fn compoundTypeDeclaration(
         .@"enum" => ast.Statement.EnumDeclaration,
     },
 ) CompilerError!void {
-    try self.pushScope();
+    try self.pushScope(false);
     defer self.popScope();
 
     const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (T) {
@@ -184,7 +184,7 @@ fn compoundTypeDeclaration(
 
     self.switchSection(.source_function_impls);
     for (type_decl.methods.items) |method| {
-        try self.pushScope();
+        try self.pushScope(false);
         defer self.popScope();
         self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;
 
@@ -515,12 +515,14 @@ fn conditional(
                     .capture = statement.capture.?,
                     .index = capture_ident,
                 } else null,
+                .is_loop_body = true,
             },
             else => .{
                 .capture = if (statement.capture) |c| .{
                     .condition = &statement.condition,
                     .capture = c,
                 } else null,
+                .is_loop_body = T != .@"if",
             },
         },
     );
@@ -563,7 +565,7 @@ fn functionDefinition(
 
     if (!binding_function and function_def.generic_parameters.items.len > 0) return;
 
-    try self.pushScope();
+    try self.pushScope(false);
     defer self.popScope();
     self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;
 

@@ -111,6 +111,7 @@ pub const Scope = struct {
     pending_defers: *std.ArrayList(*const ast.Statement),
     items: *std.StringHashMap(ScopeItem),
     is_function_boundary: bool = false,
+    is_loop_body: bool = false,
 };
 pub const ScopeItem = union(enum) {
     symbol: struct {
@@ -266,7 +267,7 @@ pub fn deinit(self: *Self) void {
 
 /// Entry point for the compiler. Compiles AST into C code.
 pub fn emit(self: *Self) CompilerError!void {
-    try self.pushScope();
+    try self.pushScope(false);
     defer self.popScope();
 
     // register constants
@@ -454,7 +455,7 @@ pub fn scan(self: *Self) CompilerError!void {
 }
 
 pub fn analyze(self: *Self) CompilerError!void {
-    try self.pushScope();
+    try self.pushScope(false);
     defer self.popScope();
 
     try self.registerConstants();
@@ -621,9 +622,10 @@ pub fn compileBlock(
         return_type_override: ?Type = null,
         return_type_override_is_array: bool = false,
         return_implicit_success: ?Type = null,
+        is_loop_body: bool = false,
     },
 ) CompilerError!void {
-    try self.pushScope();
+    try self.pushScope(opts.is_loop_body);
     defer self.popScope();
 
     try self.write("{\n");
@@ -719,19 +721,36 @@ pub fn compileBlock(
         else => {},
     }
 
-    for (self.scopes.getLast().pending_defers.items) |pd| try statements.compile(self, pd);
-
     switch (returns) {
-        .yes => |expr| if (expr) |_| {
-            self.currentSection().current_statement = self.currentWriter().items.len;
-            try self.write("return __zag_ret_val;");
-        } else try self.write("return;\n"),
-        inline .@"break", .@"continue" => |_, t| try self.print("{s};\n", .{@tagName(t)}),
-        .no => if (opts.return_implicit_success) |ris| {
-            self.currentSection().current_statement = self.currentWriter().items.len;
-            try self.write("return (");
-            try self.compileType(ris, .{});
-            try self.write("){ .is_success = true, .payload.success = 0 };\n");
+        .yes => |expr| {
+            var it = std.mem.reverseIterator(self.scopes.items);
+            while (it.next()) |scope| {
+                for (scope.pending_defers.items) |pd| try statements.compile(self, pd);
+                if (scope.is_function_boundary) break;
+            }
+
+            if (expr) |_| {
+                self.currentSection().current_statement = self.currentWriter().items.len;
+                try self.write("return __zag_ret_val;");
+            } else try self.write("return;\n");
+        },
+        .no => {
+            for (self.scopes.getLast().pending_defers.items) |pd| try statements.compile(self, pd);
+            if (opts.return_implicit_success) |ris| {
+                self.currentSection().current_statement = self.currentWriter().items.len;
+                try self.write("return (");
+                try self.compileType(ris, .{});
+                try self.write("){ .is_success = true, .payload.success = 0 };\n");
+            }
+        },
+        inline .@"break", .@"continue" => |_, t| {
+            var it = std.mem.reverseIterator(self.scopes.items);
+            while (it.next()) |scope| {
+                for (scope.pending_defers.items) |pd| try statements.compile(self, pd);
+                if (scope.is_loop_body) break;
+            }
+
+            try self.print("{s};\n", .{@tagName(t)});
         },
     }
 
@@ -1003,7 +1022,7 @@ fn solveGenerics(self: *Self) !void {
         }
         if (is_template) continue;
 
-        try self.pushScope();
+try self.pushScope(false);
         defer self.popScope();
 
         var it = instantiation.module.symbols.iterator();
@@ -1090,7 +1109,7 @@ fn solveGenerics(self: *Self) !void {
 }
 
 /// appends a new empty scope to the scope stack.
-pub fn pushScope(self: *Self) !void {
+pub fn pushScope(self: *Self, is_loop_body: bool) !void {
     const items = try self.alloc.create(std.StringHashMap(ScopeItem));
     items.* = .init(self.alloc);
 
@@ -1100,6 +1119,7 @@ pub fn pushScope(self: *Self) !void {
     try self.scopes.append(self.alloc, .{
         .pending_defers = pending_defers,
         .items = items,
+        .is_loop_body = is_loop_body,
     });
 }
 

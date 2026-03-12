@@ -259,7 +259,7 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         self.currentSection().pos = self.currentSection().current_statement;
 
         // Infer result type
-        try self.pushScope();
+        try self.pushScope(false);
         const capture_type = switch (condition_type) {
             .optional => |optional| optional.*,
             else => |other| other,
@@ -295,7 +295,7 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
         try self.write(";\n");
 
         try self.print("if ({s}.is_some) {{\n", .{cond_var});
-        try self.pushScope();
+        try self.pushScope(false);
 
         try self.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
         try self.compileType(capture_type, .{});
@@ -307,7 +307,7 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
 
         self.popScope();
         try self.write("} else {\n");
-        try self.pushScope();
+        try self.pushScope(false);
 
         if (temp_name) |tn| try self.print("{s} = ", .{tn});
         try compile(self, @"else", .{ .expected_type = opt_type });
@@ -357,7 +357,7 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
         try self.print(" {s};\n", .{temp_name.?});
     }
 
-    try self.pushScope();
+    try self.pushScope(false);
     try self.write("{\n");
     var received_eval = false;
     for (blk.block.items) |*stmt| {

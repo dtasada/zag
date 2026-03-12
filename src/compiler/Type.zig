@@ -287,7 +287,7 @@ pub const Type = union(enum) {
             },
             .function => |function| .{
                 .function = b: {
-                    try compiler.pushScope();
+                    try compiler.pushScope(false);
                     defer compiler.popScope();
 
                     var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.generic_parameters.items.len);
@@ -507,7 +507,7 @@ pub const Type = union(enum) {
         };
 
         if (definition_wrapper) |def_wrap| {
-            try compiler.pushScope();
+            try compiler.pushScope(false);
 
             var mod_it = module.symbols.iterator();
             while (mod_it.next()) |entry| {
@@ -721,7 +721,7 @@ pub const Type = union(enum) {
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => |block| try inferBlock(compiler, block),
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
-                try compiler.pushScope();
+                try compiler.pushScope(false);
                 if (@"if".capture) |capture| {
                     const capture_type = switch (try infer(compiler, @"if".condition.*)) {
                         .optional => |optional| optional.*,
@@ -841,7 +841,7 @@ pub const Type = union(enum) {
     }
 
     pub fn inferBlock(self: *Compiler, blk: ast.Expression.Block) !Type {
-        try self.pushScope();
+        try self.pushScope(false);
         defer self.popScope();
 
         for (blk.block.items) |statement| switch (statement) {

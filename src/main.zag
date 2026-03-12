@@ -6,8 +6,7 @@ import raylib as rl;
 struct Bullet {
     const SIZE = 5.0;
 
-    position: rl.Vector2,
-    velocity: rl.Vector2,
+    position, velocity: rl.Vector2,
 }
 
 struct Player {
@@ -44,7 +43,7 @@ struct Player {
             });
         }
 
-        for (self.bullets.items) |&mut bullet, i| {
+        for (self.bullets.items) |&mut bullet| {
             bullet.position = bullet.position.add(bullet.velocity.scale(10.0));
             rl.draw_circle_v(bullet.position, Bullet.SIZE, rl.Color.WHITE);
         }
