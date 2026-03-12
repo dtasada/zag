@@ -24,6 +24,9 @@ pub struct String {
     pub fn to_sentinel(self: String) &mut c_char -> cast<&mut c_char>(slice_to_sentinel<u8>(self.bytes, 0))
 }
 
+// Caller owns memory
+pub fn to_cstr(str: []u8) &mut c_char -> cast<&mut c_char>(slice_to_sentinel<u8>(str, 0))
+
 pub fn slice_to_sentinel<T>(slice: []T, sentinel: T) &mut T {
     let buf: []mut T = alloc_slice<T>(slice.len + 1);
     memcpy_slice<T>(buf[..slice.len], cast<[]T>(slice));

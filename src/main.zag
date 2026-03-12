@@ -4,19 +4,25 @@ import c;
 import raylib as rl;
 
 struct Bullet {
+    const SIZE = 5.0;
+
     position: rl.Vector2,
     velocity: rl.Vector2,
 }
 
 struct Player {
+    const SIZE = 20.0;
+
     position: rl.Vector2,
     color: rl.Color,
     bullets: std.ArrayList<Bullet>,
+    health: usize,
 
     pub fn init(x: f32, y: f32) Player -> Player {
         position: rl.Vector2.init(x, y),
         color: rl.Color.RED,
         bullets: std.ArrayList<Bullet>.init(),
+        health: 100,
     }
 
     pub fn deinit(self: &Player) void {
@@ -24,7 +30,7 @@ struct Player {
     }
 
     fn update(self: &mut Player) void {
-        rl.draw_circle_v(self.position, 20.0, self.color);
+        rl.draw_circle_v(self.position, SIZE, self.color);
 
         if (rl.is_key_down(rl.KeyboardKey.W)) self.position.y -= 6;
         if (rl.is_key_down(rl.KeyboardKey.A)) self.position.x -= 6;
@@ -40,14 +46,17 @@ struct Player {
 
         for (self.bullets.items) |&mut bullet, i| {
             bullet.position = bullet.position.add(bullet.velocity.scale(10.0));
-            rl.draw_circle_v(bullet.position, 5.0, rl.Color.WHITE);
+            rl.draw_circle_v(bullet.position, Bullet.SIZE, rl.Color.WHITE);
         }
     }
 }
 
 struct Zombie {
+    const SIZE = 20.0;
+
     position: rl.Vector2,
     color: rl.Color,
+    health: usize,
 
     pub fn init(x: f32, y: f32) Zombie -> Zombie {
         position: rl.Vector2.init(x, y),
@@ -58,7 +67,7 @@ struct Zombie {
         let diff = player.position.subtract(self.position);
         self.position = self.position.add(diff.normalize().scale(2.0));
 
-        rl.draw_circle_v(self.position, 20.0, self.color);
+        rl.draw_circle_v(self.position, SIZE, self.color);
     }
 }
 
@@ -79,14 +88,6 @@ fn main() void {
     zombies.append(Zombie.init(1280, 0));
     zombies.append(Zombie.init(1280, 720));
 
-    while (2 < 1) {
-        c.printf("before\n");
-        defer c.printf("hello world\n");
-        c.printf("after\n");
-        continue;
-        c.printf("87\n");
-    }
-
     while (!rl.window_should_close()) {
         rl.begin_drawing();
         defer rl.end_drawing();
@@ -95,9 +96,14 @@ fn main() void {
 
         for (zombies.items) |&mut zombie| {
             zombie.update(&player);
+
+            if (rl.check_collision_circles()) {
+
+            }
+
             let mut i: usize = 0;
             while (i < player.bullets.items.len) {
-                if (rl.check_collision_circles(player.bullets.items[i].position, 5.0, zombie.position, 20.0)) {
+                if (rl.check_collision_circles(player.bullets.items[i].position, Bullet.SIZE, zombie.position, Zombie.SIZE)) {
                     player.bullets.swap_remove(i);
                     continue;
                 }

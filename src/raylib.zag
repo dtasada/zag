@@ -1771,8 +1771,8 @@ pub const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool;
 pub const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
 
 pub fn init_window(width, height: i32, title: []u8) void {
-    let title_cstr = std.slice_to_sentinel<u8>(title, 0);
-    defer std.free<u8>(title_cstr);
+    let title_cstr = std.to_cstr(title);
+    defer std.free<c_char>(title_cstr);
     InitWindow(width, height, cast<&mut c_char>(title_cstr));
 } 
 pub fn close_window() void -> CloseWindow()
@@ -1805,8 +1805,8 @@ pub fn minimize_window() void -> MinimizeWindow()
 pub fn restore_window() void -> RestoreWindow()
 pub fn set_window_icon(image: Image) void -> SetWindowIcon(image)
 pub fn set_window_title(title: []u8) void {
-    let title_cstr = std.slice_to_sentinel<u8>(title, 0);
-    defer std.free<u8>(title_cstr);
+    let title_cstr = std.to_cstr(title);
+    defer std.free<c_char>(title_cstr);
     SetWindowTitle(cast<&mut c_char>(title_cstr));
 }
 pub fn set_window_position(x, y: i32) void -> SetWindowPosition(x, y)
@@ -1829,8 +1829,8 @@ pub fn get_window_scale_dpi() Vector2 -> GetWindowScaleDPI()
 pub fn get_monitor_name(monitor: i32) []u8 ->
     cast<[]u8>(std.sentinel_to_slice<c_char>(GetMonitorName(monitor), 0))
 pub fn set_clipboard_text(text: []u8) void {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     SetClipboardText(cast<&mut c_char>(text_cstr));
 } 
 pub fn get_clipboard_text() []u8 ->
@@ -1861,31 +1861,31 @@ pub fn end_vr_stereo_mode() void -> EndVrStereoMode()
 pub fn load_vr_stereo_config(device: VrDeviceInfo) VrStereoConfig -> LoadVrStereoConfig(device)
 pub fn unload_vr_stereo_config(config: VrStereoConfig) void -> UnloadVrStereoConfig(config)
 pub fn load_shader(vs_file_name, fs_file_name: []u8) Shader {
-    let vs_file_name_cstr = std.slice_to_sentinel<u8>(vs_file_name, 0);
-    defer std.free<u8>(vs_file_name_cstr);
+    let vs_file_name_cstr = std.to_cstr(vs_file_name);
+    defer std.free<c_char>(vs_file_name_cstr);
 
-    let fs_file_name_cstr = std.slice_to_sentinel<u8>(fs_file_name, 0);
-    defer std.free<u8>(fs_file_name_cstr);
+    let fs_file_name_cstr = std.to_cstr(fs_file_name);
+    defer std.free<c_char>(fs_file_name_cstr);
 
     return LoadShader(cast<&mut c_char>(vs_file_name_cstr), cast<&mut c_char>(fs_file_name_cstr));
 }
 pub fn load_shader_from_memory(vs_code, fs_code: []u8) Shader {
-    let vs_code_cstr = std.slice_to_sentinel<u8>(vs_code, 0);
-    defer std.free<u8>(vs_code_cstr);
+    let vs_code_cstr = std.to_cstr(vs_code);
+    defer std.free<c_char>(vs_code_cstr);
 
-    let fs_code_cstr = std.slice_to_sentinel<u8>(fs_code, 0);
-    defer std.free<u8>(fs_code_cstr);
+    let fs_code_cstr = std.to_cstr(fs_code);
+    defer std.free<c_char>(fs_code_cstr);
 
     return LoadShaderFromMemory(cast<&mut c_char>(vs_code_cstr), cast<&mut c_char>(fs_code_cstr));
 }
 pub fn get_shader_location(shader: Shader, uniform_name: []u8) i32 {
-    let uniform_name_cstr = std.slice_to_sentinel<u8>(uniform_name, 0);
-    defer std.free<u8>(uniform_name_cstr);
+    let uniform_name_cstr = std.to_cstr(uniform_name);
+    defer std.free<c_char>(uniform_name_cstr);
     return GetShaderLocation(cast<Shader>(shader), cast<&mut c_char>(uniform_name_cstr));
 }
 pub fn get_shader_location_attrib(shader: Shader, attrib_name: []u8) i32 {
-    let attrib_name_cstr = std.slice_to_sentinel<u8>(attrib_name, 0);
-    defer std.free<u8>(attrib_name_cstr);
+    let attrib_name_cstr = std.to_cstr(attrib_name);
+    defer std.free<c_char>(attrib_name_cstr);
     return GetShaderLocationAttrib(cast<Shader>(shader), cast<&mut c_char>(attrib_name_cstr));
 }
 pub fn set_shader_value(shader: Shader, locIndex: ShaderLocationIndex, value: &void, uniformType: ShaderUniformDataType) void -> SetShaderValue(cast<Shader>(shader), cast<c_int>(locIndex), value, cast<c_int>(uniformType))
@@ -1907,9 +1907,9 @@ pub fn get_time() f64 -> GetTime()
 pub fn get_random_value(min, max: i32) i32 -> GetRandomValue(min, max)
 pub fn set_random_seed(seed: u32) void -> SetRandomSeed(seed)
 pub fn take_screenshot(file_name: []u8) void {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    TakeScreenshot(cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    TakeScreenshot(file_name_cstr);
 }
 pub fn set_config_flags(flags: []ConfigFlags) void {
     let mut flag_int = 0;
@@ -1922,9 +1922,9 @@ pub fn mem_alloc(size: u32) &mut void -> MemAlloc(size)
 pub fn mem_realloc(ptr: &mut void, size: u32) &mut void -> MemRealloc(ptr, size)
 pub fn mem_free(ptr: &mut void) void -> MemFree(ptr)
 pub fn open_url(url: []u8) void {
-    let url_cstr = std.slice_to_sentinel<u8>(url, 0);
-    defer std.free<u8>(url_cstr);
-    OpenURL(cast<&c_char>(url_cstr));
+    let url_cstr = std.to_cstr(url);
+    defer std.free<c_char>(url_cstr);
+    OpenURL(url_cstr);
 }
 pub fn set_trace_log_callback(callback: TraceLogCallback) void -> SetTraceLogCallback(callback)
 pub fn set_load_file_data_callback(callback: LoadFileDataCallback) void -> SetLoadFileDataCallback(callback)
@@ -1932,25 +1932,25 @@ pub fn set_save_file_data_callback(callback: SaveFileDataCallback) void -> SetSa
 pub fn set_load_file_text_callback(callback: LoadFileTextCallback) void -> SetLoadFileTextCallback(callback)
 pub fn set_save_file_text_callback(callback: SaveFileTextCallback) void -> SetSaveFileTextCallback(callback)
 pub fn load_file_data(file_name: []u8, data_size: &mut i32) []mut u8 {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     
     let mut slice: []mut u8 = undefined;
-    slice.ptr = cast<&mut u8>(LoadFileData(cast<&c_char>(file_name_cstr), cast<&mut c_int>(data_size)));
+    slice.ptr = cast<&mut u8>(LoadFileData(file_name_cstr, cast<&mut c_int>(data_size)));
     slice.len = cast<usize>(data_size.*);
     return slice;
 }
 pub fn unload_file_data(data: &mut u8) void -> UnloadFileData(cast<&mut c_uchar>(data))
 pub fn save_file_data(file_name: []u8, data: &mut void, bytes_to_write: u32) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return SaveFileData(cast<&c_char>(file_name_cstr), data, bytes_to_write);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return SaveFileData(file_name_cstr, data, bytes_to_write);
 }
 pub fn load_file_text(file_name: []u8) []u8 {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     
-    let result_cstr = LoadFileText(cast<&c_char>(file_name_cstr));
+    let result_cstr = LoadFileText(file_name_cstr);
     if (result_cstr == c_null) return "";
 
     let result_slice = std.sentinel_to_slice<c_char>(result_cstr, 0);
@@ -1960,65 +1960,65 @@ pub fn load_file_text(file_name: []u8) []u8 {
 }
 // pub fn unload_file_text(text: &mut c_char) void -> UnloadFileText(text)
 pub fn save_file_text(file_name: []u8, text: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
 
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
 
-    return SaveFileText(cast<&c_char>(file_name_cstr), cast<&c_char>(text_cstr));
+    return SaveFileText(file_name_cstr, text_cstr);
 }
 pub fn file_exists(file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return FileExists(cast<&mut c_char>(file_name_cstr));
 }
 pub fn directory_exists(dir_path: []u8) bool {
-    let dir_path_cstr = std.slice_to_sentinel<u8>(dir_path, 0);
-    defer std.free<u8>(dir_path_cstr);
+    let dir_path_cstr = std.to_cstr(dir_path);
+    defer std.free<c_char>(dir_path_cstr);
     return DirectoryExists(cast<&mut c_char>(dir_path_cstr));
 }
 pub fn is_file_extension(file_name: []u8, ext: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
 
-    let ext_cstr = std.slice_to_sentinel<u8>(ext, 0);
-    defer std.free<u8>(ext_cstr);
+    let ext_cstr = std.to_cstr(ext);
+    defer std.free<c_char>(ext_cstr);
 
     return IsFileExtension(cast<&mut c_char>(file_name_cstr), cast<&mut c_char>(ext_cstr));
 }
 pub fn get_file_length(file_name: []u8) i32 {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return GetFileLength(cast<&mut c_char>(file_name_cstr));
 }
 pub fn get_file_extension(file_name: []u8) []u8 {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     let result_cstr = GetFileExtension(cast<&mut c_char>(file_name_cstr));
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn get_file_name(file_path: []u8) []u8 {
-    let file_path_cstr = std.slice_to_sentinel<u8>(file_path, 0);
-    defer std.free<u8>(file_path_cstr);
+    let file_path_cstr = std.to_cstr(file_path);
+    defer std.free<c_char>(file_path_cstr);
     let result_cstr = GetFileName(cast<&mut c_char>(file_path_cstr));
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn get_file_name_without_ext(file_path: []u8) []u8 {
-    let file_path_cstr = std.slice_to_sentinel<u8>(file_path, 0);
-    defer std.free<u8>(file_path_cstr);
+    let file_path_cstr = std.to_cstr(file_path);
+    defer std.free<c_char>(file_path_cstr);
     let result_cstr = GetFileNameWithoutExt(cast<&mut c_char>(file_path_cstr));
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn get_directory_path(file_path: []u8) []u8 {
-    let file_path_cstr = std.slice_to_sentinel<u8>(file_path, 0);
-    defer std.free<u8>(file_path_cstr);
+    let file_path_cstr = std.to_cstr(file_path);
+    defer std.free<c_char>(file_path_cstr);
     let result_cstr = GetDirectoryPath(cast<&mut c_char>(file_path_cstr));
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn get_prev_directory_path(dir_path: []u8) []u8 {
-    let dir_path_cstr = std.slice_to_sentinel<u8>(dir_path, 0);
-    defer std.free<u8>(dir_path_cstr);
+    let dir_path_cstr = std.to_cstr(dir_path);
+    defer std.free<c_char>(dir_path_cstr);
     let result_cstr = GetPrevDirectoryPath(cast<&mut c_char>(dir_path_cstr));
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
@@ -2031,26 +2031,26 @@ pub fn get_application_directory() []u8 {
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn change_directory(dir: []u8) bool {
-    let dir_cstr = std.slice_to_sentinel<u8>(dir, 0);
-    defer std.free<u8>(dir_cstr);
+    let dir_cstr = std.to_cstr(dir);
+    defer std.free<c_char>(dir_cstr);
     return ChangeDirectory(cast<&mut c_char>(dir_cstr));
 }
 pub fn is_path_file(path: []u8) bool {
-    let path_cstr = std.slice_to_sentinel<u8>(path, 0);
-    defer std.free<u8>(path_cstr);
+    let path_cstr = std.to_cstr(path);
+    defer std.free<c_char>(path_cstr);
     return IsPathFile(cast<&mut c_char>(path_cstr));
 }
 pub fn load_directory_files(dir_path: []u8) FilePathList {
-    let dir_path_cstr = std.slice_to_sentinel<u8>(dir_path, 0);
-    defer std.free<u8>(dir_path_cstr);
+    let dir_path_cstr = std.to_cstr(dir_path);
+    defer std.free<c_char>(dir_path_cstr);
     return LoadDirectoryFiles(cast<&mut c_char>(dir_path_cstr));
 }
 pub fn load_directory_files_ex(base_path: []u8, filter: []u8, scan_subdirs: bool) FilePathList {
-    let base_path_cstr = std.slice_to_sentinel<u8>(base_path, 0);
-    defer std.free<u8>(base_path_cstr);
+    let base_path_cstr = std.to_cstr(base_path);
+    defer std.free<c_char>(base_path_cstr);
 
-    let filter_cstr = std.slice_to_sentinel<u8>(filter, 0);
-    defer std.free<u8>(filter_cstr);
+    let filter_cstr = std.to_cstr(filter);
+    defer std.free<c_char>(filter_cstr);
 
     return LoadDirectoryFilesEx(cast<&mut c_char>(base_path_cstr), cast<&mut c_char>(filter_cstr), scan_subdirs);
 }
@@ -2059,8 +2059,8 @@ pub fn is_file_dropped() bool -> IsFileDropped()
 pub fn load_dropped_files() FilePathList -> LoadDroppedFiles()
 pub fn unload_dropped_files(files: FilePathList) void -> UnloadDroppedFiles(files)
 pub fn get_file_mod_time(file_name: []u8) i64 {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return GetFileModTime(cast<&mut c_char>(file_name_cstr));
 }
 pub fn compress_data(data: []u8) []mut u8 {
@@ -2078,20 +2078,20 @@ pub fn encode_data_base64(data: []u8, output_size: &mut i32) []u8 {
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn decode_data_base64(data: []u8, output_length: &mut i32) []u8 {
-    let data_cstr = std.slice_to_sentinel<u8>(data, 0);
-    defer std.free<u8>(data_cstr);
+    let data_cstr = std.to_cstr(data);
+    defer std.free<c_char>(data_cstr);
     let result_cstr = DecodeDataBase64(cast<&mut c_char>(data_cstr), cast<&mut c_int>(output_length));
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn load_automation_event_list(file_name: []u8) AutomationEventList {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return LoadAutomationEventList(cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return LoadAutomationEventList(file_name_cstr);
 }
 pub fn unload_automation_event_list(list: AutomationEventList) void -> UnloadAutomationEventList(list)
 pub fn export_automation_event_list(list: AutomationEventList, file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return ExportAutomationEventList(list, cast<&mut c_char>(file_name_cstr));
 }
 pub fn set_automation_event_list(list: &mut AutomationEventList) void -> SetAutomationEventList(list)
@@ -2116,9 +2116,9 @@ pub fn get_gamepad_button_pressed() i32 -> GetGamepadButtonPressed()
 pub fn get_gamepad_axis_count(gamepad: i32) i32 -> GetGamepadAxisCount(gamepad)
 pub fn get_gamepad_axis_movement(gamepad: i32, axis: GamepadAxis) f32 -> GetGamepadAxisMovement(gamepad, cast<c_int>(axis))
 pub fn set_gamepad_mappings(mappings: []u8) i32 {
-    let mappings_cstr = std.slice_to_sentinel<u8>(mappings, 0);
-    defer std.free<u8>(mappings_cstr);
-    return SetGamepadMappings(cast<&c_char>(mappings_cstr));
+    let mappings_cstr = std.to_cstr(mappings);
+    defer std.free<c_char>(mappings_cstr);
+    return SetGamepadMappings(mappings_cstr);
 }
 pub fn is_mouse_button_pressed(button: MouseButton) bool -> IsMouseButtonPressed(cast<c_int>(button))
 pub fn is_mouse_button_down(button: MouseButton) bool -> IsMouseButtonDown(cast<c_int>(button))
@@ -2202,36 +2202,36 @@ pub fn check_collision_lines(startPos1, endPos1, startPos2, endPos2: Vector2) ?V
 pub fn check_collision_point_line(point: Vector2, p1: Vector2, p2: Vector2, threshold: i32) bool -> CheckCollisionPointLine(point, p1, p2, threshold)
 pub fn get_collision_rec(rec1: Rectangle, rec2: Rectangle) Rectangle -> GetCollisionRec(rec1, rec2)
 pub fn load_image(file_name: []u8) Image {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return LoadImage(cast<&mut c_char>(file_name_cstr));
 } 
 pub fn load_image_raw(file_name: []u8, width, height: i32, format: PixelFormat, headerSize: i32) Image {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return LoadImageRaw(cast<&mut c_char>(file_name_cstr), width, height, cast<i32>(format), headerSize);
 }
 pub fn load_image_anim(file_name: []u8, frames: &mut i32) Image {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return LoadImageAnim(cast<&mut c_char>(file_name_cstr), cast<&mut c_int>(frames));
 }
 pub fn load_image_from_memory(file_type: []u8, file_data: []u8) Image {
-    let file_type_cstr = std.slice_to_sentinel<u8>(file_type, 0);
-    defer std.free<u8>(file_type_cstr);
+    let file_type_cstr = std.to_cstr(file_type);
+    defer std.free<c_char>(file_type_cstr);
     return LoadImageFromMemory(cast<&mut c_char>(file_type_cstr), cast<&c_uchar>(file_data.ptr), file_data.len);
 }
 pub fn load_image_from_texture(texture: Texture2D) Image -> LoadImageFromTexture(texture)
 pub fn load_image_from_screen() Image -> LoadImageFromScreen()
 pub fn unload_image(image: Image) void -> UnloadImage(image)
 pub fn export_image(image: Image, file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return ExportImage(image, cast<&mut c_char>(file_name_cstr));
 }
 pub fn export_image_as_code(image: Image, file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return ExportImageAsCode(image, cast<&mut c_char>(file_name_cstr));
 }
 pub fn gen_image_color(width, height: i32, color: Color) Image -> GenImageColor(width, height, color)
@@ -2244,13 +2244,13 @@ pub fn gen_image_cellular(width, height: i32, tileSize: i32) Image -> GenImageCe
 pub fn image_copy(image: Image) Image -> ImageCopy(image)
 pub fn image_from_image(image: Image, rec: Rectangle) Image -> ImageFromImage(image, rec)
 pub fn image_text(text: []u8, font_size: i32, color: Color) Image {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     return ImageText(cast<&mut c_char>(text_cstr), font_size, color);
 }
 pub fn image_text_ex(font: Font, text: []u8, font_size, spacing: f32, tint: Color) Image {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     return ImageTextEx(font, cast<&mut c_char>(text), font_size, spacing, tint);
 }
 pub fn image_format(image: &mut Image, newFormat: PixelFormat) void -> ImageFormat(image, cast<c_int>(newFormat))
@@ -2296,18 +2296,18 @@ pub fn image_draw_rectangle_rec(dst: &mut Image, rec: Rectangle, color: Color) v
 pub fn image_draw_rectangle_lines(dst: &mut Image, rec: Rectangle, thick: i32, color: Color) void -> ImageDrawRectangleLines(dst, rec, thick, color)
 pub fn image_draw(dst: &mut Image, src: Image, srcRec, dstRec: Rectangle, tint: Color) void -> ImageDraw(dst, src, srcRec, dstRec, tint)
 pub fn image_draw_text(dst: &mut Image, text: []u8, posX, posY, fontSize: i32, color: Color) void {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     ImageDrawText(dst, cast<&mut c_char>(text_cstr), posX, posY, fontSize, color);
 } 
 pub fn image_draw_text_ex(dst: &mut Image, font: Font, text: []u8, position: Vector2, fontSize, spacing: f32, tint: Color) void {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     ImageDrawTextEx(dst, font, cast<&mut c_char>(text), position, fontSize, spacing, tint);
 }
 pub fn load_texture(file_name: []u8) Texture2D {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return LoadTexture(cast<&mut c_char>(file_name_cstr));
 }
 pub fn load_texture_from_image(image: Image) Texture2D -> LoadTextureFromImage(image)
@@ -2340,13 +2340,13 @@ pub fn set_pixel_color(dstPtr: &mut void, color: Color, format: PixelFormat) voi
 pub fn get_pixel_data_size(width, height: i32, format: PixelFormat) i32 -> GetPixelDataSize(width, height, cast<c_int>(format))
 pub fn get_font_default() Font -> GetFontDefault()
 pub fn load_font(file_name: []u8) Font {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
     return LoadFont(cast<&mut c_char>(file_name_cstr));
 }
 pub fn load_font_ex(file_name: []u8, font_size: i32, codepoints: ?[]i32) Font {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
 
     let cp = if (codepoints) |cp| cast<&mut c_int>(cp.ptr) else c_null;
     let count = if (codepoints) |cp| cp.len else 0;
@@ -2355,76 +2355,73 @@ pub fn load_font_ex(file_name: []u8, font_size: i32, codepoints: ?[]i32) Font {
 }
 pub fn load_font_from_image(image: Image, key: Color, firstChar: i32) Font -> LoadFontFromImage(image, key, firstChar)
 pub fn load_font_from_memory(file_type: []u8, fileData: []u8, fontSize: i32, codepoints: []i32) Font {
-    let file_type_cstr = std.slice_to_sentinel<u8>(file_type, 0);
-    defer std.free<u8>(file_type_cstr);
+    let file_type_cstr = std.to_cstr(file_type);
+    defer std.free<c_char>(file_type_cstr);
 
-    return LoadFontFromMemory(cast<&c_char>(file_type_cstr), cast<&c_uchar>(fileData.ptr), fileData.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len);
+    return LoadFontFromMemory(file_type_cstr, cast<&c_uchar>(fileData.ptr), fileData.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len);
 }
 pub fn load_font_data(file_data: []u8, fontSize: i32, codepoints: []i32, type: FontType) &mut GlyphInfo {
-    let file_data_cstr = std.slice_to_sentinel<u8>(file_data, 0);
-    defer std.free<u8>(file_data_cstr);
-
-    return LoadFontData(cast<&c_uchar>(file_data_cstr), file_data.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len, cast<c_int>(type));
+    return LoadFontData(cast<&c_uchar>(file_data.ptr), file_data.len, fontSize, cast<&mut c_int>(codepoints.ptr), codepoints.len, cast<c_int>(type));
 }
 pub fn gen_image_font_atlas(chars: &GlyphInfo, recs: &mut &mut Rectangle, glyphCount: i32, fontSize: i32, padding: i32, packMethod: i32) Image -> GenImageFontAtlas(chars, recs, glyphCount, fontSize, padding, packMethod)
 pub fn unload_font_data(chars: &mut GlyphInfo, glyphCount: i32) void -> UnloadFontData(chars, glyphCount)
 pub fn unload_font(font: Font) void -> UnloadFont(font)
 pub fn export_font_as_code(font: Font, file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return ExportFontAsCode(font, cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return ExportFontAsCode(font, file_name_cstr);
 }
 pub fn draw_fps(posX: i32, posY: i32) void -> DrawFPS(posX, posY)
 pub fn draw_text(text: []u8, pos_x: i32, pos_y: i32, font_size: i32, color: Color) void {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    DrawText(cast<&c_char>(text_cstr), pos_x, pos_y, font_size, color);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    DrawText(text_cstr, pos_x, pos_y, font_size, color);
 }
 pub fn draw_text_ex(font: Font, text: []u8, position: Vector2, font_size: f32, spacing: f32, tint: Color) void {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    DrawTextEx(font, cast<&c_char>(text_cstr), position, font_size, spacing, tint);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    DrawTextEx(font, text_cstr, position, font_size, spacing, tint);
 }
 pub fn draw_text_pro(font: Font, text: []u8, position: Vector2, origin: Vector2, rotation: f32, font_size: f32, spacing: f32, tint: Color) void {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    DrawTextPro(font, cast<&c_char>(text_cstr), position, origin, rotation, font_size, spacing, tint);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    DrawTextPro(font, text_cstr, position, origin, rotation, font_size, spacing, tint);
 }
 pub fn draw_text_codepoint(font: Font, codepoint: i32, position: Vector2, fontSize: f32, tint: Color) void -> DrawTextCodepoint(font, codepoint, position, fontSize, tint)
 pub fn draw_text_codepoints(font: Font, codepoints: []i32, position: Vector2, fontSize: f32, spacing: f32, tint: Color) void ->
     DrawTextCodepoints(font, cast<&c_int>(codepoints.ptr), codepoints.len, position, fontSize, spacing, tint)
 pub fn measure_text(text: []u8, font_size: i32) i32 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    return MeasureText(cast<&c_char>(text_cstr), font_size);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    return MeasureText(text_cstr, font_size);
 }
 pub fn measure_text_ex(font: Font, text: []u8, font_size: f32, spacing: f32) Vector2 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    return MeasureTextEx(font, cast<&c_char>(text_cstr), font_size, spacing);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    return MeasureTextEx(font, text_cstr, font_size, spacing);
 }
 pub fn get_glyph_index(font: Font, codepoint: i32) i32 -> GetGlyphIndex(font, codepoint)
 pub fn get_glyph_info(font: Font, codepoint: i32) GlyphInfo -> GetGlyphInfo(font, codepoint)
 pub fn get_glyph_atlas_rec(font: Font, codepoint: i32) Rectangle -> GetGlyphAtlasRec(font, codepoint)
 pub fn load_codepoints(text: []u8) []mut i32 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
 
     let mut c_count: c_int = 0;
     let mut slice: []mut i32 = undefined;
-    slice.ptr = cast<&mut i32>(LoadCodepoints(cast<&c_char>(text_cstr), cast<&mut c_int>(&mut c_count)));
+    slice.ptr = cast<&mut i32>(LoadCodepoints(text_cstr, cast<&mut c_int>(&mut c_count)));
     slice.len = cast<usize>(c_count);
     return slice;
 }
 pub fn unload_codepoints(codepoints: []mut i32) void -> UnloadCodepoints(cast<&mut c_int>(codepoints.ptr))
 pub fn get_codepoint_count(text: []u8) i32 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     return GetCodepointCount(cast<&mut c_char>(text_cstr));
 }
 pub fn get_codepoint(text: []u8, bytesProcessed: &mut i32) i32 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     return GetCodepoint(cast<&mut c_char>(text_cstr), cast<&mut c_int>(bytesProcessed));
 } 
 pub fn codepoint_to_utf8(codepoint: i32) []u8 {
@@ -2434,11 +2431,11 @@ pub fn codepoint_to_utf8(codepoint: i32) []u8 {
 }
 pub fn text_copy(dst: &mut c_char, src: &c_char) i32 -> TextCopy(dst, src)
 pub fn text_is_equal(text1: []u8, text2: []u8) bool {
-    let text1_cstr = std.slice_to_sentinel<u8>(text1, 0);
-    defer std.free<u8>(text1_cstr);
-    let text2_cstr = std.slice_to_sentinel<u8>(text2, 0);
-    defer std.free<u8>(text2_cstr);
-    return TextIsEqual(cast<&c_char>(text1_cstr), cast<&c_char>(text2_cstr));
+    let text1_cstr = std.to_cstr(text1);
+    defer std.free<c_char>(text1_cstr);
+    let text2_cstr = std.to_cstr(text2);
+    defer std.free<c_char>(text2_cstr);
+    return TextIsEqual(text1_cstr, text2_cstr);
 }
 pub fn text_length(text: []u8) u32 {
     return cast<u32>(text.len);
@@ -2448,28 +2445,28 @@ pub fn text_subtext(text: []u8, position: i32, length: i32) []u8 {
     return text[cast<usize>(position)..cast<usize>(position + length)];
 }
 pub fn text_replace(text: []u8, replace: []u8, by: []u8) []u8 {
-    let text_copy_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_copy_cstr);
+    let text_copy_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_copy_cstr);
     
-    let replace_cstr = std.slice_to_sentinel<u8>(replace, 0);
-    defer std.free<u8>(replace_cstr);
+    let replace_cstr = std.to_cstr(replace);
+    defer std.free<c_char>(replace_cstr);
 
-    let by_cstr = std.slice_to_sentinel<u8>(by, 0);
-    defer std.free<u8>(by_cstr);
+    let by_cstr = std.to_cstr(by);
+    defer std.free<c_char>(by_cstr);
 
-    let result_cstr = TextReplace(cast<&mut c_uchar>(text_copy_cstr), cast<&c_char>(replace_cstr), cast<&c_char>(by_cstr));
+    let result_cstr = TextReplace(cast<&mut c_uchar>(text_copy_cstr), replace_cstr, by_cstr);
     defer std.free<u8>(cast<&mut u8>(result_cstr));
     
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn text_insert(text: []u8, insert: []u8, position: i32) []u8 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     
-    let insert_cstr = std.slice_to_sentinel<u8>(insert, 0);
-    defer std.free<u8>(insert_cstr);
+    let insert_cstr = std.to_cstr(insert);
+    defer std.free<c_char>(insert_cstr);
 
-    let result_cstr = TextInsert(cast<&c_char>(text_cstr), cast<&c_char>(insert_cstr), cast<c_int>(position));
+    let result_cstr = TextInsert(text_cstr, insert_cstr, cast<c_int>(position));
     defer std.free<u8>(cast<&mut u8>(result_cstr));
 
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
@@ -2530,43 +2527,43 @@ pub fn text_append(text: []u8, to_append: []u8) []u8 {
     return new_slice;
 }
 pub fn text_find_index(text: []u8, find: []u8) i32 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    let find_cstr = std.slice_to_sentinel<u8>(find, 0);
-    defer std.free<u8>(find_cstr);
-    return TextFindIndex(cast<&c_char>(text_cstr), cast<&c_char>(find_cstr));
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    let find_cstr = std.to_cstr(find);
+    defer std.free<c_char>(find_cstr);
+    return TextFindIndex(text_cstr, find_cstr);
 }
 pub fn text_to_upper(text: []u8) []u8 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     
-    let result_cstr = TextToUpper(cast<&c_char>(text_cstr));
+    let result_cstr = TextToUpper(text_cstr);
     defer std.free<u8>(cast<&mut u8>(result_cstr));
 
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn text_to_lower(text: []u8) []u8 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     
-    let result_cstr = TextToLower(cast<&c_char>(text_cstr));
+    let result_cstr = TextToLower(text_cstr);
     defer std.free<u8>(cast<&mut u8>(result_cstr));
 
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn text_to_pascal(text: []u8) []u8 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
     
-    let result_cstr = TextToPascal(cast<&c_char>(text_cstr));
+    let result_cstr = TextToPascal(text_cstr);
     defer std.free<u8>(cast<&mut u8>(result_cstr));
 
     return cast<[]u8>(std.sentinel_to_slice<c_char>(result_cstr, 0));
 }
 pub fn text_to_integer(text: []u8) i32 {
-    let text_cstr = std.slice_to_sentinel<u8>(text, 0);
-    defer std.free<u8>(text_cstr);
-    return TextToInteger(cast<&c_char>(text_cstr));
+    let text_cstr = std.to_cstr(text);
+    defer std.free<c_char>(text_cstr);
+    return TextToInteger(text_cstr);
 }
 pub fn draw_line_3d(startPos: Vector3, endPos: Vector3, color: Color) void -> DrawLine3D(startPos, endPos, color)
 pub fn draw_point_3d(position: Vector3, color: Color) void -> DrawPoint3D(position, color)
@@ -2588,9 +2585,9 @@ pub fn draw_plane(centerPos: Vector3, size: Vector2, color: Color) void -> DrawP
 pub fn draw_ray(ray: Ray, color: Color) void -> DrawRay(ray, color)
 pub fn draw_grid(slices: i32, spacing: f32) void -> DrawGrid(slices, spacing)
 pub fn load_model(file_name: []u8) Model {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return LoadModel(cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return LoadModel(file_name_cstr);
 }
 pub fn load_model_from_mesh(mesh: Mesh) Model -> LoadModelFromMesh(mesh)
 pub fn unload_model(model: Model) void -> UnloadModel(model)
@@ -2622,22 +2619,22 @@ pub fn gen_mesh_knot(radius: f32, size: f32, radSeg: i32, sides: i32) Mesh -> Ge
 pub fn gen_mesh_heightmap(heightmap: Image, size: Vector3) Mesh -> GenMeshHeightmap(heightmap, size)
 pub fn gen_mesh_cubicmap(cubicmap: Image, cubeSize: Vector3) Mesh -> GenMeshCubicmap(cubicmap, cubeSize)
 pub fn load_materials(file_name: []u8) []mut Material {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
 
     let mut slice: []mut Material = undefined;
-    slice.ptr = LoadMaterials(cast<&c_char>(file_name_cstr), cast<&mut c_int>(&mut slice.len));
+    slice.ptr = LoadMaterials(file_name_cstr, cast<&mut c_int>(&mut slice.len));
     return slice;
 }
 pub fn unload_material(material: Material) void -> UnloadMaterial(material)
 pub fn set_material_texture(material: &mut Material, mapType: MaterialMapIndex, texture: Texture2D) void -> SetMaterialTexture(material, cast<c_int>(mapType), texture)
 pub fn set_model_mesh_material(model: &mut Model, meshId: i32, materialId: i32) void -> SetModelMeshMaterial(model, meshId, materialId)
 pub fn load_model_animations(file_name: []u8) []mut ModelAnimation {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
 
     let mut slice: []mut ModelAnimation = undefined;
-    slice.ptr = LoadModelAnimations(cast<&c_char>(file_name_cstr), cast<&mut c_uint>(&mut slice.len));
+    slice.ptr = LoadModelAnimations(file_name_cstr, cast<&mut c_uint>(&mut slice.len));
     return slice;
 }
 pub fn update_model_animation(model: Model, anim: ModelAnimation, frame: i32) void -> UpdateModelAnimation(model, anim, frame)
@@ -2657,19 +2654,19 @@ pub fn close_audio_device() void -> CloseAudioDevice()
 pub fn is_audio_device_ready() bool -> IsAudioDeviceReady()
 pub fn set_master_volume(volume: f32) void -> SetMasterVolume(volume)
 pub fn load_wave(file_name: []u8) Wave {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return LoadWave(cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return LoadWave(file_name_cstr);
 }
 pub fn load_wave_from_memory(file_type: []u8, file_data: []u8) Wave {
-    let file_type_cstr = std.slice_to_sentinel<u8>(file_type, 0);
-    defer std.free<u8>(file_type_cstr);
-    return LoadWaveFromMemory(cast<&c_char>(file_type_cstr), cast<&c_uchar>(file_data.ptr), cast<c_int>(file_data.len));
+    let file_type_cstr = std.to_cstr(file_type);
+    defer std.free<c_char>(file_type_cstr);
+    return LoadWaveFromMemory(file_type_cstr, cast<&c_uchar>(file_data.ptr), cast<c_int>(file_data.len));
 }
 pub fn load_sound(file_name: []u8) Sound {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return LoadSound(cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return LoadSound(file_name_cstr);
 }
 pub fn load_sound_from_wave(wave: Wave) Sound -> LoadSoundFromWave(wave)
 pub fn update_sound(sound: Sound, data: []u8) void {
@@ -2678,14 +2675,14 @@ pub fn update_sound(sound: Sound, data: []u8) void {
 pub fn unload_wave(wave: Wave) void -> UnloadWave(wave)
 pub fn unload_sound(sound: Sound) void -> UnloadSound(sound)
 pub fn export_wave(wave: Wave, file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return ExportWave(wave, cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return ExportWave(wave, file_name_cstr);
 }
 pub fn export_wave_as_code(wave: Wave, file_name: []u8) bool {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return ExportWaveAsCode(wave, cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return ExportWaveAsCode(wave, file_name_cstr);
 }
 pub fn play_sound(sound: Sound) void -> PlaySound(sound)
 pub fn stop_sound(sound: Sound) void -> StopSound(sound)
@@ -2701,14 +2698,14 @@ pub fn wave_crop(wave: &mut Wave, initSample: i32, finalSample: i32) void -> Wav
 pub fn load_wave_samples(wave: Wave) &mut f32 -> cast<&mut f32>(LoadWaveSamples(wave))
 pub fn unload_wave_samples(samples: &mut f32) void -> UnloadWaveSamples(cast<&mut c_float>(samples))
 pub fn load_music_stream(file_name: []u8) Music {
-    let file_name_cstr = std.slice_to_sentinel<u8>(file_name, 0);
-    defer std.free<u8>(file_name_cstr);
-    return LoadMusicStream(cast<&c_char>(file_name_cstr));
+    let file_name_cstr = std.to_cstr(file_name);
+    defer std.free<c_char>(file_name_cstr);
+    return LoadMusicStream(file_name_cstr);
 }
 pub fn load_music_stream_from_memory(file_type: []u8, data: []u8) Music {
-    let file_type_cstr = std.slice_to_sentinel<u8>(file_type, 0);
-    defer std.free<u8>(file_type_cstr);
-    return LoadMusicStreamFromMemory(cast<&c_char>(file_type_cstr), cast<&c_uchar>(data.ptr), cast<c_int>(data.len));
+    let file_type_cstr = std.to_cstr(file_type);
+    defer std.free<c_char>(file_type_cstr);
+    return LoadMusicStreamFromMemory(file_type_cstr, cast<&c_uchar>(data.ptr), cast<c_int>(data.len));
 }
 pub fn unload_music_stream(music: Music) void -> UnloadMusicStream(music)
 pub fn play_music_stream(music: Music) void -> PlayMusicStream(music)
