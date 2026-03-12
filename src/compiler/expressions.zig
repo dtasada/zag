@@ -185,6 +185,14 @@ fn compileExpected(
     if (!expr_t.check(expected_type))
         return errors.typeMismatch(expected_type, expr_t, expression.getPosition());
 
+    if (expr_t == .reference and expr_t.reference.inner.* == .array and expected_type == .slice and
+        (expected_type.slice.is_mut and !try self.getExpressionMutability(expression.*)))
+    {
+        const err = errors.typeMismatch(expected_type, expr_t, expression.getPosition());
+        utils.print("Maybe try using a mutable reference.\n", .{}, .red);
+        return err;
+    }
+
     var run_standard = false;
     if (!expected_type.eql(expr_t)) switch (expected_type) {
         .optional => |opt| switch (expr_t) {

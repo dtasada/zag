@@ -180,15 +180,15 @@ fn main() void {
 
         let mut health: [32]u8 = undefined;
         c.snprintf(cast<&mut c_char>(&mut health), 32, "health: %zu", player.health);
-        rl.draw_text(&health, 12, 12, 20, rl.Color.WHITE); // compiler bug: should error and ask for &mut health
+        rl.draw_text(&mut health, 12, 12, 20, rl.Color.WHITE); // compiler bug: should error and ask for &mut health
 
         let mut round_str: [32]u8 = undefined;
         c.snprintf(cast<&mut c_char>(&mut round_str), 32, "round: %d", round);
-        rl.draw_text(&round_str, 12, 42, 20, rl.Color.WHITE);
+        rl.draw_text(&mut round_str, 12, 42, 20, rl.Color.WHITE);
 
         let mut zombie_health_str: [32]u8 = undefined;
         c.snprintf(cast<&mut c_char>(&mut zombie_health_str), 32, "zombie health: %d", zombie_health);
-        rl.draw_text(&zombie_health_str, 12, 64, 20, rl.Color.WHITE);
+        rl.draw_text(&mut zombie_health_str, 12, 64, 20, rl.Color.WHITE);
 
         player.update();
 
