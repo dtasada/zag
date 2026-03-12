@@ -91,6 +91,9 @@ pub fn memmove<T>(dst: []mut T, src: []T) void {
     c.memmove(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
 }
 
+pub fn randint<T>(min, max: T) T -> min + c.rand() % (max - min)
+
+
 pub struct ArrayList<T> {
     items: []mut T,
     capacity: usize,

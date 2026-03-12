@@ -9,14 +9,14 @@ pub bind fn realloc(ptr: &mut void, len: usize) &mut void;
 pub bind fn memcpy(dst: &mut void, src: &void, len: usize) &mut void;
 pub bind fn memmove(dst: &mut void, src: &void, len: usize) &mut void;
 
-pub bind fn acos(x: f64) f64;
-pub bind fn atan2(y, x: f64) f64;
-pub bind fn asin(x: f64) f64;
-pub bind fn cos(x: f64) f64;
-pub bind fn pow(a: f64, b: f64) f64;
-pub bind fn sin(x: f64) f64;
-pub bind fn sqrt(x: f64) f64;
-pub bind fn tan(x: f64) f64;
+pub bind fn acos(x: c_double) c_double;
+pub bind fn atan2(y, x: c_double) c_double;
+pub bind fn asin(x: c_double) c_double;
+pub bind fn cos(x: c_double) c_double;
+pub bind fn pow(a: c_double, b: c_double) c_double;
+pub bind fn sin(x: c_double) c_double;
+pub bind fn sqrt(x: c_double) c_double;
+pub bind fn tan(x: c_double) c_double;
 
 pub bind fn stpcpy(dst: &mut c_char, src: &c_char) &mut c_char;
 pub bind fn strcat(s1: &mut c_char, s2: &c_char) &mut c_char;
@@ -35,3 +35,7 @@ pub bind fn strsep(stringp: &mut &mut c_char, delim: &c_char) &mut c_char;
 pub bind fn strspn(s1, s2: &c_char) usize;
 pub bind fn strstr(s1, s2: &c_char) &mut c_char;
 pub bind fn strtok(s1: &mut c_char, s2: &c_char) &mut c_char;
+
+pub bind fn srand(seed: c_uint) void;
+pub bind fn rand() c_int;
+pub bind fn time(second: &c_ulong) c_ulong;

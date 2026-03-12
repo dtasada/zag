@@ -16,6 +16,7 @@ struct Player {
     color: rl.Color,
     bullets: std.ArrayList<Bullet>,
     health: usize,
+    invincible: bool,
 
     pub fn init(x, y: f32) Player -> Player {
         position: rl.Vector2.init(x, y),
@@ -55,12 +56,12 @@ struct Zombie {
 
     position: rl.Vector2,
     color: rl.Color,
-    health: usize,
+    health: i32,
 
-    pub fn init(x: f32, y: f32) Zombie -> Zombie {
+    pub fn init(x, y: f32, health: i32) Zombie -> Zombie {
         position: rl.Vector2.init(x, y),
         color: rl.Color.GREEN,
-        health: 30,
+        health: health,
     }
 
     fn update(self: &mut Zombie, player: &Player) void {
@@ -77,12 +78,19 @@ enum State {
 }
 
 fn main() void {
-    rl.init_window(1280, 720, "Hello world!");
+    c.srand(c.time(c_null));
+
+    let window_width = 1280;
+    let window_height = 720;
+
+    rl.init_window(window_width, window_height, "Hello world!");
     defer rl.close_window();
+
+    c.srand(rl.get_time());
 
     rl.set_target_fps(60);
 
-    let mut player = Player.init(640, 360);
+    let mut player = Player.init(window_width / 2, window_height / 2);
     defer player.deinit();
 
     let mut state = State.LOBBY;
@@ -90,10 +98,11 @@ fn main() void {
     let mut zombies = std.ArrayList<Zombie>.init();
     defer zombies.deinit();
 
-    zombies.append(Zombie.init(0, 0));
-    zombies.append(Zombie.init(0, 720));
-    zombies.append(Zombie.init(1280, 0));
-    zombies.append(Zombie.init(1280, 720));
+    let mut round: u8 = 1;
+    let mut zombies_per_round: u8 = 6;
+    let mut zombie_health = 150;
+    let mut last_zombie_spawned = rl.get_time();
+    let mut amount_of_zombies_spawned_this_round = 0;
 
     while (!rl.window_should_close()) {
         rl.begin_drawing();
@@ -102,7 +111,7 @@ fn main() void {
         rl.clear_background(rl.Color.BLACK);
         
         if (state == State.LOBBY) {
-            rl.draw_text("ZAG GAME", 200, 200, 60, rl.Color.WHITE);
+            rl.draw_text("ZAG GAME", 460, 300, 60, rl.Color.WHITE);
             if (rl.is_key_pressed(rl.KeyboardKey.SPACE)) state = State.GAME;
             continue;
         }
@@ -125,10 +134,10 @@ fn main() void {
                     player.bullets.items[bi].position,
                     Bullet.SIZE,
                     zombie.position,
-                    Zombie.SIZE,
+                    zombie.SIZE,
                 )) {
                     player.bullets.swap_remove(bi);
-                    zombie.health -= 10;
+                    zombie.health -= 50;
                 } else bi += 1;
 
             if (zombie.health <= 0)
@@ -136,14 +145,63 @@ fn main() void {
             else zi += 1;
         }
 
+        if (rl.get_time() - last_zombie_spawned > 2 and zombies_per_round > zombies.items.len) {
+            let edge = std.randint<u8>(0, 4);
+            let mut x = 0;
+            let mut y = 0;
+
+            let xrand = std.randint<u32>(0, window_width);
+            let yrand = std.randint<u32>(0, window_height);
+
+            match (edge) {
+                0 -> y = yrand,
+                1 -> x = xrand,
+                2 -> {
+                    x = window_width;
+                    y = yrand;
+                },
+                3 -> {
+                    x = xrand;
+                    y = window_height;
+                },
+            }
+
+            zombies.append(Zombie.init(x, y, zombie_health));
+            amount_of_zombies_spawned_this_round += 1;
+            last_zombie_spawned = rl.get_time();
+        }
+
+        if (amount_of_zombies_spawned_this_round == zombies_per_round and zombies.items.len == 0) {
+            round += 1;
+            zombies_per_round = std.min<u8>(24, (6 + 4*(round-1)));
+            zombie_health = 150 * 1.1^(round - 1);
+            amount_of_zombies_spawned_this_round = 0;
+        }
+
         let mut health: [32]u8 = undefined;
         c.snprintf(cast<&mut c_char>(&mut health), 32, "health: %zu", player.health);
-        rl.draw_text(&health, 12, 12, 20, rl.Color.WHITE);
+        rl.draw_text(&health, 12, 12, 20, rl.Color.WHITE); // compiler bug: should error and ask for &mut health
+
+        let mut round_str: [32]u8 = undefined;
+        c.snprintf(cast<&mut c_char>(&mut round_str), 32, "round: %d", round);
+        rl.draw_text(&round_str, 12, 42, 20, rl.Color.WHITE);
+
+        let mut zombie_health_str: [32]u8 = undefined;
+        c.snprintf(cast<&mut c_char>(&mut zombie_health_str), 32, "zombie health: %d", zombie_health);
+        rl.draw_text(&zombie_health_str, 12, 64, 20, rl.Color.WHITE);
 
         player.update();
 
         if (player.health <= 0) {
-
+            player = Player.init(640, 360);
+            state = State.LOBBY;
+            zombies.deinit();
+            zombies = std.ArrayList<Zombie>.init();
+            round = 1;
+            zombies_per_round = 6;
+            zombie_health = 150;
+            last_zombie_spawned = rl.get_time();
+            amount_of_zombies_spawned_this_round = 0;
         }
     }
 }
