@@ -182,8 +182,8 @@ pub struct ArrayList<T> {
 
         if (index < self.items.len - 1) {
             // Only memmove if it's not the last element
-            let src = self.items[index + 1..self.items.len];
-            let dst = self.items[index .. self.items.len - 1];
+            let src = self.items[index + 1 ..];
+            let dst = self.items[index..];
             memmove<T>(dst, src);
         }
         

@@ -487,10 +487,17 @@ pub fn parseCapture(self: *Self) !?utils.Capture {
                 break :blk true;
             } else false;
             const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
+
+            const index = if (self.currentToken() == .@",") b2: {
+                _ = self.advance();
+                break :b2 try self.expect(self.advance(), .ident, "capture", "index name");
+            } else null;
+
             try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
             break :b if (std.mem.eql(u8, capture_name, "_")) null else .{
                 .name = capture_name,
                 .takes_ref = if (capture_takes_ref) .{ .some = capture_ref_is_mut } else .none,
+                .index = index,
             };
         },
         else => null,

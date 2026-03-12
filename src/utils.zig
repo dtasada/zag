@@ -6,6 +6,7 @@ pub const Capture = struct {
         none,
         some: bool,
     },
+    index: ?[]const u8,
 };
 
 pub const CompoundTypeTag = enum {

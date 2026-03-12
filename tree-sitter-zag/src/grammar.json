@@ -1746,6 +1746,27 @@
           }
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ","
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "ident"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": "|"
         }
@@ -1950,6 +1971,14 @@
         {
           "type": "STRING",
           "value": "c_ulong"
+        },
+        {
+          "type": "STRING",
+          "value": "c_float"
+        },
+        {
+          "type": "STRING",
+          "value": "c_double"
         }
       ]
     },

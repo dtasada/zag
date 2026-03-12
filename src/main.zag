@@ -38,7 +38,7 @@ struct Player {
             });
         }
 
-        for (self.bullets.items) |&mut bullet| {
+        for (self.bullets.items) |&mut bullet, i| {
             bullet.position = bullet.position.add(bullet.velocity.scale(10.0));
             rl.draw_circle_v(bullet.position, 5.0, rl.Color.WHITE);
         }
@@ -85,7 +85,18 @@ fn main() void {
 
         rl.clear_background(rl.Color.BLACK);
 
-        for (zombies.items) |&mut zombie| zombie.update(&player);
+        for (zombies.items) |&mut zombie| {
+            zombie.update(&player);
+            let mut i: usize = 0;
+            while (i < player.bullets.items.len) {
+                if (rl.check_collision_circles(player.bullets.items[i].position, 5.0, zombie.position, 20.0)) {
+                    player.bullets.swap_remove(i);
+                    continue;
+                }
+
+                i += 1;
+            }
+        }
 
         player.update();
     }

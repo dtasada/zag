@@ -456,8 +456,9 @@ fn conditional(
                 try self.write(" : ");
                 try self.print("{s}-- ", .{capture_ident});
 
-                if (statement.capture) |capture|
+                if (statement.capture) |capture| {
                     try self.registerSymbol(capture.name, .{ .symbol = .{ .type = .usize } }, .{});
+                }
             },
             else => |other| {
                 capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
@@ -483,6 +484,20 @@ fn conditional(
         },
     }
     try self.write(") ");
+
+    if (statement.capture) |c| if (c.index) |i| {
+        if (T != .@"for") return utils.printErr(
+            error.IllegalStatement,
+            "comperr: {s} statement doesn't take an index capture ({f}).\n",
+            .{ @tagName(T), statement.pos },
+            .red,
+        );
+        try self.registerSymbol(
+            i,
+            .{ .symbol = .{ .type = .usize } },
+            .{ .inner_name = capture_ident },
+        );
+    };
 
     try self.compileBlock(
         switch (statement.body.*) {

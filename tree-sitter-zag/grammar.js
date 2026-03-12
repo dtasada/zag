@@ -323,6 +323,7 @@ export default grammar({
       "|",
       optional(seq("&", optional("mut"))),
       field("identifier", $.ident),
+      optional(seq(",", $.ident)),
       "|",
     ),
 

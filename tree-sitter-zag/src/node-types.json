@@ -469,6 +469,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ident",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2623,6 +2633,14 @@
   },
   {
     "type": "c_char",
+    "named": false
+  },
+  {
+    "type": "c_double",
+    "named": false
+  },
+  {
+    "type": "c_float",
     "named": false
   },
   {
