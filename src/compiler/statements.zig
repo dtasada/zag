@@ -88,6 +88,9 @@ fn compoundTypeDeclaration(
         .@"enum" => ast.Statement.EnumDeclaration,
     },
 ) CompilerError!void {
+    try self.pushScope();
+    defer self.popScope();
+
     const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (T) {
         .@"struct" => .@"struct",
         .@"union" => .@"union",

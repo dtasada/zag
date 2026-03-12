@@ -97,7 +97,7 @@ fn main() void {
         for (zombies.items) |&mut zombie| {
             zombie.update(&player);
 
-            if (rl.check_collision_circles()) {
+            if (rl.check_collision_circles(zombie.position, Zombie.SIZE, player.position, Player.SIZE)) {
 
             }
 

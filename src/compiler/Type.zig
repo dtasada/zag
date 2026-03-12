@@ -927,16 +927,20 @@ pub const Type = union(enum) {
             if (type_decl.generic_types.items.len > 0) return compound_type;
         }
 
-        try compiler.pushScope();
-        defer compiler.popScope();
-
         switch (T) {
             .@"struct", .@"union" => for (type_decl.generic_types.items) |g|
                 try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } }, .{}),
             else => {},
         }
 
-        for (type_decl.variables.items) |variable|
+        for (type_decl.variables.items) |variable| {
+            const value = try compiler.solveComptimeExpression(variable.assigned_value);
+            const var_type = if (variable.type == .inferred) value.getType() else try fromAst(compiler, variable.type);
+
+            try compiler.registerSymbol(variable.variable_name, .{
+                .constant = .{ .type = var_type, .value = value },
+            }, .{});
+
             try compound_type.variables.put(
                 variable.variable_name,
                 .{
@@ -946,12 +950,10 @@ pub const Type = union(enum) {
                         "{s}_{s}",
                         .{ inner_name, variable.variable_name },
                     ),
-                    .type = if (variable.type == .inferred)
-                        try infer(compiler, variable.assigned_value)
-                    else
-                        try fromAst(compiler, variable.type),
+                    .type = var_type,
                 },
             );
+        }
 
         for (type_decl.subtypes.items) |subtype| switch (subtype) {
             inline else => |st, tag| try compound_type.subtypes.put(

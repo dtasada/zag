@@ -944,7 +944,44 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
         },
-        .member => .{ .type = try .infer(self, expression) },
+        .struct_instantiation => |inst| {
+            var fields: std.ArrayList(Value.ComptimeStruct.Field) = .empty;
+            errdefer fields.deinit(self.alloc);
+
+            var it = inst.members.iterator();
+            while (it.next()) |member| {
+                try fields.append(self.alloc, .{
+                    .name = member.key_ptr.*,
+                    .value = try self.solveComptimeExpression(member.value_ptr.*),
+                });
+            }
+
+            const inferred_type = try Type.infer(self, expression);
+            return .{
+                .comptime_struct = .{
+                    .type = inferred_type,
+                    .fields = try fields.toOwnedSlice(self.alloc),
+                },
+            };
+        },
+        .member => |member_expr| {
+            const parent_val = try self.solveComptimeExpression(member_expr.parent.*);
+            return switch (parent_val) {
+                .comptime_struct => |cs| {
+                    for (cs.fields) |field| {
+                        if (std.mem.eql(u8, field.name, member_expr.member_name)) {
+                            return field.value;
+                        }
+                    }
+                    return error.ExpressionCannotBeEvaluatedAtCompileTime;
+                },
+                .type => .{ .type = try .infer(self, expression) },
+                else => {
+                    std.debug.print("cannot access member of comptime value: {f}\n", .{parent_val});
+                    return error.ExpressionCannotBeEvaluatedAtCompileTime;
+                },
+            };
+        },
         else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
 }

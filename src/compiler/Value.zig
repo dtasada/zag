@@ -25,6 +25,8 @@ pub const Value = union(enum) {
 
     void,
 
+    comptime_struct: ComptimeStruct,
+
     // @"struct": CompoundType(.@"struct"),
     // @"enum": CompoundType(.@"enum"),
     // @"union": CompoundType(.@"union"),
@@ -33,6 +35,16 @@ pub const Value = union(enum) {
     // array: struct { value: std.ArrayList(Value), type: Type.Array },
     // error_union: struct { value: *const Value, type: Type.ErrorUnion },
     // function: struct { value: *const Value, type: Type.Function },
+
+    pub const ComptimeStruct = struct {
+        type: Type,
+        fields: []const Field,
+
+        pub const Field = struct {
+            name: []const u8,
+            value: Value,
+        };
+    };
 
     fn CompoundType(compound_type: utils.CompoundTypeTag) type {
         return struct {
@@ -54,6 +66,16 @@ pub const Value = union(enum) {
             .bool => |b| try writer.print("{}", .{b}),
             .type => |t| try writer.print("{f}", .{t}),
             .void => _ = try writer.write("void"),
+            .comptime_struct => |cs| {
+                try writer.print("{f}{{", .{cs.type});
+                for (cs.fields, 0..) |field, i| {
+                    try writer.print(".{s} = {f}", .{ field.name, field.value });
+                    if (i < cs.fields.len - 1) {
+                        _ = try writer.write(", ");
+                    }
+                }
+                _ = try writer.write("}}");
+            },
         }
     }
 
@@ -72,6 +94,7 @@ pub const Value = union(enum) {
             .bool => .bool,
             .type => |*t| .{ .type = t },
             .void => .void,
+            .comptime_struct => |cs| cs.type,
         };
     }
 
@@ -165,6 +188,13 @@ pub const Value = union(enum) {
             .bool => |b| h.update(std.mem.asBytes(&b)),
             .type => |t| h.update(std.mem.asBytes(&t.hash())),
             .void => {},
+            .comptime_struct => |cs| {
+                h.update(std.mem.asBytes(&cs.type.hash()));
+                for (cs.fields) |field| {
+                    h.update(field.name);
+                    h.update(std.mem.asBytes(&field.value.hash()));
+                }
+            },
         }
         return h.final();
     }
