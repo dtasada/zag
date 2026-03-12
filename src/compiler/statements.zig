@@ -97,10 +97,7 @@ fn compoundTypeDeclaration(
         .@"enum" => .@"enum",
     }, type_decl);
 
-    switch (T) {
-        inline .@"struct", .@"union" => if (type_decl.generic_types.items.len > 0) return,
-        else => {},
-    }
+    if (T != .@"enum" and type_decl.generic_types.items.len > 0) return;
 
     const saved_section = self.current_section;
     self.switchSection(.header_type_defs);

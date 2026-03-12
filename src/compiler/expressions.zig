@@ -69,6 +69,16 @@ pub fn compile(
                     try self.print("({s}){{ .is_success = true, .payload.success = 0 }}", .{error_union_type_name});
                 } else unreachable;
             },
+            .slice => |slc| if (expr_t == .reference and
+                expr_t.reference.inner.* == .array and
+                expr_t.reference.inner.array.inner.eql(slc.inner.*))
+            {
+                try self.write("(");
+                try self.compileType(expected_type, .{});
+                try self.write("){ .ptr = ");
+                try compile(self, expression, .{});
+                try self.print(", .len = {} }}", .{expr_t.reference.inner.array.size});
+            } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
             .reference => |ref| if (expr_t == .slice and
                 expr_t.slice.inner.* == .u8 and
                 ref.inner.* == .c_char) switch (expression.*) {

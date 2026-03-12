@@ -1219,6 +1219,8 @@ pub const Type = union(enum) {
                 .reference => |expected_ref| received_ref.inner.eql(expected_ref.inner.*) and
                     (received_ref.is_mut or !expected_ref.is_mut) or
                     expected_ref.inner.* == .void or received_ref.inner.* == .void,
+                .slice => |slc| received_ref.inner.* == .array and
+                    received_ref.inner.array.inner.eql(slc.inner.*),
                 else => fallback,
             },
             else => fallback,

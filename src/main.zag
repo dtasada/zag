@@ -98,7 +98,7 @@ fn main() void {
             zombie.update(&player);
 
             if (rl.check_collision_circles(zombie.position, Zombie.SIZE, player.position, Player.SIZE)) {
-
+                player.health -= 10;
             }
 
             let mut i: usize = 0;
@@ -111,6 +111,10 @@ fn main() void {
                 i += 1;
             }
         }
+
+        let mut health: [32]u8 = undefined;
+        c.snprintf(cast<&mut c_char>(&mut health), 32, "health: %zu", player.health);
+        rl.draw_text(&health, 12, 12, 20, rl.Color.WHITE);
 
         player.update();
     }

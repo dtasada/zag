@@ -1,5 +1,6 @@
 pub bind fn printf(fmt: &c_char, args...) c_int;
 pub bind fn panic(fmt: &c_char, args...) void;
+pub bind fn snprintf(str: &mut c_char, size: usize, format: &c_char, args...) c_int;
 
 pub bind fn free(ptr: &mut void) void;
 pub bind fn malloc(size: usize) &mut void;
