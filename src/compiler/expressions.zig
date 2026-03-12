@@ -13,81 +13,22 @@ const Type = @import("Type.zig").Type;
 
 const CompilerError = errors.CompilerError;
 
+const Opts = struct {
+    binding_mut: bool = false,
+    expected_type: ?Type = null, // null means infer the type from the expression
+    is_variable_declaration: bool = false,
+};
 pub fn compile(
     self: *Self,
     expression: *const ast.Expression,
-    opts: struct {
-        binding_mut: bool = false,
-        expected_type: ?Type = null, // null means infer the type from the expression
-        is_variable_declaration: bool = false,
-    },
+    opts: Opts,
 ) CompilerError!void {
-    const expr_t: Type = try .infer(self, expression.*);
-    if (expr_t == .error_union and !expr_t.check(self.current_return_type.?))
-        return utils.printErr(
-            error.TypeMismatch,
-            "comperr: Expression of type '{f}' must be tried or caught ({f}).\n",
-            .{ expr_t, expression.getPosition() },
-            .red,
-        );
-
     if (opts.expected_type) |expected_type| {
-        if (!expr_t.check(expected_type))
-            return errors.typeMismatch(expected_type, expr_t, expression.getPosition());
+        try compileExpected(self, expression, expected_type, opts);
+        return;
+    }
 
-        if (!expected_type.eql(expr_t)) switch (expected_type) {
-            .optional => |opt| switch (expr_t) {
-                .@"typeof(nil)" => try self.print(
-                    "({s}){{ .is_some = false }}",
-                    .{self.zag_header_contents.get(expected_type).?},
-                ),
-                else => if (opt.check(expr_t)) {
-                    try self.print(
-                        "({s}){{ .is_some = true, .payload = ",
-                        .{self.zag_header_contents.get(expected_type).?},
-                    );
-                    try compile(self, expression, .{ .expected_type = opt.* });
-                    try self.write(" }");
-                } else return errors.typeMismatch(
-                    expected_type,
-                    expr_t,
-                    expression.getPosition(),
-                ),
-            },
-            .error_union => |error_union| {
-                const error_union_type_name = self.zag_header_contents.get(expected_type).?;
-
-                if (expr_t.check(error_union.success.*)) {
-                    try self.print("({s}){{ .is_success = true, .payload.success = ", .{error_union_type_name});
-                    try compile(self, expression, .{});
-                    try self.write(" }");
-                } else if (expr_t.check(error_union.failure.*)) {
-                    try self.print("({s}){{ .is_success = false, .payload.failure = ", .{error_union_type_name});
-                    try compile(self, expression, .{});
-                    try self.write(" }");
-                } else if (error_union.success.* == .void and expr_t == .i32) {
-                    try self.print("({s}){{ .is_success = true, .payload.success = 0 }}", .{error_union_type_name});
-                } else unreachable;
-            },
-            .slice => |slc| if (expr_t == .reference and
-                expr_t.reference.inner.* == .array and
-                expr_t.reference.inner.array.inner.eql(slc.inner.*))
-            {
-                try self.write("(");
-                try self.compileType(expected_type, .{});
-                try self.write("){ .ptr = ");
-                try compile(self, expression, .{});
-                try self.print(", .len = {} }}", .{expr_t.reference.inner.array.size});
-            } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
-            .reference => |ref| if (expr_t == .slice and
-                expr_t.slice.inner.* == .u8 and
-                ref.inner.* == .c_char) switch (expression.*) {
-                .string => |str| try self.print("\"{s}\"", .{str.string}),
-                else => try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
-            } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
-            else => try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration }),
-        } else try compile(self, expression, .{ .binding_mut = opts.binding_mut, .is_variable_declaration = opts.is_variable_declaration });
-    } else switch (expression.*) {
+    switch (expression.*) {
         .assignment => |a| try assignment(self, a),
         .block => |blk| try block(self, blk),
         .binary => |b| try binary(self, b),
@@ -223,6 +164,89 @@ pub fn compile(
         },
         .bad_node => unreachable,
     }
+}
+
+/// Compiles expression with an expected type. Returns false when expression
+fn compileExpected(
+    self: *Self,
+    expression: *const ast.Expression,
+    expected_type: Type,
+    opts: Opts,
+) !void {
+    const expr_t: Type = try .infer(self, expression.*);
+    if (expr_t == .error_union and !expr_t.check(self.current_return_type.?))
+        return utils.printErr(
+            error.TypeMismatch,
+            "comperr: Expression of type '{f}' must be tried or caught ({f}).\n",
+            .{ expr_t, expression.getPosition() },
+            .red,
+        );
+
+    if (!expr_t.check(expected_type))
+        return errors.typeMismatch(expected_type, expr_t, expression.getPosition());
+
+    var run_standard = false;
+    if (!expected_type.eql(expr_t)) switch (expected_type) {
+        .optional => |opt| switch (expr_t) {
+            .@"typeof(nil)" => try self.print(
+                "({s}){{ .is_some = false }}",
+                .{self.zag_header_contents.get(expected_type).?},
+            ),
+            else => if (opt.check(expr_t)) {
+                try self.print(
+                    "({s}){{ .is_some = true, .payload = ",
+                    .{self.zag_header_contents.get(expected_type).?},
+                );
+                try compile(self, expression, .{ .expected_type = opt.* });
+                try self.write(" }");
+            } else return errors.typeMismatch(
+                expected_type,
+                expr_t,
+                expression.getPosition(),
+            ),
+        },
+        .error_union => |error_union| {
+            const error_union_type_name = self.zag_header_contents.get(expected_type).?;
+
+            if (expr_t.check(error_union.success.*)) {
+                try self.print("({s}){{ .is_success = true, .payload.success = ", .{error_union_type_name});
+                try compile(self, expression, .{});
+                try self.write(" }");
+            } else if (expr_t.check(error_union.failure.*)) {
+                try self.print("({s}){{ .is_success = false, .payload.failure = ", .{error_union_type_name});
+                try compile(self, expression, .{});
+                try self.write(" }");
+            } else if (error_union.success.* == .void and expr_t == .i32) {
+                try self.print("({s}){{ .is_success = true, .payload.success = 0 }}", .{error_union_type_name});
+            } else unreachable;
+        },
+        .slice => |slc| if (expr_t == .reference and
+            expr_t.reference.inner.* == .array and
+            expr_t.reference.inner.array.inner.eql(slc.inner.*))
+        {
+            try self.write("(");
+            try self.compileType(expected_type, .{});
+            try self.write("){ .ptr = ");
+            try compile(self, expression, .{});
+            try self.print(", .len = {} }}", .{expr_t.reference.inner.array.size});
+        } else {
+            run_standard = true;
+        },
+        .reference => |ref| if (expr_t == .slice and
+            expr_t.slice.inner.* == .u8 and
+            ref.inner.* == .c_char) switch (expression.*) {
+            .string => |str| try self.print("\"{s}\"", .{str.string}),
+            else => run_standard = true,
+        } else {
+            run_standard = true;
+        },
+        else => run_standard = true,
+    } else run_standard = true;
+
+    if (run_standard) try compile(self, expression, .{
+        .binding_mut = opts.binding_mut,
+        .is_variable_declaration = opts.is_variable_declaration,
+    });
 }
 
 fn @"if"(self: *Self, expr: ast.Expression.If) !void {
