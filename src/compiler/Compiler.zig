@@ -671,57 +671,68 @@ pub fn compileBlock(
         try self.registerSymbol(iterator.capture.name, .{ .symbol = .{ .type = inner_type } }, .{});
     }
 
-    var returns = false;
-    var return_expr: ?ast.Expression = null;
+    var returns: union(enum) { yes: ?ast.Expression, no, @"break", @"continue" } = .no;
     for (block.items) |*statement| switch (statement.*) {
         .@"return" => |r| {
-            return_expr = r.@"return";
-            returns = true;
+            returns = .{ .yes = r.@"return" };
             break;
         },
         .block_eval => |be| {
-            if (try Type.infer(self, be) != .void) {
-                return_expr = be;
-                returns = true;
-            } else try statements.compile(self, statement);
+            if (try Type.infer(self, be) != .void)
+                returns = .{ .yes = be }
+            else
+                try statements.compile(self, statement);
+            break;
+        },
+        .@"continue" => {
+            returns = .@"continue";
+            break;
+        },
+        .@"break" => {
+            returns = .@"break";
             break;
         },
         else => try statements.compile(self, statement),
     };
 
-    if (returns) if (return_expr) |*e| {
-        if (self.current_return_type.? == .void) return utils.printErr(
-            error.IllegalExpression,
-            "comperr: Cannot return value in a void function ({f}).\n",
-            .{e.getPosition()},
-            .red,
-        );
+    switch (returns) {
+        .yes => |return_expr| if (return_expr) |*e| {
+            if (self.current_return_type.? == .void) return utils.printErr(
+                error.IllegalExpression,
+                "comperr: Cannot return value in a void function ({f}).\n",
+                .{e.getPosition()},
+                .red,
+            );
 
-        const return_type = opts.return_type_override orelse self.current_return_type.?;
-        self.currentSection().current_statement = self.currentWriter().items.len;
-        try self.compileVariableSignature("__zag_ret_val", return_type, .{ .binding_mut = true });
-        try self.write(" = ");
-        if (opts.return_type_override_is_array) try self.print("({s}){{ .items = ", .{opts.return_type_override.?.@"struct".inner_name});
-        try expressions.compile(self, e, .{
-            .is_variable_declaration = true,
-            .expected_type = self.current_return_type.?,
-        });
-        if (opts.return_type_override_is_array) try self.write("}");
-        try self.write(";\n");
-    };
+            const return_type = opts.return_type_override orelse self.current_return_type.?;
+            self.currentSection().current_statement = self.currentWriter().items.len;
+            try self.compileVariableSignature("__zag_ret_val", return_type, .{ .binding_mut = true });
+            try self.write(" = ");
+            if (opts.return_type_override_is_array) try self.print("({s}){{ .items = ", .{opts.return_type_override.?.@"struct".inner_name});
+            try expressions.compile(self, e, .{
+                .is_variable_declaration = true,
+                .expected_type = self.current_return_type.?,
+            });
+            if (opts.return_type_override_is_array) try self.write("}");
+            try self.write(";\n");
+        },
+        else => {},
+    }
 
     for (self.scopes.getLast().pending_defers.items) |pd| try statements.compile(self, pd);
 
-    if (return_expr) |_| {
-        self.currentSection().current_statement = self.currentWriter().items.len;
-        try self.write("return __zag_ret_val;");
-    } else if (returns) {
-        try self.write("return;\n");
-    } else if (opts.return_implicit_success) |ris| {
-        self.currentSection().current_statement = self.currentWriter().items.len;
-        try self.write("return (");
-        try self.compileType(ris, .{});
-        try self.write("){ .is_success = true, .payload.success = 0 };\n");
+    switch (returns) {
+        .yes => |expr| if (expr) |_| {
+            self.currentSection().current_statement = self.currentWriter().items.len;
+            try self.write("return __zag_ret_val;");
+        } else try self.write("return;\n"),
+        inline .@"break", .@"continue" => |_, t| try self.print("{s};\n", .{@tagName(t)}),
+        .no => if (opts.return_implicit_success) |ris| {
+            self.currentSection().current_statement = self.currentWriter().items.len;
+            try self.write("return (");
+            try self.compileType(ris, .{});
+            try self.write("){ .is_success = true, .payload.success = 0 };\n");
+        },
     }
 
     try self.write("}\n");

@@ -79,6 +79,14 @@ fn main() void {
     zombies.append(Zombie.init(1280, 0));
     zombies.append(Zombie.init(1280, 720));
 
+    while (2 < 1) {
+        c.printf("before\n");
+        defer c.printf("hello world\n");
+        c.printf("after\n");
+        continue;
+        c.printf("87\n");
+    }
+
     while (!rl.window_should_close()) {
         rl.begin_drawing();
         defer rl.end_drawing();
