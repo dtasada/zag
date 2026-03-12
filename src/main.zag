@@ -18,7 +18,7 @@ struct Player {
     bullets: std.ArrayList<Bullet>,
     health: usize,
 
-    pub fn init(x: f32, y: f32) Player -> Player {
+    pub fn init(x, y: f32) Player -> Player {
         position: rl.Vector2.init(x, y),
         color: rl.Color.RED,
         bullets: std.ArrayList<Bullet>.init(),
@@ -61,6 +61,7 @@ struct Zombie {
     pub fn init(x: f32, y: f32) Zombie -> Zombie {
         position: rl.Vector2.init(x, y),
         color: rl.Color.GREEN,
+        health: 30,
     }
 
     fn update(self: &mut Zombie, player: &Player) void {
@@ -71,6 +72,11 @@ struct Zombie {
     }
 }
 
+enum State {
+    LOBBY,
+    GAME,
+}
+
 fn main() void {
     rl.init_window(1280, 720, "Hello world!");
     defer rl.close_window();
@@ -79,6 +85,8 @@ fn main() void {
 
     let mut player = Player.init(640, 360);
     defer player.deinit();
+
+    let mut state = State.LOBBY;
 
     let mut zombies = std.ArrayList<Zombie>.init();
     defer zombies.deinit();
@@ -93,23 +101,40 @@ fn main() void {
         defer rl.end_drawing();
 
         rl.clear_background(rl.Color.BLACK);
+        
+        if (state == State.LOBBY) {
+            rl.draw_text("ZAG GAME", 200, 200, 60, rl.Color.WHITE);
+            if (rl.is_key_pressed(rl.KeyboardKey.SPACE)) state = State.GAME;
+            continue;
+        }
 
-        for (zombies.items) |&mut zombie| {
+        let mut zi: usize = 0;
+        while (zi < zombies.items.len) {
+            let mut zombie = &mut zombies.items[zi];
             zombie.update(&player);
 
-            if (rl.check_collision_circles(zombie.position, Zombie.SIZE, player.position, Player.SIZE)) {
-                player.health -= 10;
-            }
+            if (rl.check_collision_circles(
+                zombie.position,
+                Zombie.SIZE,
+                player.position,
+                Player.SIZE,
+            )) player.health -= 10;
 
-            let mut i: usize = 0;
-            while (i < player.bullets.items.len) {
-                if (rl.check_collision_circles(player.bullets.items[i].position, Bullet.SIZE, zombie.position, Zombie.SIZE)) {
-                    player.bullets.swap_remove(i);
-                    continue;
-                }
+            let mut bi: usize = 0;
+            while (bi < player.bullets.items.len)
+                if (rl.check_collision_circles(
+                    player.bullets.items[bi].position,
+                    Bullet.SIZE,
+                    zombie.position,
+                    Zombie.SIZE,
+                )) {
+                    player.bullets.swap_remove(bi);
+                    zombie.health -= 10;
+                } else bi += 1;
 
-                i += 1;
-            }
+            if (zombie.health <= 0)
+                zombies.swap_remove(zi)
+            else zi += 1;
         }
 
         let mut health: [32]u8 = undefined;
@@ -117,5 +142,9 @@ fn main() void {
         rl.draw_text(&health, 12, 12, 20, rl.Color.WHITE);
 
         player.update();
+
+        if (player.health <= 0) {
+
+        }
     }
 }

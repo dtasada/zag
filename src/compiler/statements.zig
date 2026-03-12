@@ -53,7 +53,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         },
         .@"defer" => |d| {
             var pending_defers = self.scopes.getLast().pending_defers;
-            try pending_defers.append(self.alloc, d.stmt);
+            try pending_defers.insert(self.alloc, 0, d.stmt);
         },
     }
 }

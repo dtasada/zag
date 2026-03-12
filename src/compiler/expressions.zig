@@ -735,9 +735,10 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
 fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
     const lhs_t: Type = try .infer(self, expr.lhs.*);
     const rhs_t: Type = try .infer(self, expr.rhs.*);
-    if ((!lhs_t.isNumeric() or !rhs_t.isNumeric()) and
-        (lhs_t != .bool or rhs_t != .bool) and
-        (lhs_t != .reference or rhs_t != .reference))
+    if (!((lhs_t.isNumeric() and rhs_t.isNumeric()) or
+        (lhs_t == .bool and rhs_t == .bool) or
+        (lhs_t == .reference and rhs_t == .reference) or
+        (lhs_t == .@"enum" and rhs_t == .@"enum" and lhs_t.eql(rhs_t))))
         return utils.printErr(
             error.IllegalExpression,
             "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
