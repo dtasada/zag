@@ -1,13 +1,13 @@
 import std;
 
-// pub union Object {
-//     null: void,
-//     bool: bool,
-//     number: f64,
-//     string: []u8,
-//     array: []Object,
-//     object: std.HashMap<[]u8, Object>
-// }
-// 
+pub union Object {
+    null: void,
+    bool: bool,
+    number: f64,
+    string: []u8,
+    array: []Object,
+    object: std.HashMap<[]u8, Object>
+}
+
 // pub fn parse(str: []u8) Object {
 // }

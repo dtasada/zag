@@ -902,6 +902,28 @@ pub const Type = union(enum) {
         // If definition is set, it means we already populated this type.
         if (compound_type.definition != null) return compound_type;
 
+        if (T == .@"union" and compound_type.tag_type == null) {
+            const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
+            enum_decl.* = .{
+                .pos = type_decl.pos,
+                .is_pub = false,
+                .name = tag_type_inner_name,
+                .variables = .empty,
+                .subtypes = .empty,
+                .members = .empty,
+                .methods = .empty,
+            };
+
+            for (type_decl.members.items) |member|
+                try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
+
+            const tag_type_val: Type = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
+
+            const tag_ptr = try compiler.alloc.create(Type);
+            tag_ptr.* = tag_type_val;
+            compound_type.tag_type = tag_ptr;
+        }
+
         switch (T) {
             .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
                 try compound_type.generic_params.append(compiler.alloc, .{
