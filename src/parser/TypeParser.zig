@@ -112,7 +112,15 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
 
     if (self.parent_parser.currentToken() != .@">") {
         while (true) {
-            const arg = try expressions.parse(self.parent_parser, .relational, .{});
+            const arg: ast.Expression = b: {
+                const backup_pos = self.parent_parser.pos;
+                if (self.parseType(alloc, .default)) |t|
+                    break :b .{ .type = t }
+                else |_| {
+                    self.parent_parser.pos = backup_pos;
+                    break :b try expressions.parse(self.parent_parser, .relational, .{});
+                }
+            };
             try args.append(alloc, arg);
 
             if (self.parent_parser.currentToken() == .@">") break;

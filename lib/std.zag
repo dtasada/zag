@@ -25,7 +25,7 @@ pub struct String {
 
     pub fn hash(self: String) usize {
         let mut value: usize = 0;
-        for (0..self.buf) |char| value = value * 37 + char;
+        for (0..self.bytes) |c| value = value * 37 + c;
         return value;
     }
 }
@@ -95,6 +95,10 @@ pub fn memcpy_slice<T>(dst: []mut T, src: []T) void {
 pub fn memmove<T>(dst: []mut T, src: []T) void {
     if (dst.len != src.len) c.panic("Size mismatch\n");
     c.memmove(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
+}
+
+pub fn memset_slice<T>(src: []mut T, val: T) void {
+    for (src) |i| i = val;
 }
 
 pub fn randint<T>(min, max: T) T -> min + c.rand() % (max - min)
@@ -182,7 +186,7 @@ pub struct ArrayList<T> {
 pub struct HashMap<K, V> {
     const SIZE = 1e5;
 
-    entries: []&Entry,
+    entries: []?&Entry,
 
     pub struct Entry {
         key: K,
@@ -193,5 +197,7 @@ pub struct HashMap<K, V> {
     pub fn init() HashMap<K, V> {
         let self = alloc<HashMap<K, V>>();
         self.entries = alloc_slice<Entry>(SIZE);
+        memset_slice<?&Entry>(self.entries, nil);
+        return self;
     }
 }

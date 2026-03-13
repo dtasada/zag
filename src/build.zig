@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
 const utils = @import("utils");
 const Compiler = @import("Compiler");
@@ -15,6 +16,9 @@ pub fn build() !void {
 
     var zag_header_types: std.ArrayList(u8) = .empty;
     var zag_header_macros: std.ArrayList(u8) = .empty;
+
+    // Transpile stdlib first so user code can import from it
+    try transpileModuleWithHeaders(arena, build_options.stdlib_path, &registry, &zag_header_types, &zag_header_macros);
 
     try transpileModuleWithHeaders(arena, "src", &registry, &zag_header_types, &zag_header_macros);
 
@@ -54,6 +58,9 @@ fn transpileWithHeaders(
     zag_header_types: *std.ArrayList(u8),
     zag_header_macros: *std.ArrayList(u8),
 ) !void {
+    // Skip if already compiled (e.g. pulled in as a dependency of another module)
+    if (registry.contains(file_path)) return;
+
     const ast = try Compiler.getAST(alloc, file_path);
 
     var compiler = Compiler.init(alloc, ast.root, file_path, registry) catch |err|
@@ -113,26 +120,38 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const main_obj = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
     defer alloc.free(main_obj);
 
-    const @"-Iinclude" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "zag" });
-    defer alloc.free(@"-Iinclude");
+    const @"-I.zag-out/zag" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "zag" });
+    defer alloc.free(@"-I.zag-out/zag");
+
+    const @"-I.zag-out/lib" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "lib" });
+    defer alloc.free(@"-I.zag-out/lib");
 
     const src_path = try std.fs.path.join(alloc, &.{ ".zag-out", "src" });
     defer alloc.free(src_path);
 
-    var @".zig-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
-    defer @".zig-out/src".close();
+    const lib_path = try std.fs.path.join(alloc, &.{ ".zag-out", "lib" });
+    defer alloc.free(lib_path);
 
-    var files_it = @".zig-out/src".iterate();
+    var @".zag-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
+    defer @".zag-out/src".close();
+
+    var @".zag-out/lib" = try std.fs.cwd().openDir(lib_path, .{ .iterate = true });
+    defer @".zag-out/lib".close();
+
+    var files_src_it = @".zag-out/src".iterate();
+    var files_lib_it = @".zag-out/lib".iterate();
 
     var files: std.ArrayList([]const u8) = .empty;
     defer files.deinit(alloc);
     defer for (files.items) |f| alloc.free(f);
 
-    while (try files_it.next()) |file| {
-        if (std.mem.endsWith(u8, file.name, ".c")) {
-            try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
-        }
-    }
+    while (try files_src_it.next()) |file| if (std.mem.endsWith(u8, file.name, ".c")) {
+        try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
+    };
+
+    while (try files_lib_it.next()) |file| if (std.mem.endsWith(u8, file.name, ".c")) {
+        try files.append(alloc, try std.fs.path.join(alloc, &.{ lib_path, file.name }));
+    };
 
     const clang_format_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "clang-format", "-i" },
@@ -148,7 +167,8 @@ pub fn compile(alloc: std.mem.Allocator) !void {
         &.{ "/usr/bin/cc", "-g", "-o", main_obj },
         files.items,
         &.{
-            @"-Iinclude",
+            @"-I.zag-out/zag",
+            @"-I.zag-out/lib",
             "-Wall",
             "-Wextra",
             "-Wno-parentheses-equality",

@@ -224,6 +224,11 @@ pub fn init(
     const visited = try alloc.create(std.ArrayList(Type.Context.Visited));
     visited.* = try .initCapacity(alloc, 128);
 
+    const relative_path = if (std.mem.startsWith(u8, file_path, build_options.stdlib_path))
+        try std.fmt.allocPrint(alloc, "lib/{s}", .{file_path[build_options.stdlib_path.len + 1 ..]})
+    else
+        file_path;
+
     self.* = .{
         .alloc = alloc,
         .input = input,
@@ -239,9 +244,9 @@ pub fn init(
         .current_section = .source_includes,
         .zag_header_contents = .initContext(alloc, .{ .visited = visited }),
         .pending_instantiations = .empty,
-        .output_path = try std.fmt.allocPrint(alloc, "{s}.c", .{file_path}),
-        .module_header_path = try std.fmt.allocPrint(alloc, "{s}.h", .{file_path}),
-        .zag_header_path = try alloc.dupe(u8, "zag/zag.h"),
+        .output_path = try std.fmt.allocPrint(alloc, "{s}.c", .{relative_path}),
+        .module_header_path = try std.fmt.allocPrint(alloc, "{s}.h", .{relative_path}),
+        .zag_header_path = "zag/zag.h",
         .imported_modules = .init(alloc),
     };
 
@@ -313,12 +318,12 @@ pub fn emit(self: *Self) CompilerError!void {
 
 fn writeOutputFiles(self: *Self) !void {
     // Create output directories
-    var @".zag-out" = try std.fs.cwd().openDir(".zag-out", .{});
+    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
     defer @".zag-out".close();
 
-    try @".zag-out".makePath(std.fs.path.dirname(self.output_path).?);
-    try @".zag-out".makePath(std.fs.path.dirname(self.module_header_path).?);
-    try @".zag-out".makePath(std.fs.path.dirname(self.zag_header_path).?);
+    if (std.fs.path.dirname(self.output_path)) |dir| try @".zag-out".makePath(dir);
+    if (std.fs.path.dirname(self.module_header_path)) |dir| try @".zag-out".makePath(dir);
+    if (std.fs.path.dirname(self.zag_header_path)) |dir| try @".zag-out".makePath(dir);
 
     // Write main source file
     var output_file_buf: [1024]u8 = undefined;
@@ -626,7 +631,15 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     var imp_it = child_compiler.imported_modules.iterator();
     while (imp_it.next()) |entry| try mod.imports.put(entry.key_ptr.*, entry.value_ptr.*);
 
-    try self.module_registry.put(resolved_path, mod);
+    const owned_path = try self.alloc.dupe(u8, resolved_path);
+    errdefer self.alloc.free(owned_path);
+
+    const gop = try self.module_registry.getOrPut(owned_path);
+    if (gop.found_existing) {
+        self.alloc.free(owned_path); // don't need it, registry already has a copy
+        return gop.value_ptr.*;
+    }
+    gop.value_ptr.* = mod;
 
     return mod;
 }

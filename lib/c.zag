@@ -8,6 +8,7 @@ pub bind fn realloc(ptr: &mut void, len: usize) &mut void;
 
 pub bind fn memcpy(dst: &mut void, src: &void, len: usize) &mut void;
 pub bind fn memmove(dst: &mut void, src: &void, len: usize) &mut void;
+pub bind fn memset(b: &mut void, c: c_int, len: usize) &mut void;
 
 pub bind fn acos(x: c_double) c_double;
 pub bind fn atan2(y, x: c_double) c_double;

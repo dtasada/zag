@@ -41,6 +41,7 @@ pub fn build(b: *std.Build) void {
     const stdlib_path = b.getInstallPath(.lib, "");
     const options = b.addOptions();
     options.addOption([]const u8, "stdlib_path", stdlib_path);
+    const options_mod = options.createModule();
 
     const modules = Modules.init(b, target, optimize);
     const zag_mod = modules.create("zag", "src/main.zig");
@@ -53,7 +54,8 @@ pub fn build(b: *std.Build) void {
     const lexer_mod = modules.create("Lexer", "src/Lexer.zig");
     const parser_mod = modules.create("Parser", "src/parser/Parser.zig");
     const compiler_mod = modules.create("Compiler", "src/compiler/Compiler.zig");
-    compiler_mod.mod.addOptions("build_options", options);
+    zag_mod.mod.addImport("build_options", options_mod);
+    compiler_mod.mod.addImport("build_options", options_mod);
 
     zag_mod.addImport(&lexer_mod);
     zag_mod.addImport(&parser_mod);
