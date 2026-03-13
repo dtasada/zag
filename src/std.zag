@@ -93,7 +93,6 @@ pub fn memmove<T>(dst: []mut T, src: []T) void {
 
 pub fn randint<T>(min, max: T) T -> min + c.rand() % (max - min)
 
-
 pub struct ArrayList<T> {
     items: []mut T,
     capacity: usize,

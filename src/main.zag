@@ -22,7 +22,7 @@ struct Player {
         position: rl.Vector2.init(x, y),
         color: rl.Color.RED,
         bullets: std.ArrayList<Bullet>.init(),
-        health: 100,
+        // health: 100,
     }
 
     pub fn deinit(self: &Player) void {

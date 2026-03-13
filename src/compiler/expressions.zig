@@ -580,6 +580,28 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
 }
 
 fn structInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiation, t: Type.Struct) !void {
+    // check for missing members
+    var struct_members_it = t.members.iterator();
+    while (struct_members_it.next()) |struct_member|
+        if (struct_inst.members.get(struct_member.key_ptr.*) == null)
+            return utils.printErr(
+                error.MissingStructMember,
+                "comperr: Missing member '{s}' in instantiation of struct '{s}' ({f}).\n",
+                .{ struct_member.key_ptr.*, t.name, struct_inst.pos },
+                .red,
+            );
+
+    // check for extraneous members
+    var inst_members_it = struct_inst.members.iterator();
+    while (inst_members_it.next()) |inst_member|
+        if (t.members.get(inst_member.key_ptr.*) == null)
+            return utils.printErr(
+                error.ExtraneousStructMember,
+                "comperr: Extraneous member '{s}' in instantiation of struct '{s}' ({f}).\n",
+                .{ inst_member.key_ptr.*, t.name, struct_inst.pos },
+                .red,
+            );
+
     try self.write("(");
     try self.compileType(.{ .@"struct" = t }, .{});
     try self.write("){\n");
