@@ -22,6 +22,12 @@ pub struct String {
 
     // Caller owns memory
     pub fn to_sentinel(self: String) &mut c_char -> cast<&mut c_char>(slice_to_sentinel<u8>(self.bytes, 0))
+
+    pub fn hash(self: String) usize {
+        let mut value: usize = 0;
+        for (0..self.buf) |char| value = value * 37 + char;
+        return value;
+    }
 }
 
 // Caller owns memory
@@ -148,40 +154,6 @@ pub struct ArrayList<T> {
             free_slice<T>(self.items[0..self.capacity]);
     }
 
-    // pub fn contains(self: &ArrayList<T>, item: T) bool {
-    //     for (self.items) |i| {
-    //         if (item == i) return true;
-    //     }
-    //
-    //     return false;
-    // }
-    //
-    // pub fn eq(self: &ArrayList<T>, rhs: &ArrayList<T>) bool {
-    //     if (self.items.len != rhs.items.len) return false;
-    //     for (0..self.items.len) |i| {
-    //         if (self.items[i] != rhs.items[i]) return false;
-    //     }
-    //     return true;
-    // }
-    //
-    // pub fn index_of(self: &ArrayList<T>, item: T) !usize {
-    //     for (0..self.items.len) |i| {
-    //         if (self.items[i] == item) return i;
-    //     }
-    //
-    //     return c_null;
-    // }
-    //
-    // pub fn last_index_of(self: &ArrayList<T>, item: T) !usize {
-    //     if (self.items.len == 0) return c_null;
-    //
-    //     for (self.items.len - 1 ..= 0) |i| {
-    //         if (self.items[i] == item) return i;
-    //     }
-    //
-    //     return c_null;
-    // }
-
     pub fn remove(self: &mut ArrayList<T>, index: usize) void {
         if (index >= self.items.len) c.panic("Index out of bounds\n")
 
@@ -204,5 +176,22 @@ pub struct ArrayList<T> {
             self.items[index] = self.items[last_index];
         }
         self.items = self.items[0..last_index];
+    }
+}
+
+pub struct HashMap<K, V> {
+    const SIZE = 1e5;
+
+    entries: []&Entry,
+
+    pub struct Entry {
+        key: K,
+        value: V,
+        next: &Entry,
+    }
+
+    pub fn init() HashMap<K, V> {
+        let self = alloc<HashMap<K, V>>();
+        self.entries = alloc_slice<Entry>(SIZE);
     }
 }

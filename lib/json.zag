@@ -1,0 +1,14 @@
+import std;
+
+pub union Object {
+    null: void,
+    bool: bool,
+    number: f64,
+    string: []u8,
+    array: []JsonValue,
+    object: std.HashMap<[]u8, JsonValue>
+}
+
+pub fn parse(str: []u8) Object {
+
+}
