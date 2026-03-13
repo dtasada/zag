@@ -422,17 +422,6 @@ fn conditional(
         },
         .@"for" => switch (statement.iterator) {
             .range => |range| {
-                capture_ident = if (statement.capture) |c|
-                    c.name
-                else
-                    try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
-
-                try self.compileVariableSignature(capture_ident, try .infer(self, range.start.*), .{ .binding_mut = true });
-                try self.write(" = ");
-                try expressions.compile(self, range.start, .{});
-                try self.write(";");
-
-                try self.write("(");
                 const end = range.end orelse return utils.printErr(
                     error.IllegalExpression,
                     "comperr: For statement iterator range expression must contain an end ({f}).\n",
@@ -440,26 +429,44 @@ fn conditional(
                     .red,
                 );
 
-                try expressions.compile(self, end, .{});
-                try self.write(">");
-                try expressions.compile(self, range.start, .{});
-                try self.write(") ? ");
-                try self.print("{s} {s} ", .{ capture_ident, if (range.inclusive) "<=" else "<" });
-                try expressions.compile(self, end, .{});
+                self.currentSection().pos = self.currentSection().current_statement;
 
-                try self.write(" : ");
-                try self.print("{s} {s} ", .{ capture_ident, if (range.inclusive) ">=" else ">" });
-                try expressions.compile(self, end, .{});
-                try self.write("; ");
+                const start_t: Type = try .infer(self, range.start.*);
+                const end_t: Type = try .infer(self, end.*);
 
-                try self.write("(");
-                try expressions.compile(self, end, .{});
-                try self.write(">");
-                try expressions.compile(self, range.start, .{});
-                try self.write(") ? ");
-                try self.print("{s}++ ", .{capture_ident});
-                try self.write(" : ");
-                try self.print("{s}-- ", .{capture_ident});
+                if (!start_t.isNumeric()) return errors.badRangeBound(start_t, range.start.getPosition());
+                if (!end_t.isNumeric()) return errors.badRangeBound(end_t, end.getPosition());
+
+                try self.compileType(start_t, .{});
+                const start_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(range.start))});
+                try self.print(" {s} = ", .{start_temp_name});
+                try expressions.compile(self, range.start, .{ .expected_type = start_t, .is_variable_declaration = true });
+                try self.write(";\n");
+
+                try self.compileType(end_t, .{});
+                const end_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(end))});
+                try self.print(" {s} = ", .{end_temp_name});
+                try expressions.compile(self, end, .{ .expected_type = end_t, .is_variable_declaration = true });
+                try self.write(";\n");
+
+                self.currentSection().pos = self.currentWriter().items.len;
+
+                capture_ident = if (statement.capture) |c|
+                    c.name
+                else
+                    try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+
+                try self.compileVariableSignature(capture_ident, start_t, .{ .binding_mut = true });
+                try self.print(" = {s};", .{start_temp_name});
+
+                try self.print("({[end]s} > {[start]s}) ? {[capture]s} {[cmp]s} {[end]s} :" ++
+                    "{[capture]s} {[cmp]s} {[end]s}; " ++
+                    "({[end]s} > {[start]s}) ? {[capture]s}++ : {[capture]s}--", .{
+                    .end = end_temp_name,
+                    .start = start_temp_name,
+                    .capture = capture_ident,
+                    .cmp = if (range.inclusive) "<=" else "<",
+                });
 
                 if (statement.capture) |capture| {
                     try self.registerSymbol(capture.name, .{ .symbol = .{ .type = .usize } }, .{});

@@ -25,7 +25,7 @@ pub struct String {
 
     pub fn hash(self: String) usize {
         let mut value: usize = 0;
-        for (0..self.bytes) |c| value = value * 37 + c;
+        for (0..self.bytes.len) |c| value = value * 37 + c;
         return value;
     }
 }

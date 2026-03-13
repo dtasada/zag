@@ -267,3 +267,11 @@ pub fn notAnInstanceMethod(struct_name: []const u8, member_name: []const u8, pos
         .red,
     );
 }
+pub fn badRangeBound(t: Type, pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.IllegalExpression,
+        "comperr: Bad bound in range expression. Expected numeric type, received '{f}' ({f}).\n",
+        .{ t, pos },
+        .red,
+    );
+}
