@@ -16,13 +16,14 @@ struct Player {
     color: rl.Color,
     bullets: std.ArrayList<Bullet>,
     health: usize,
-    invincible: bool,
+    invincible: ?f64,
 
     pub fn init(x, y: f32) Player -> Player {
         position: rl.Vector2.init(x, y),
         color: rl.Color.RED,
         bullets: std.ArrayList<Bullet>.init(),
-        // health: 100,
+        health: 100,
+        invincible: nil,
     }
 
     pub fn deinit(self: &Player) void {
@@ -30,7 +31,11 @@ struct Player {
     }
 
     fn update(self: &mut Player) void {
-        rl.draw_circle_v(self.position, SIZE, self.color);
+        if (self.invincible) |invis| {
+            if (cast<i32>(rl.get_time() - invis / 0.2) % 2 == 0) {
+                rl.draw_circle_v(self.position, SIZE, self.color);
+            }
+        } else rl.draw_circle_v(self.position, SIZE, self.color);
 
         if (rl.is_key_down(rl.KeyboardKey.W)) self.position.y -= 6;
         if (rl.is_key_down(rl.KeyboardKey.A)) self.position.x -= 6;
@@ -67,8 +72,6 @@ struct Zombie {
     fn update(self: &mut Zombie, player: &Player) void {
         let diff = player.position.subtract(self.position);
         self.position = self.position.add(diff.normalize().scale(2.0));
-
-        rl.draw_circle_v(self.position, SIZE, self.color);
     }
 }
 
@@ -126,7 +129,10 @@ fn main() void {
                 Zombie.SIZE,
                 player.position,
                 Player.SIZE,
-            )) player.health -= 10;
+            )) {
+                player.health -= 10;
+                player.invincible = rl.get_time();
+            }
 
             let mut bi: usize = 0;
             while (bi < player.bullets.items.len)

@@ -609,7 +609,10 @@ fn structInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiat
     var members = struct_inst.members.iterator();
     while (members.next()) |m| {
         try self.print(".{s} = ", .{m.key_ptr.*});
-        try compile(self, m.value_ptr, .{ .is_variable_declaration = true });
+        try compile(self, m.value_ptr, .{
+            .is_variable_declaration = true,
+            .expected_type = t.members.get(m.key_ptr.*).?,
+        });
         try self.write(",\n");
     }
 

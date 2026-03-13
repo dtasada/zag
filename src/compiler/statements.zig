@@ -407,7 +407,12 @@ fn conditional(
     var capture_ident: []const u8 = undefined;
     switch (T) {
         .@"if", .@"while" => switch (try Type.infer(self, statement.condition)) {
-            .bool, .optional => try expressions.compile(self, &statement.condition, .{}),
+            .bool => try expressions.compile(self, &statement.condition, .{}),
+            .optional => {
+                try self.write("(");
+                try expressions.compile(self, &statement.condition, .{});
+                try self.write(").is_some");
+            },
             else => |t| return utils.printErr(
                 error.IllegalExpression,
                 "comperr: Illegal expression: {s} statement condition must be a boolean or an optional, received {f} ({f}).\n",
