@@ -51,7 +51,7 @@ pub const ParserError = error{
 pos: usize,
 
 /// Input tokens, and maps the tokens to the source code.
-lexer: *const Lexer,
+lexer: *Lexer,
 
 alloc: std.mem.Allocator,
 
@@ -78,7 +78,7 @@ expect_semicolon: bool,
 // errors: std.ArrayList(ParserError) = .empty,
 
 /// Initializes and runs parser. Populates `output`.
-pub fn init(input: *const Lexer, alloc: std.mem.Allocator) !*Self {
+pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
     const self = try alloc.create(Self);
     self.* = .{
         .pos = 0,
@@ -356,7 +356,9 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
-    while (std.meta.activeTag(self.currentToken()) != closing_token) {
+    while (std.meta.activeTag(self.currentToken()) != closing_token and
+        (self.currentToken() != .@">" or self.currentToken() != .@">>"))
+    {
         try args.append(self.alloc, if (is_generic) b: {
             const backup_pos = self.pos;
             if (self.type_parser.parseType(self.alloc, .default)) |t|
@@ -370,7 +372,11 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
         if (self.currentToken() == .@",") _ = self.advance() else break;
     }
 
-    try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
+    if (is_generic and self.currentToken() == .@">>") {
+        self.lexer.tokens.items[self.pos] = .@">";
+    } else {
+        try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
+    }
 
     return args;
 }

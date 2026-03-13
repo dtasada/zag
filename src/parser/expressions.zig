@@ -247,6 +247,10 @@ fn isGenericLookahead(self: *Self) bool {
             depth -= 1;
             if (depth == 0) return true;
         },
+        .@">>" => {
+            if (depth <= 2) return true;
+            depth -= 2;
+        },
         .@"(", .@")", .@"{", .@"}", .@";" => return false,
         else => {},
     };

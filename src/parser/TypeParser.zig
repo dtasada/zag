@@ -85,20 +85,48 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower
 }
 
 pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+    var depth: usize = 1;
+    for (self.parent_parser.lexer.tokens.items[self.parent_parser.pos..], self.parent_parser.pos..) |*token, idx| {
+        switch (token.*) {
+            .@"<" => depth += 1,
+            .@">" => {
+                depth -= 1;
+                if (depth == 0) break;
+            },
+            .@">>" => {
+                if (depth <= 2) {
+                    token.* = .@">";
+                    const pos_entry = self.parent_parser.lexer.source_map.items[idx];
+                    try self.parent_parser.lexer.tokens.insert(self.parent_parser.alloc, idx + 1, .@">");
+                    try self.parent_parser.lexer.source_map.insert(self.parent_parser.alloc, idx + 1, pos_entry);
+                    break;
+                }
+                depth -= 2;
+            },
+            else => {},
+        }
+    }
+
     // < is already consumed by parseType loop
-    var args = try std.ArrayList(ast.Expression).initCapacity(alloc, 0);
+    var args: std.ArrayList(ast.Expression) = .empty;
 
     if (self.parent_parser.currentToken() != .@">") {
         while (true) {
             const arg = try expressions.parse(self.parent_parser, .relational, .{});
             try args.append(alloc, arg);
 
-            if (self.parent_parser.currentToken() == .@">") break;
+            if (self.parent_parser.currentToken() == .@">" or
+                self.parent_parser.currentToken() == .@">>") break;
             try self.parent_parser.expect(self.parent_parser.advance(), .@",", "generic arguments", ",");
-            if (self.parent_parser.currentToken() == .@">") break;
+            if (self.parent_parser.currentToken() == .@">" or
+                self.parent_parser.currentToken() == .@">>") break;
         }
     }
-    _ = self.parent_parser.advance(); // consume >
+    if (self.parent_parser.currentToken() == .@">>") {
+        self.parent_parser.lexer.tokens.items[self.parent_parser.pos] = .@">";
+    } else {
+        _ = self.parent_parser.advance(); // consume >
+    }
 
     const ptr = try alloc.create(ast.Type);
     ptr.* = lhs;
@@ -111,8 +139,6 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
         },
     };
 }
-
-// ... existing handlers ...
 
 pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
     const position = self.parent_parser.currentPosition();
