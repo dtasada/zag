@@ -356,9 +356,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
-    while (std.meta.activeTag(self.currentToken()) != closing_token and
-        (self.currentToken() != .@">" or self.currentToken() != .@">>"))
-    {
+    while (std.meta.activeTag(self.currentToken()) != closing_token) {
         try args.append(self.alloc, if (is_generic) b: {
             const backup_pos = self.pos;
             if (self.type_parser.parseType(self.alloc, .default)) |t|
@@ -372,11 +370,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
         if (self.currentToken() == .@",") _ = self.advance() else break;
     }
 
-    if (is_generic and self.currentToken() == .@">>") {
-        self.lexer.tokens.items[self.pos] = .@">";
-    } else {
-        try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
-    }
+    try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
 
     return args;
 }

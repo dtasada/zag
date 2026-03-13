@@ -115,18 +115,13 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
             const arg = try expressions.parse(self.parent_parser, .relational, .{});
             try args.append(alloc, arg);
 
-            if (self.parent_parser.currentToken() == .@">" or
-                self.parent_parser.currentToken() == .@">>") break;
+            if (self.parent_parser.currentToken() == .@">") break;
             try self.parent_parser.expect(self.parent_parser.advance(), .@",", "generic arguments", ",");
-            if (self.parent_parser.currentToken() == .@">" or
-                self.parent_parser.currentToken() == .@">>") break;
+            if (self.parent_parser.currentToken() == .@">") break;
         }
     }
-    if (self.parent_parser.currentToken() == .@">>") {
-        self.parent_parser.lexer.tokens.items[self.parent_parser.pos] = .@">";
-    } else {
-        _ = self.parent_parser.advance(); // consume >
-    }
+
+    _ = self.parent_parser.advance(); // consume >
 
     const ptr = try alloc.create(ast.Type);
     ptr.* = lhs;
