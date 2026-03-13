@@ -35,6 +35,8 @@ struct Player {
             if (cast<i32>(rl.get_time() - invis / 0.2) % 2 == 0) {
                 rl.draw_circle_v(self.position, SIZE, self.color);
             }
+
+            if (rl.get_time() - invis > 4) self.invincible = nil;
         } else rl.draw_circle_v(self.position, SIZE, self.color);
 
         if (rl.is_key_down(rl.KeyboardKey.W)) self.position.y -= 6;
@@ -72,6 +74,8 @@ struct Zombie {
     fn update(self: &mut Zombie, player: &Player) void {
         let diff = player.position.subtract(self.position);
         self.position = self.position.add(diff.normalize().scale(2.0));
+
+        rl.draw_circle_v(self.position, SIZE, self.color);
     }
 }
 
@@ -129,7 +133,7 @@ fn main() void {
                 Zombie.SIZE,
                 player.position,
                 Player.SIZE,
-            )) {
+            ) and player.invincible == nil) {
                 player.health -= 10;
                 player.invincible = rl.get_time();
             }

@@ -166,7 +166,7 @@ pub fn compile(
     }
 }
 
-/// Compiles expression with an expected type. Returns false when expression
+/// Compiles expression with an expected type.
 fn compileExpected(
     self: *Self,
     expression: *const ast.Expression,
@@ -768,10 +768,14 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
 fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
     const lhs_t: Type = try .infer(self, expr.lhs.*);
     const rhs_t: Type = try .infer(self, expr.rhs.*);
+    const expr_is_optional = (lhs_t == .optional and rhs_t == .@"typeof(nil)") or
+        (lhs_t == .optional and rhs_t == .optional and lhs_t.optional.eql(rhs_t.optional.*)) or
+        (rhs_t == .optional and lhs_t == .@"typeof(nil)");
     if (!((lhs_t.isNumeric() and rhs_t.isNumeric()) or
         (lhs_t == .bool and rhs_t == .bool) or
         (lhs_t == .reference and rhs_t == .reference) or
-        (lhs_t == .@"enum" and rhs_t == .@"enum" and lhs_t.eql(rhs_t))))
+        (lhs_t == .@"enum" and rhs_t == .@"enum" and lhs_t.eql(rhs_t)) or
+        expr_is_optional))
         return utils.printErr(
             error.IllegalExpression,
             "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
@@ -789,7 +793,52 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
             try compile(self, expr.rhs, .{});
             try self.write(")");
         },
-        else => {
+        else => if (expr_is_optional) {
+            self.currentSection().pos = self.currentSection().current_statement;
+
+            try self.compileType(lhs_t, .{});
+            const lhs_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.lhs))});
+            try self.print(" {s} = ", .{lhs_temp_name});
+            try compile(self, expr.lhs, .{ .expected_type = lhs_t, .is_variable_declaration = true });
+            try self.write(";\n");
+
+            try self.compileType(if (rhs_t == .@"typeof(nil)") lhs_t else rhs_t, .{});
+            const rhs_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.rhs))});
+            try self.print(" {s} = ", .{rhs_temp_name});
+            try compile(self, expr.rhs, .{
+                .expected_type = if (rhs_t == .@"typeof(nil)") lhs_t else rhs_t,
+                .is_variable_declaration = true,
+            });
+            try self.write(";\n");
+
+            self.currentSection().pos = self.currentWriter().items.len;
+
+            try self.write("((");
+            if (lhs_t == .@"typeof(nil)") {
+                try self.write("false");
+            } else {
+                try self.write("(");
+                try compile(self, expr.lhs, .{});
+                try self.write(")");
+                try self.write(".is_some");
+            }
+
+            try self.write(" == ");
+
+            if (rhs_t == .@"typeof(nil)") {
+                try self.write("false");
+            } else {
+                try self.write("(");
+                try compile(self, expr.rhs, .{});
+                try self.write(")");
+                try self.write(".is_some");
+            }
+
+            try self.print(
+                ") && (({[lhs]s}.is_some && {[rhs]s}.is_some) ? ({[lhs]s}.payload == {[rhs]s}.payload) : true))",
+                .{ .lhs = lhs_temp_name, .rhs = rhs_temp_name },
+            );
+        } else {
             try self.write("(");
             try compile(self, expr.lhs, .{});
             try self.print(" {s} ", .{switch (expr.op) {
