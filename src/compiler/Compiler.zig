@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
 const utils = @import("utils");
 const ast = @import("Parser").ast;
@@ -560,10 +561,10 @@ pub fn analyze(self: *Self) CompilerError!void {
 }
 
 pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) CompilerError!Module {
+    // ── Build the path relative to the current source file (existing behaviour) ──
     var parts: std.ArrayList([]const u8) = .empty;
     defer parts.deinit(self.alloc);
 
-    // Add directory of current file
     if (std.fs.path.dirname(self.source_path)) |dir| try parts.append(self.alloc, dir);
     for (import_stmt.module_name.items) |part| try parts.append(self.alloc, part);
 
@@ -571,21 +572,46 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     defer self.alloc.free(rel_path);
 
     const full_path = try std.fmt.allocPrint(self.alloc, "{s}.zag", .{rel_path});
+    defer self.alloc.free(full_path);
 
-    // Check registry
+    // ── Registry hit (avoids recompiling the same module twice) ──────────────
     if (self.module_registry.get(full_path)) |mod| return mod;
 
-    // Analyze new module
-    const ast_res = try getAST(self.alloc, full_path); // recursive AST
+    // ── Determine the actual path to compile ─────────────────────────────────
+    const resolved_path: []const u8 = if (std.fs.cwd().access(full_path, .{}) == error.FileNotFound) blk: {
+        // Relative path doesn't exist — try the stdlib install directory.
+        var stdlib_parts: std.ArrayList([]const u8) = .empty;
+        defer stdlib_parts.deinit(self.alloc);
 
-    // We pass the SAME registry
-    var child_compiler = try init(self.alloc, ast_res.root, full_path, self.module_registry);
-    // defer child_compiler.deinit();
+        try stdlib_parts.append(self.alloc, build_options.stdlib_path);
+        for (import_stmt.module_name.items) |part| try stdlib_parts.append(self.alloc, part);
+
+        const stdlib_rel = try std.fs.path.join(self.alloc, stdlib_parts.items);
+        defer self.alloc.free(stdlib_rel);
+
+        const stdlib_full = try std.fmt.allocPrint(self.alloc, "{s}.zag", .{stdlib_rel});
+        errdefer self.alloc.free(stdlib_full);
+
+        std.fs.cwd().access(stdlib_full, .{}) catch return utils.printErr(
+            error.ModuleNotFound,
+            "Module not found: '{s}'\n  searched: {s}\n  searched: {s}\n",
+            .{ import_stmt.module_name.getLast(), full_path, stdlib_full },
+            .red,
+        );
+
+        break :blk stdlib_full; // caller must free; it lands in module_registry below
+    } else full_path;
+
+    // Check the registry again with the resolved path (handles stdlib cache hits)
+    if (self.module_registry.get(resolved_path)) |mod| return mod;
+
+    // ── Compile the module (existing logic, unchanged) ────────────────────────
+    const ast_res = try getAST(self.alloc, resolved_path);
+
+    var child_compiler = try init(self.alloc, ast_res.root, resolved_path, self.module_registry);
 
     try child_compiler.analyze();
 
-    // Create module from exports
-    // Allocate on heap to ensure pointer stability
     var mod: Module = try .init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
 
     var it = child_compiler.exported_symbols.iterator();
@@ -600,8 +626,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     var imp_it = child_compiler.imported_modules.iterator();
     while (imp_it.next()) |entry| try mod.imports.put(entry.key_ptr.*, entry.value_ptr.*);
 
-    // Register
-    try self.module_registry.put(full_path, mod);
+    try self.module_registry.put(resolved_path, mod);
 
     return mod;
 }
@@ -1022,7 +1047,7 @@ fn solveGenerics(self: *Self) !void {
         }
         if (is_template) continue;
 
-try self.pushScope(false);
+        try self.pushScope(false);
         defer self.popScope();
 
         var it = instantiation.module.symbols.iterator();

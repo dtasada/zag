@@ -38,6 +38,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const stdlib_path = b.getInstallPath(.lib, "");
+    const options = b.addOptions();
+    options.addOption([]const u8, "stdlib_path", stdlib_path);
+
     const modules = Modules.init(b, target, optimize);
     const zag_mod = modules.create("zag", "src/main.zig");
     const exe = b.addExecutable(.{
@@ -49,6 +53,7 @@ pub fn build(b: *std.Build) void {
     const lexer_mod = modules.create("Lexer", "src/Lexer.zig");
     const parser_mod = modules.create("Parser", "src/parser/Parser.zig");
     const compiler_mod = modules.create("Compiler", "src/compiler/Compiler.zig");
+    compiler_mod.mod.addOptions("build_options", options);
 
     zag_mod.addImport(&lexer_mod);
     zag_mod.addImport(&parser_mod);
@@ -72,6 +77,22 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("pretty", pretty_mod);
     compiler_mod.mod.addImport("pretty", pretty_mod);
 
+    const install_bin = b.step("install-bin", "Install the zag compiler to the system bin directory");
+    const install_exe = b.addInstallArtifact(exe, .{});
+    install_bin.dependOn(&install_exe.step);
+
+    const install_stdlib = b.step("install-stdlib", "Copy the Zag standard library to the system directory");
+    const copy = b.addInstallDirectory(.{
+        .source_dir = b.path("lib"), // stdlib .zag files live in lib/ in the repo
+        .install_dir = .lib,
+        .install_subdir = "",
+    });
+    install_stdlib.dependOn(&copy.step);
+
+    const install_all = b.getInstallStep();
+    install_all.dependOn(install_bin);
+    install_all.dependOn(install_stdlib);
+
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -79,11 +100,9 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
 
-    run_cmd.step.dependOn(b.getInstallStep());
+    run_cmd.step.dependOn(install_all);
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    if (b.args) |args| run_cmd.addArgs(args);
 
     const check = b.step("check", "Check if zag compiles");
     check.dependOn(&exe.step);

@@ -24,6 +24,7 @@ pub const CompilerError = error{
     MissingElseClause,
     MissingStructMember,
     MissingReturnStatement,
+    ModuleNotFound,
     NoSuchMember,
     OutOfMemory,
     SymbolNotVariable,
