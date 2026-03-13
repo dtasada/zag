@@ -98,7 +98,7 @@ pub fn memmove<T>(dst: []mut T, src: []T) void {
 }
 
 pub fn memset_slice<T>(src: []mut T, val: T) void {
-    for (src) |i| i = val;
+    for (src) |&mut i| i.* = val;
 }
 
 pub fn randint<T>(min, max: T) T -> min + c.rand() % (max - min)
@@ -186,7 +186,7 @@ pub struct ArrayList<T> {
 pub struct HashMap<K, V> {
     const SIZE = 1e5;
 
-    entries: []?&Entry,
+    entries: []mut ?&Entry,
 
     pub struct Entry {
         key: K,
@@ -195,8 +195,7 @@ pub struct HashMap<K, V> {
     }
 
     pub fn init() HashMap<K, V> {
-        let self = alloc<HashMap<K, V>>();
-        self.entries = alloc_slice<Entry>(SIZE);
+        let self = HashMap<K, V> { entries: alloc_slice<?&Entry>(SIZE) };
         memset_slice<?&Entry>(self.entries, nil);
         return self;
     }

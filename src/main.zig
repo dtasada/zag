@@ -39,7 +39,7 @@ pub fn main() void {
     };
 
     return r.run(&app) catch |err| utils.print(
-        "Error: {}",
+        "Error: {}.\n",
         .{err},
         .red,
     );

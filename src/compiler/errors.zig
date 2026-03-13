@@ -53,7 +53,6 @@ pub fn typeMismatch(
     received_type: Type,
     position: utils.Position,
 ) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.TypeMismatch,
         "comperr: Expected '{f}', received '{f}' ({f}).\n",
@@ -156,7 +155,6 @@ pub fn genericArgumentCountMismatch(expected: usize, received: usize, pos: utils
 }
 
 pub fn badMutability(position: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.BadMutability,
         "comperr: Assignment expression on immutable binding ({f}).\n",
@@ -166,6 +164,7 @@ pub fn badMutability(position: utils.Position) CompilerError {
 }
 
 pub fn symbolShadowing(name: []const u8, pos: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.IllegalStatement,
         "comperr: Symbol shadowing is not allowed: attempt to redeclare '{s}' ({f}).\n",

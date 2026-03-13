@@ -52,10 +52,10 @@ pub const Type = union(enum) {
     };
 
     pub const Subtype = struct {
-        pub const Tag = union(enum) {
+        pub const Tag = union(utils.CompoundTypeTag) {
             @"struct": Struct,
-            @"union": Union,
             @"enum": Enum,
+            @"union": Union,
         };
 
         is_pub: bool,

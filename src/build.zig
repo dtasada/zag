@@ -6,6 +6,7 @@ const Compiler = @import("Compiler");
 
 pub fn build() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
     var arena_back: std.heap.ArenaAllocator = .init(alloc);

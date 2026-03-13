@@ -88,14 +88,27 @@ fn compoundTypeDeclaration(
         .@"enum" => ast.Statement.EnumDeclaration,
     },
 ) CompilerError!void {
-    try self.pushScope(false);
-    defer self.popScope();
-
     const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (T) {
         .@"struct" => .@"struct",
         .@"union" => .@"union",
         .@"enum" => .@"enum",
     }, type_decl);
+    try self.pushScope(false);
+    defer self.popScope();
+
+    var subtype_it = compound_type.subtypes.iterator();
+    while (subtype_it.next()) |entry| {
+        const subtype_type: Type = switch (entry.value_ptr.*.type) {
+            .@"struct" => |s| .{ .@"struct" = s },
+            .@"union" => |u| .{ .@"union" = u },
+            .@"enum" => |e| .{ .@"enum" = e },
+        };
+        try self.registerSymbol(
+            entry.key_ptr.*,
+            .{ .type = subtype_type },
+            .{ .inner_name = entry.value_ptr.*.inner_name, .is_defined = false },
+        );
+    }
 
     if (T != .@"enum" and type_decl.generic_types.items.len > 0) return;
 
@@ -112,10 +125,6 @@ fn compoundTypeDeclaration(
     self.switchSection(.header_forward_decls);
     try self.print("typedef {s} {s} {s};\n", .{ structure_type, inner_name, inner_name });
     self.switchSection(.header_type_defs);
-
-    for (type_decl.subtypes.items) |subtype| switch (subtype) {
-        inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
-    };
 
     try self.beginTypeDefEmit(@unionInit(Type, @tagName(T), compound_type));
     errdefer self.endTypeDefEmit();

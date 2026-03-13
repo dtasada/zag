@@ -1,0 +1,59 @@
+diff --git a/src/compiler/Type.zig b/src/compiler/Type.zig
+index 1b82cd1..655a7f4 100644
+diff --git a/src/compiler/errors.zig b/src/compiler/errors.zig
+index 354d4ea..6aa0c63 100644
+--- a/src/compiler/errors.zig
++++ b/src/compiler/errors.zig
+@@ -111,6 +111,7 @@ pub fn argumentCountMismatch(
+ }
+ 
+ pub fn unknownSymbol(symbol: []const u8, position: utils.Position) CompilerError {
++    std.debug.dumpCurrentStackTrace(null);
+     return utils.printErr(
+         error.UnknownSymbol,
+         "comperr: Unknown symbol '{s}' at {f}.\n",
+diff --git a/src/compiler/statements.zig b/src/compiler/statements.zig
+index d8fb34d..697ef90 100644
+--- a/src/compiler/statements.zig
++++ b/src/compiler/statements.zig
+@@ -88,14 +88,27 @@ fn compoundTypeDeclaration(
+         .@"enum" => ast.Statement.EnumDeclaration,
+     },
+ ) CompilerError!void {
+-    try self.pushScope(false);
+-    defer self.popScope();
+-
+     const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (T) {
+         .@"struct" => .@"struct",
+         .@"union" => .@"union",
+         .@"enum" => .@"enum",
+     }, type_decl);
++    try self.pushScope(false);
++    defer self.popScope();
++
++    var subtype_it = compound_type.subtypes.iterator();
++    while (subtype_it.next()) |entry| {
++        const subtype_type: Type = switch (entry.value_ptr.*.type) {
++            .@"struct" => |s| .{ .@"struct" = s },
++            .@"union" => |u| .{ .@"union" = u },
++            .@"enum" => |e| .{ .@"enum" = e },
++        };
++        try self.registerSymbol(
++            entry.key_ptr.*,
++            .{ .type = subtype_type },
++            .{ .inner_name = entry.value_ptr.*.inner_name },
++        );
++    }
+ 
+     if (T != .@"enum" and type_decl.generic_types.items.len > 0) return;
+ 
+@@ -113,10 +126,6 @@ fn compoundTypeDeclaration(
+     try self.print("typedef {s} {s} {s};\n", .{ structure_type, inner_name, inner_name });
+     self.switchSection(.header_type_defs);
+ 
+-    for (type_decl.subtypes.items) |subtype| switch (subtype) {
+-        inline else => |st, tag| try compoundTypeDeclaration(self, tag, &st),
+-    };
+-
+     try self.beginTypeDefEmit(@unionInit(Type, @tagName(T), compound_type));
+     errdefer self.endTypeDefEmit();
