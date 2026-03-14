@@ -318,7 +318,7 @@ fn variableDefinition(
     const final_type = expected_type orelse received_type;
 
     if (self.getScopeItemWithinFunction(v.variable_name)) |item| {
-        if (item == .symbol and item.symbol.is_defined)
+        if (item == .symbol and item.symbol.is_defined or item == .constant)
             return errors.symbolShadowing(v.variable_name, v.pos);
     } else |_| {}
 

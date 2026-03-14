@@ -973,7 +973,7 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             break :b switch (item) {
                 .constant => |c| c.value,
                 .type => |t| if (t.type == .generic_param)
-                    return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition())
+                    return error.ExpressionCannotBeEvaluatedAtCompileTime
                 else
                     .{ .type = t.type },
                 .module => |m| .{ .type = .{ .module = m } }, // Module as value? Type?
@@ -981,14 +981,14 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                     .function => |f| .{ .function = f },
                     .type_type => .{ .type = .type_type },
                     .type => |t| .{ .type = t.* },
-                    else => return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition()),
+                    else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
                 },
             };
         },
         .generic => .{ .type = try .infer(self, expression) },
         .type => |t| .{ .type = try .fromAst(self, t) },
         .prefix => |prefix| switch (prefix.op) {
-            .@"-" => switch (try solveComptimeExpression(self, prefix.rhs.*)) {
+            .@"-" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
                 inline .i64, .u64, .f64 => |number, tag| @unionInit(
                     Value,
                     if (tag == .u64) "i64" else @tagName(tag),
@@ -996,7 +996,7 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 ),
                 else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
-            .@"!" => switch (try solveComptimeExpression(self, prefix.rhs.*)) {
+            .@"!" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
                 .bool => |b| .{ .bool = !b },
                 else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
@@ -1009,7 +1009,8 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             while (it.next()) |member| {
                 try fields.append(self.alloc, .{
                     .name = member.key_ptr.*,
-                    .value = try self.solveComptimeExpression(member.value_ptr.*),
+                    .value = self.solveComptimeExpression(member.value_ptr.*) catch
+                        return errors.expressionCannotBeEvaluatedAtCompileTime(member.value_ptr.getPosition()),
                 });
             }
 
@@ -1022,7 +1023,8 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             };
         },
         .member => |member_expr| {
-            const parent_val = try self.solveComptimeExpression(member_expr.parent.*);
+            const parent_val = self.solveComptimeExpression(member_expr.parent.*) catch
+                return errors.expressionCannotBeEvaluatedAtCompileTime(member_expr.parent.getPosition());
             return switch (parent_val) {
                 .comptime_struct => |cs| {
                     for (cs.fields) |field| {
@@ -1030,20 +1032,20 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                             return field.value;
                         }
                     }
-                    return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition());
+                    return error.ExpressionCannotBeEvaluatedAtCompileTime;
                 },
                 .type => .{ .type = try .infer(self, expression) },
                 else => {
                     std.debug.print("cannot access member of comptime value: {f}\n", .{parent_val});
-                    return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition());
+                    return error.ExpressionCannotBeEvaluatedAtCompileTime;
                 },
             };
         },
-        .@"if" => |expr| switch (try solveComptimeExpression(self, expr.condition.*)) {
+        .@"if" => |expr| switch (try self.solveComptimeExpression(expr.condition.*)) {
             .bool => |cond| if (cond)
-                try solveComptimeExpression(self, expr.body.*)
+                try self.solveComptimeExpression(expr.body.*)
             else if (expr.@"else") |else_branch|
-                try solveComptimeExpression(self, else_branch.*)
+                try self.solveComptimeExpression(else_branch.*)
             else
                 errors.ifExpressionMustContainElseClause(expr.pos),
             else => return error.ExpressionCannotBeEvaluatedAtCompileTime,

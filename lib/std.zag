@@ -179,7 +179,7 @@ pub struct ArrayList<T> {
 
 fn hash_int<T>(key: T) usize {
     // just a placeholder for now
-    let ret: T = undefined;
+    let ret: usize = undefined;
     return ret;
 }
 

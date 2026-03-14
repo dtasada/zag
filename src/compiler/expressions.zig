@@ -770,11 +770,13 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
     const expr_is_optional = (lhs_t == .optional and rhs_t == .@"typeof(nil)") or
         (lhs_t == .optional and rhs_t == .optional and lhs_t.optional.eql(rhs_t.optional.*)) or
         (rhs_t == .optional and lhs_t == .@"typeof(nil)");
+    const expr_is_type = lhs_t == .type and rhs_t == .type;
+
     if (!((lhs_t.isNumeric() and rhs_t.isNumeric()) or
         (lhs_t == .bool and rhs_t == .bool) or
         (lhs_t == .reference and rhs_t == .reference) or
         (lhs_t == .@"enum" and rhs_t == .@"enum" and lhs_t.eql(rhs_t)) or
-        expr_is_optional))
+        expr_is_type or expr_is_optional))
         return utils.printErr(
             error.IllegalExpression,
             "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
@@ -837,6 +839,8 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
                 ") && (({[lhs]s}.is_some && {[rhs]s}.is_some) ? ({[lhs]s}.payload == {[rhs]s}.payload) : true))",
                 .{ .lhs = lhs_temp_name, .rhs = rhs_temp_name },
             );
+        } else if (expr_is_type) {
+            try self.print("{}", .{lhs_t.type.eql(rhs_t.type.*)});
         } else {
             try self.write("(");
             try compile(self, expr.lhs, .{});
