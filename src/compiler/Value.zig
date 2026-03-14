@@ -3,6 +3,7 @@ const std = @import("std");
 const utils = @import("utils");
 const ast = @import("Parser").ast;
 
+const Compiler = @import("Compiler.zig");
 const Type = @import("Type.zig").Type;
 
 pub const Value = union(enum) {
@@ -22,19 +23,11 @@ pub const Value = union(enum) {
     bool: bool,
 
     type: Type,
+    function: Type.Function,
 
     void,
 
     comptime_struct: ComptimeStruct,
-
-    // @"struct": CompoundType(.@"struct"),
-    // @"enum": CompoundType(.@"enum"),
-    // @"union": CompoundType(.@"union"),
-    // optional: struct { type: Type, value: *const Value },
-    // reference: struct { value: *const Value, type: Type.Reference },
-    // array: struct { value: std.ArrayList(Value), type: Type.Array },
-    // error_union: struct { value: *const Value, type: Type.ErrorUnion },
-    // function: struct { value: *const Value, type: Type.Function },
 
     pub const ComptimeStruct = struct {
         type: Type,
@@ -66,6 +59,7 @@ pub const Value = union(enum) {
             .bool => |b| try writer.print("{}", .{b}),
             .type => |t| try writer.print("{f}", .{t}),
             .void => _ = try writer.write("void"),
+            .function => |f| _ = try writer.write(f.name),
             .comptime_struct => |cs| {
                 try writer.print("{f}{{", .{cs.type});
                 for (cs.fields, 0..) |field, i| {
@@ -95,6 +89,7 @@ pub const Value = union(enum) {
             .type => |*t| .{ .type = t },
             .void => .void,
             .comptime_struct => |cs| cs.type,
+            .function => |f| .{ .function = f },
         };
     }
 
@@ -203,6 +198,7 @@ pub const Value = union(enum) {
                     h.update(std.mem.asBytes(&field.value.hash()));
                 }
             },
+            .function => |f| h.update(std.mem.asBytes(&(Type{ .function = f }).hash())),
         }
         return h.final();
     }

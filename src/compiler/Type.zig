@@ -236,7 +236,8 @@ pub const Type = union(enum) {
 
     void,
 
-    type: ?*const Type,
+    type_type,
+    type: *const Type,
     any,
 
     @"typeof(nil)",
@@ -267,11 +268,7 @@ pub const Type = union(enum) {
                 if (result == .void and !std.mem.eql(u8, symbol.symbol, "void"))
                     return errors.unknownSymbol(symbol.symbol, symbol.pos);
                 // If we get a .type, unwrap it to the actual type
-                if (result == .type) {
-                    if (result.type) |inner_type| {
-                        return inner_type.*;
-                    }
-                }
+                if (result == .type) return result.type.*;
                 return result;
             },
             .generic => |generic| try instantiateGeneric(
@@ -296,10 +293,7 @@ pub const Type = union(enum) {
                     for (function.generic_parameters.items) |p| {
                         generic_params.appendAssumeCapacity(.{
                             .name = p.name,
-                            .type = if (p.type == .inferred)
-                                .{ .type = null }
-                            else
-                                try .fromAst(compiler, p.type),
+                            .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
                         });
                         try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } }, .{});
                     }
@@ -367,10 +361,8 @@ pub const Type = union(enum) {
                     break :b symbol.type;
                 } else errors.undeclaredProperty(.{ .module = module }, member.member_name, member.pos),
                 .reference => |ref| continue :b ref.inner.*,
-                .type => |type_ptr| if (type_ptr == null)
-                    errors.illegalMemberExpression(.{ .type = null }, member.pos)
-                else
-                    continue :b type_ptr.?.*,
+                .type => |type_ptr| continue :b type_ptr.*,
+                .type_type => errors.illegalMemberExpression(.type_type, member.pos),
                 else => |other| errors.illegalMemberExpression(other, member.pos),
             },
         };
@@ -712,12 +704,7 @@ pub const Type = union(enum) {
             .assignment => .void,
             .struct_instantiation => |struct_inst| b: {
                 const inferred_type = try infer(compiler, struct_inst.type_expr.*);
-                if (inferred_type == .type) {
-                    if (inferred_type.type) |t| {
-                        break :b t.*;
-                    }
-                }
-                break :b inferred_type;
+                break :b if (inferred_type == .type) inferred_type.type.* else inferred_type;
             },
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => |block| try inferBlock(compiler, block),
@@ -783,7 +770,7 @@ pub const Type = union(enum) {
             .generic => |generic| b: {
                 var base_type = try infer(compiler, generic.lhs.*);
                 while (base_type == .type) {
-                    if (base_type.type) |inner| base_type = inner.* else break;
+                    if (base_type.type.* != .type_type) base_type = base_type.type.* else break;
                 }
 
                 const t = try compiler.alloc.create(Self);
@@ -941,10 +928,7 @@ pub const Type = union(enum) {
             .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
                 try compound_type.generic_params.append(compiler.alloc, .{
                     .name = g.name,
-                    .type = if (g.type == .inferred)
-                        .{ .type = null }
-                    else
-                        try .fromAst(compiler, g.type),
+                    .type = if (g.type == .inferred) .type_type else try .fromAst(compiler, g.type),
                 });
             },
             else => {},
@@ -1065,10 +1049,7 @@ pub const Type = union(enum) {
             for (method.generic_parameters.items) |p|
                 generic_params.appendAssumeCapacity(.{
                     .name = p.name,
-                    .type = if (p.type == .inferred)
-                        .{ .type = null }
-                    else
-                        try .fromAst(compiler, p.type),
+                    .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
                 });
 
             const return_type = try fromAstPtr(compiler, method.return_type);
@@ -1212,10 +1193,8 @@ pub const Type = union(enum) {
                     .{ member.member_name, member.pos },
                     .red,
                 ),
-            .type => |t| if (t) |inner|
-                continue :b inner.*
-            else
-                return errors.illegalMemberExpression(.{ .type = null }, member.pos),
+            .type => |t| continue :b t.*,
+            .type_type => return errors.illegalMemberExpression(.type_type, member.pos),
             else => |other| return errors.illegalMemberExpression(other, member.pos),
         }
     }

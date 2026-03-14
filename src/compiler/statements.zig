@@ -330,9 +330,9 @@ fn variableDefinition(
     if (final_type == .type) {
         const saved_section = self.current_section;
         self.switchSection(.header_type_defs);
-        try self.beginTypeDefEmit(final_type.type.?.*);
+        try self.beginTypeDefEmit(final_type.type.*);
 
-        const inner_type = final_type.type.?.*;
+        const inner_type = final_type.type.*;
         try self.write("typedef ");
         if (inner_type == .function) {
             try self.compileVariableSignature(mangled_name, inner_type, .let_mut);

@@ -73,7 +73,7 @@ pub fn compile(
         .struct_instantiation => |struct_inst| b: switch (try Type.infer(self, struct_inst.type_expr.*)) {
             .@"struct" => |s| try structInstantiation(self, struct_inst, s),
             .@"union" => |u| try unionInstantiation(self, struct_inst, u),
-            .type => |t| continue :b t.?.*,
+            .type => |t| continue :b t.*,
             else => unreachable,
         },
         .reference => |reference| {
@@ -653,10 +653,8 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
     const parent_type: Type = try .infer(self, expr.parent.*);
     var delimiter: enum { @".", @"->" } = .@".";
     b: switch (parent_type) {
-        .type => |t_opt| if (t_opt) |t|
-            continue :b t.*
-        else
-            return errors.illegalMemberExpression(parent_type, expr.pos),
+        .type => |t| continue :b t.*,
+        .type_type => return errors.illegalMemberExpression(parent_type, expr.pos),
 
         .@"struct" => |@"struct"| if (@"struct".getProperty(expr.member_name)) |property| switch (property) {
             .variable => |variable| {
@@ -978,10 +976,8 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     parent_reference_level += 1;
                     continue :b reference.inner.*;
                 },
-                .type => |t| if (t) |inner|
-                    continue :b inner.*
-                else
-                    return errors.illegalMemberExpression(.{ .type = null }, m.pos),
+                .type => |t| continue :b t.*,
+                .type_type => return errors.illegalMemberExpression(.type_type, m.pos),
                 else => return errors.undeclaredProperty(parent, m.member_name, call_expr.pos),
             };
             try methodCall(self, call_expr, m, method_func);
@@ -1125,10 +1121,11 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
             parent_reference_level += 1;
             continue :b reference.inner.*;
         },
-        .type => |t| if (t) |inner| {
+        .type => |t| {
             is_instance_method = true;
-            continue :b inner.*;
-        } else return errors.illegalMemberExpression(.{ .type = null }, m.pos),
+            continue :b t.*;
+        },
+        .type_type => return errors.illegalMemberExpression(.type_type, m.pos),
         else => |other| return errors.illegalMemberExpression(other, m.pos),
     }
 }

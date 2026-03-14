@@ -418,19 +418,17 @@ pub fn scan(self: *Self) CompilerError!void {
             } else {
                 const received_type: Type = try .infer(self, var_def.assigned_value);
                 if (received_type == .type) {
-                    if (received_type.type) |inner_type| {
-                        try self.registerSymbol(
-                            var_def.variable_name,
-                            .{ .type = inner_type.* },
-                            .{
-                                .is_defined = false,
-                                .inner_name = switch (inner_type.*) {
-                                    inline .@"struct", .@"union", .@"enum" => |ct| ct.inner_name,
-                                    else => try self.mangle(var_def.variable_name),
-                                },
+                    try self.registerSymbol(
+                        var_def.variable_name,
+                        .{ .type = received_type.type.* },
+                        .{
+                            .is_defined = false,
+                            .inner_name = switch (received_type.type.*) {
+                                inline .@"struct", .@"union", .@"enum" => |ct| ct.inner_name,
+                                else => try self.mangle(var_def.variable_name),
                             },
-                        );
-                    }
+                        },
+                    );
                     continue;
                 }
 
@@ -979,7 +977,12 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 else
                     .{ .type = t.type },
                 .module => |m| .{ .type = .{ .module = m } }, // Module as value? Type?
-                .symbol => return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition()), // Variable cannot be evaluated at comptime (unless const?)
+                .symbol => |s| switch (s.type) {
+                    .function => |f| .{ .function = f },
+                    .type_type => .{ .type = .type_type },
+                    .type => |t| .{ .type = t.* },
+                    else => return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition()),
+                },
             };
         },
         .generic => .{ .type = try .infer(self, expression) },
@@ -1245,7 +1248,7 @@ fn registerConstants(self: *Self) !void {
     try self.registerSymbol("bool", .{ .type = .bool }, .{});
     try self.registerSymbol("any", .{ .type = .any }, .{});
 
-    try self.registerSymbol("type", .{ .type = .{ .type = null } }, .{});
+    try self.registerSymbol("type", .{ .type = .type_type }, .{});
 
     try self.registerSymbol("c_int", .{ .type = .c_int }, .{ .inner_name = "int" });
     try self.registerSymbol("c_char", .{ .type = .c_char }, .{ .inner_name = "char" });
@@ -1273,7 +1276,7 @@ fn registerConstants(self: *Self) !void {
                     .inner_name = "sizeof",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
+                        try params.append(self.alloc, .{ .name = "T", .type = .type_type });
                         break :b params;
                     },
                     .return_type = b: {
@@ -1297,7 +1300,7 @@ fn registerConstants(self: *Self) !void {
                     .inner_name = "cast",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
+                        try params.append(self.alloc, .{ .name = "T", .type = .type_type });
                         break :b params;
                     },
                     .return_type = b: {
@@ -1325,7 +1328,7 @@ fn registerConstants(self: *Self) !void {
                     .inner_name = "xor",
                     .generic_params = b: {
                         var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .{ .type = null } });
+                        try params.append(self.alloc, .{ .name = "T", .type = .type_type });
                         break :b params;
                     },
                     .return_type = b: {
