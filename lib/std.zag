@@ -195,8 +195,13 @@ pub struct HashMap<K, V> {
     }
 
     pub fn init() HashMap<K, V> {
-        let self = HashMap<T, V> { entries: alloc_slice<?&Entry>(SIZE) };
+        let self = HashMap<K, V> { entries: alloc_slice<?&Entry>(SIZE) };
         memset_slice<?&Entry>(self.entries, nil);
+
+        if (K == []u8) {
+
+        }
+
         return self;
     }
 }

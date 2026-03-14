@@ -65,12 +65,7 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower
     var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
         try nud_handler(self, alloc)
     else
-        return utils.printErr(
-            error.UnexpectedToken,
-            "Failed to parse type: unexpected token {f} ({f}).\n",
-            .{ self.parent_parser.advance(), self.parent_parser.currentPosition() },
-            .red,
-        );
+        return error.HandlerDoesNotExist;
 
     while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentToken()))) {
         token = self.parent_parser.advance(); // consume operator

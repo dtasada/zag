@@ -1,11 +1,11 @@
 import std;
 
 pub union Object {
-    null: void,
-    bool: bool,
-    number: f64,
-    string: []u8,
-    array: []Object,
+    // null: void,
+    // bool: bool,
+    // number: f64,
+    // string: []u8,
+    // array: []Object,
     object: std.HashMap<[]u8, Object>
 }
 

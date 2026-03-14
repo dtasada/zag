@@ -200,8 +200,15 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
 
 pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
     const pos = self.currentPosition();
+    const backup_pos = self.pos;
 
     try self.expect(self.advance(), .@"[", "array instantiation", "[");
+
+    if (self.currentToken() == .@"]") {
+        self.pos = backup_pos;
+        return .{ .type = try self.type_parser.parseType(self.alloc, .primary) };
+    }
+
     const length = try self.alloc.create(ast.Expression);
     length.* = try parse(self, .default, .{});
     try self.expect(self.advance(), .@"]", "array instantiation", "]");
