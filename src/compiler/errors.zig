@@ -7,6 +7,7 @@ pub const CompilerError = error{
     AccessDenied,
     ArgumentCountMismatch,
     AssignmentToImmutableVariable,
+    BadAccess,
     BadMutability,
     CircularTypeDefinition,
     DuplicateMember,
@@ -22,8 +23,8 @@ pub const CompilerError = error{
     MemberExpressionOnPrimitiveType,
     MemberIsNotAMethod,
     MissingElseClause,
-    MissingStructMember,
     MissingReturnStatement,
+    MissingStructMember,
     ModuleNotFound,
     NoSuchMember,
     OutOfMemory,
@@ -182,11 +183,11 @@ pub fn illegalPrefixExpression(op: @import("Parser").ast.PrefixOperator, t: Type
     );
 }
 
-pub fn badAccess(T: utils.CompoundTypeTag, name: []const u8, pos: utils.Position) CompilerError {
+pub fn badAccess(parent: []const u8, name: []const u8, pos: utils.Position) CompilerError {
     return utils.printErr(
-        error.IllegalExpression,
-        "comperr: {s} variable '{s}' must be 'pub' to be accessed from outside its module ({f}).\n",
-        .{ @tagName(T), name, pos },
+        error.BadAccess,
+        "comperr: '{s}.{s}' must be 'pub' to be accessed from outside its module ({f}).\n",
+        .{ parent, name, pos },
         .red,
     );
 }
@@ -194,7 +195,7 @@ pub fn badAccess(T: utils.CompoundTypeTag, name: []const u8, pos: utils.Position
 pub fn typeMismatchIfExpression(body_type: Type, else_type: Type, pos: utils.Position) CompilerError {
     return utils.printErr(
         error.TypeMismatch,
-        "comperr: Type mismatch in if expression: {f} and {f} are not compatible ({f}).\n",
+        "comperr: Type mismatch in if expression: '{f} and '{f}' are not compatible ({f}).\n",
         .{ body_type, else_type, pos },
         .red,
     );

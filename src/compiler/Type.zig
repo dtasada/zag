@@ -360,10 +360,10 @@ pub const Type = union(enum) {
                     .member => .{ .@"enum" = e },
                     .method => |method| Type.Function.fromMethod(.@"enum", method, e.module),
                 } else errors.undeclaredProperty(.{ .@"enum" = e }, member.member_name, member.pos),
-                .module => |module| if (module.symbols.get(member.member_name)) |symbol|
-                    symbol.type
-                else
-                    errors.undeclaredProperty(.{ .module = module }, member.member_name, member.pos),
+                .module => |module| if (module.symbols.get(member.member_name)) |symbol| b2: {
+                    if (!symbol.is_pub) break :b2 errors.badAccess(module.name, member.member_name, member.pos);
+                    break :b symbol.type;
+                } else errors.undeclaredProperty(.{ .module = module }, member.member_name, member.pos),
                 .reference => |ref| continue :b ref.inner.*,
                 .type => |type_ptr| if (type_ptr == null)
                     errors.illegalMemberExpression(.{ .type = null }, member.pos)
@@ -1165,6 +1165,7 @@ pub const Type = union(enum) {
             ),
             .reference => |reference| continue :b reference.inner.*,
             .module => |module| if (module.symbols.get(member.member_name)) |symbol| {
+                if (!symbol.is_pub) return errors.badAccess(module.name, member.member_name, member.pos);
                 return switch (symbol.type) {
                     .@"struct", .@"union", .@"enum" => wrap: {
                         const ptr = try compiler.alloc.create(Type);

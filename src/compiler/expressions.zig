@@ -661,7 +661,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         .@"struct" => |@"struct"| if (@"struct".getProperty(expr.member_name)) |property| switch (property) {
             .variable => |variable| {
                 if (!std.mem.eql(u8, self.module.name, @"struct".module.name) and !variable.is_pub)
-                    return errors.badAccess(.@"struct", @"struct".name, expr.pos);
+                    return errors.badAccess(@"struct".name, expr.member_name, expr.pos);
                 try self.write(variable.inner_name);
             },
             .member => {
@@ -675,7 +675,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         .@"enum" => |@"enum"| if (@"enum".getProperty(expr.member_name)) |property| switch (property) {
             .variable => |variable| {
                 if (!std.mem.eql(u8, self.module.name, @"enum".module.name) and !variable.is_pub)
-                    return errors.badAccess(.@"enum", @"enum".name, expr.pos);
+                    return errors.badAccess(@"enum".name, expr.member_name, expr.pos);
                 try self.write(variable.inner_name);
             },
             .member => {
@@ -695,7 +695,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         .@"union" => |@"union"| if (@"union".getProperty(expr.member_name)) |property| switch (property) {
             .variable => |variable| {
                 if (!std.mem.eql(u8, self.module.name, @"union".module.name) and !variable.is_pub)
-                    return errors.badAccess(.@"union", @"union".name, expr.pos);
+                    return errors.badAccess(@"union".name, expr.member_name, expr.pos);
                 try self.write(variable.inner_name);
             },
             .member => {
@@ -715,6 +715,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
         },
 
         .module => |module| if (module.symbols.get(expr.member_name)) |symbol| {
+            if (!symbol.is_pub) return errors.badAccess(module.name, expr.member_name, expr.pos);
             try self.write(symbol.inner_name);
         } else return utils.printErr(
             error.UndeclaredProperty,
@@ -922,12 +923,15 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                             return;
                         },
                     } else return errors.undeclaredProperty(static_type, m.member_name, call_expr.pos),
-                    .module => |module| if (module.symbols.get(m.member_name)) |symbol| switch (symbol.type) {
-                        .function => |function| {
-                            try functionCall(self, function, call_expr);
-                            return;
-                        },
-                        else => return errors.expressionNotCallable(symbol.type, call_expr.callee.getPosition()),
+                    .module => |module| if (module.symbols.get(m.member_name)) |symbol| {
+                        if (!symbol.is_pub) return errors.badAccess(module.name, m.member_name, m.pos);
+                        switch (symbol.type) {
+                            .function => |function| {
+                                try functionCall(self, function, call_expr);
+                                return;
+                            },
+                            else => return errors.expressionNotCallable(symbol.type, call_expr.callee.getPosition()),
+                        }
                     } else return utils.printErr(
                         error.UndeclaredProperty,
                         "comperr: Module '{s}' has no member '{s}' ({f}).\n",

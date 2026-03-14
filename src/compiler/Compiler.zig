@@ -480,7 +480,7 @@ pub fn analyze(self: *Self) CompilerError!void {
             .function_definition => |*func| {
                 try processFunctionDefinitionSymbol(self, func);
 
-                if (func.is_pub) try self.exported_symbols.put(func.name, .{
+                try self.exported_symbols.put(func.name, .{
                     .name = func.name,
                     .inner_name = try self.mangle(func.name),
                     .is_pub = func.is_pub,
@@ -491,7 +491,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 var t = try Type.fromAst(self, func.getType());
                 t.function.is_bind = true;
                 try self.registerSymbol(func.name, .{ .symbol = .{ .type = t } }, .{ .is_defined = false });
-                if (func.is_pub) try self.exported_symbols.put(func.name, .{
+                try self.exported_symbols.put(func.name, .{
                     .name = func.name,
                     .inner_name = func.name,
                     .is_pub = func.is_pub,
@@ -515,7 +515,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                     },
                 );
 
-                if (var_def.is_pub) try self.exported_symbols.put(var_def.variable_name, .{
+                try self.exported_symbols.put(var_def.variable_name, .{
                     .name = var_def.variable_name,
                     .inner_name = try self.mangle(var_def.variable_name),
                     .is_pub = var_def.is_pub,
@@ -532,7 +532,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 try self.registerSymbol(btd.name, .{ .type = t }, .{});
 
-                if (btd.is_pub) try self.exported_symbols.put(btd.name, .{
+                try self.exported_symbols.put(btd.name, .{
                     .name = btd.name,
                     .inner_name = btd.name,
                     .is_pub = btd.is_pub,
@@ -555,7 +555,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 }, compound_type);
 
                 // Exported symbols logic
-                if (struct_decl.is_pub) try self.exported_symbols.put(struct_decl.name, .{
+                try self.exported_symbols.put(struct_decl.name, .{
                     .name = struct_decl.name,
                     .inner_name = try self.mangle(struct_decl.name),
                     .is_pub = struct_decl.is_pub,
