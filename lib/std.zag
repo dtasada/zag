@@ -183,8 +183,20 @@ pub struct ArrayList<T> {
     }
 }
 
+fn hash_int<T>(key: T) usize {
+    // just a placeholder for now
+    let ret: T = undefined;
+    return ret;
+}
+
 pub struct HashMap<K, V> {
     const SIZE = 1e5;
+
+    const hash: fn (key: K) usize =
+        if (K == []u8)
+            String.hash
+        else
+            hash_int<K>;
 
     entries: []mut ?&Entry,
 
@@ -197,11 +209,6 @@ pub struct HashMap<K, V> {
     pub fn init() HashMap<K, V> {
         let self = HashMap<K, V> { entries: alloc_slice<?&Entry>(SIZE) };
         memset_slice<?&Entry>(self.entries, nil);
-
-        if (K == []u8) {
-
-        }
-
         return self;
     }
 }

@@ -461,8 +461,7 @@ pub const Type = union(enum) {
         var all_match = true;
         for (params.items, 0..) |p, i| {
             const arg = args.items[i];
-            if (arg != .type or
-                arg.type != .generic_param or
+            if (arg != .type or arg.type != .generic_param or
                 !std.mem.eql(u8, arg.type.generic_param, p.name))
             {
                 all_match = false;

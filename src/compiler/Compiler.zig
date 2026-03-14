@@ -980,11 +980,11 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             break :b switch (item) {
                 .constant => |c| c.value,
                 .type => |t| if (t.type == .generic_param)
-                    return error.ExpressionCannotBeEvaluatedAtCompileTime
+                    return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition())
                 else
                     .{ .type = t.type },
                 .module => |m| .{ .type = .{ .module = m } }, // Module as value? Type?
-                .symbol => return error.ExpressionCannotBeEvaluatedAtCompileTime, // Variable cannot be evaluated at comptime (unless const?)
+                .symbol => return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition()), // Variable cannot be evaluated at comptime (unless const?)
             };
         },
         .generic => .{ .type = try .infer(self, expression) },
@@ -1032,14 +1032,23 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                             return field.value;
                         }
                     }
-                    return error.ExpressionCannotBeEvaluatedAtCompileTime;
+                    return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition());
                 },
                 .type => .{ .type = try .infer(self, expression) },
                 else => {
                     std.debug.print("cannot access member of comptime value: {f}\n", .{parent_val});
-                    return error.ExpressionCannotBeEvaluatedAtCompileTime;
+                    return errors.expressionCannotBeEvaluatedAtCompileTime(expression.getPosition());
                 },
             };
+        },
+        .@"if" => |expr| switch (try solveComptimeExpression(self, expr.condition.*)) {
+            .bool => |cond| if (cond)
+                try solveComptimeExpression(self, expr.body.*)
+            else if (expr.@"else") |else_branch|
+                try solveComptimeExpression(self, else_branch.*)
+            else
+                errors.ifExpressionMustContainElseClause(expr.pos),
+            else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
         },
         else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };

@@ -151,7 +151,11 @@ pub const Value = union(enum) {
                         .@"or" => inner_lhs or inner_rhs,
                         else => unreachable,
                     },
-                    else => unreachable,
+                    else => if (@TypeOf(inner_lhs) == Type) switch (inner_op) {
+                        .@"==" => inner_lhs.eql(inner_rhs),
+                        .@"!=" => !inner_lhs.eql(inner_rhs),
+                        else => unreachable,
+                    },
                 });
             }
         }).switchFn;
@@ -171,6 +175,10 @@ pub const Value = union(enum) {
             },
             .bool => |lhs_bool| switch (rhs) {
                 .bool => |rhs_bool| try switch_fn("bool", lhs_bool, op, rhs_bool),
+                else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),
+            },
+            .type => |lhs_t| switch (rhs) {
+                .type => |rhs_t| try switch_fn("bool", lhs_t, op, rhs_t),
                 else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),
             },
             else => @panic("invalid binary operation: the two values are not of numeric or boolean type\n"),

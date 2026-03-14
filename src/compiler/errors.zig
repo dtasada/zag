@@ -274,3 +274,12 @@ pub fn badRangeBound(t: Type, pos: utils.Position) CompilerError {
         .red,
     );
 }
+
+pub fn expressionCannotBeEvaluatedAtCompileTime(pos: utils.Position) CompilerError {
+    return utils.printErr(
+        error.ExpressionCannotBeEvaluatedAtCompileTime,
+        "comperr: Expression cannot be evaluated at compile time ({f}).\n",
+        .{pos},
+        .red,
+    );
+}
