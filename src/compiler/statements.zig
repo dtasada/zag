@@ -317,10 +317,11 @@ fn variableDefinition(
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
     const final_type = expected_type orelse received_type;
 
-    if (self.getScopeItemWithinFunction(v.variable_name)) |item| {
-        if (item == .symbol and item.symbol.is_defined or item == .constant)
-            return errors.symbolShadowing(v.variable_name, v.pos);
-    } else |_| {}
+    if (!opts.is_static_member)
+        if (self.getScopeItemWithinFunction(v.variable_name)) |item| {
+            if (item == .symbol and item.symbol.is_defined or item == .constant)
+                return errors.symbolShadowing(v.variable_name, v.pos);
+        } else |_| {};
 
     if (expected_type) |et| if (!received_type.check(et))
         return errors.typeMismatch(et, received_type, v.assigned_value.getPosition());
@@ -466,7 +467,7 @@ fn conditional(
                 else
                     try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
-                try self.compileVariableSignature(capture_ident, start_t, .let);
+                try self.compileVariableSignature(capture_ident, start_t, .let_mut);
                 try self.print(" = {s};", .{start_temp_name});
 
                 try self.print("({[end]s} > {[start]s}) ? {[capture]s} {[cmp]s} {[end]s} :" ++

@@ -1010,7 +1010,7 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 try fields.append(self.alloc, .{
                     .name = member.key_ptr.*,
                     .value = self.solveComptimeExpression(member.value_ptr.*) catch
-                        return errors.expressionCannotBeEvaluatedAtCompileTime(member.value_ptr.getPosition()),
+                        return error.ExpressionCannotBeEvaluatedAtCompileTime,
                 });
             }
 
@@ -1024,7 +1024,7 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         },
         .member => |member_expr| {
             const parent_val = self.solveComptimeExpression(member_expr.parent.*) catch
-                return errors.expressionCannotBeEvaluatedAtCompileTime(member_expr.parent.getPosition());
+                return error.ExpressionCannotBeEvaluatedAtCompileTime;
             return switch (parent_val) {
                 .comptime_struct => |cs| {
                     for (cs.fields) |field| {

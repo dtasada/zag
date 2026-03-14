@@ -276,6 +276,7 @@ pub fn badRangeBound(t: Type, pos: utils.Position) CompilerError {
 }
 
 pub fn expressionCannotBeEvaluatedAtCompileTime(pos: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.ExpressionCannotBeEvaluatedAtCompileTime,
         "comperr: Expression cannot be evaluated at compile time ({f}).\n",
