@@ -165,7 +165,6 @@ pub fn badMutability(position: utils.Position) CompilerError {
 }
 
 pub fn symbolShadowing(name: []const u8, pos: utils.Position) CompilerError {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.IllegalStatement,
         "comperr: Symbol shadowing is not allowed: attempt to redeclare '{s}' ({f}).\n",
@@ -277,6 +276,7 @@ pub fn badRangeBound(t: Type, pos: utils.Position) CompilerError {
 }
 
 pub fn expressionCannotBeEvaluatedAtCompileTime(pos: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.ExpressionCannotBeEvaluatedAtCompileTime,
         "comperr: Expression cannot be evaluated at compile time ({f}).\n",

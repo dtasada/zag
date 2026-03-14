@@ -62,7 +62,7 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
             .pos = pos,
             .is_pub = is_pub,
             .variable_name = var_name,
-            .binding = if (is_const) .is_const else if (is_mut) .is_mut else .neither,
+            .binding = if (is_const) .@"const" else if (is_mut) .let_mut else .let,
             .assigned_value = assigned_value,
             .type = @"type",
         },

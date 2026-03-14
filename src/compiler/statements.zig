@@ -69,7 +69,7 @@ fn handleArrayReturnType(self: *Self, return_type: *Type) !bool {
         if (self.zag_header_contents.get(return_type.*) == null) {
             try self.beginTypeDefEmit(return_type.*);
             try self.write("typedef struct {\n");
-            try self.compileVariableSignature("items", inner_type, .{ .binding_mut = true });
+            try self.compileVariableSignature("items", inner_type, .let_mut);
             try self.print(";\n}} {s};\n", .{return_type_name});
             self.endTypeDefEmit();
 
@@ -160,14 +160,14 @@ fn compoundTypeDeclaration(
             try self.compileVariableSignature(
                 member.key_ptr.*,
                 member.value_ptr.*,
-                .{ .binding_mut = true }, // struct members shouldn't be const.
+                .let_mut, // struct members shouldn't be const.
             );
             try self.write(";\n");
         },
         .@"union" => {
             var t = member.value_ptr.*;
             if (t == .void) t = .u8;
-            try self.compileVariableSignature(member.key_ptr.*, t, .{ .binding_mut = true });
+            try self.compileVariableSignature(member.key_ptr.*, t, .let_mut);
             try self.write(";\n");
         },
         .@"enum" => try self.print("{s}_{s} = {d},\n", .{
@@ -226,7 +226,11 @@ fn compoundTypeDeclaration(
             try self.compileType(return_type, .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
             for (method.parameters.items, 0..) |parameter_type, i| {
-                try self.compileVariableSignature(parameter_type.name, try .fromAst(self, parameter_type.type), .{ .binding_mut = parameter_type.is_mut });
+                try self.compileVariableSignature(
+                    parameter_type.name,
+                    try .fromAst(self, parameter_type.type),
+                    if (parameter_type.is_mut) .let_mut else .let,
+                );
                 if (i < method.parameters.items.len - 1) try self.write(", ");
             }
             try self.write(");\n");
@@ -239,7 +243,7 @@ fn compoundTypeDeclaration(
         for (method.parameters.items, 0..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
             try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type, .is_mut = parameter.is_mut } }, .{});
-            try self.compileVariableSignature(parameter.name, param_type, .{ .binding_mut = parameter.is_mut });
+            try self.compileVariableSignature(parameter.name, param_type, if (parameter.is_mut) .let_mut else .let);
             if (i < method.parameters.items.len - 1) try self.write(", ");
         }
         try self.write(") ");
@@ -331,7 +335,7 @@ fn variableDefinition(
         const inner_type = final_type.type.?.*;
         try self.write("typedef ");
         if (inner_type == .function) {
-            try self.compileVariableSignature(mangled_name, inner_type, .{ .binding_mut = true });
+            try self.compileVariableSignature(mangled_name, inner_type, .let_mut);
         } else {
             try self.compileType(inner_type, .{ .binding_mut = true });
             try self.print(" {s}", .{mangled_name});
@@ -344,16 +348,12 @@ fn variableDefinition(
         try self.zag_header_contents.put(inner_type, mangled_name);
         try self.registerSymbol(v.variable_name, .{ .type = inner_type }, .{ .inner_name = mangled_name });
     } else {
-        try self.registerSymbol(
-            v.variable_name,
-            .{
-                .symbol = .{
-                    .is_mut = v.binding == .is_mut,
-                    .type = final_type,
-                },
+        try self.registerSymbol(v.variable_name, .{
+            .symbol = .{
+                .is_mut = v.binding == .let_mut,
+                .type = final_type,
             },
-            .{ .inner_name = mangled_name },
-        );
+        }, .{ .inner_name = mangled_name });
 
         if (v.is_pub) {
             const saved_section = self.current_section;
@@ -361,7 +361,7 @@ fn variableDefinition(
             defer self.switchSection(saved_section);
 
             try self.write("extern ");
-            try self.compileVariableSignature(mangled_name, final_type, .{ .binding_mut = v.binding == .is_mut });
+            try self.compileVariableSignature(mangled_name, final_type, v.binding);
             try self.write(";\n");
         }
 
@@ -371,16 +371,17 @@ fn variableDefinition(
         }
         defer self.switchSection(saved_section);
 
-        try self.compileVariableSignature(mangled_name, final_type, .{
-            .binding_mut = v.binding == .is_mut,
-            .is_const = v.binding == .is_const and !v.is_pub,
-        });
+        try self.compileVariableSignature(
+            mangled_name,
+            final_type,
+            if (v.is_pub and v.binding != .let_mut) .let else v.binding,
+        );
 
         if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
             try self.write(" = ");
 
             try expressions.compile(self, &v.assigned_value, .{
-                .binding_mut = v.binding == .is_mut,
+                .binding_mut = v.binding == .let_mut,
                 .expected_type = expected_type,
                 .is_variable_declaration = true,
             });
@@ -465,7 +466,7 @@ fn conditional(
                 else
                     try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
 
-                try self.compileVariableSignature(capture_ident, start_t, .{ .binding_mut = true });
+                try self.compileVariableSignature(capture_ident, start_t, .let);
                 try self.print(" = {s};", .{start_temp_name});
 
                 try self.print("({[end]s} > {[start]s}) ? {[capture]s} {[cmp]s} {[end]s} :" ++
@@ -608,7 +609,7 @@ fn functionDefinition(
         try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
         for (function_def.parameters.items, 0..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), .{ .binding_mut = parameter.is_mut });
+            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), if (parameter.is_mut) .let_mut else .let);
             if (i < function_def.parameters.items.len - 1) try self.write(", ");
         }
         try self.write(");\n");
@@ -623,7 +624,7 @@ fn functionDefinition(
             try self.compileVariableSignature(
                 parameter.name,
                 try .fromAst(self, parameter.type),
-                .{ .binding_mut = parameter.is_mut },
+                if (parameter.is_mut) .let_mut else .let,
             );
             if (i < function_def.parameters.items.len - 1) try self.write(", ");
 

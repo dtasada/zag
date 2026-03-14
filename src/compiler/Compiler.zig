@@ -439,7 +439,7 @@ pub fn scan(self: *Self) CompilerError!void {
 
             try self.registerSymbol(
                 var_def.variable_name,
-                .{ .symbol = .{ .is_mut = var_def.binding == .is_mut, .type = final_type } },
+                .{ .symbol = .{ .is_mut = var_def.binding == .let_mut, .type = final_type } },
                 .{ .is_defined = false, .inner_name = try self.mangle(var_def.variable_name) },
             );
         },
@@ -508,7 +508,7 @@ pub fn analyze(self: *Self) CompilerError!void {
 
                 try self.registerSymbol(
                     var_def.variable_name,
-                    .{ .symbol = .{ .is_mut = var_def.binding == .is_mut, .type = final_type } },
+                    .{ .symbol = .{ .is_mut = var_def.binding == .let_mut, .type = final_type } },
                     .{
                         .is_defined = false,
                         .inner_name = try self.mangle(var_def.variable_name),
@@ -520,7 +520,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                     .inner_name = try self.mangle(var_def.variable_name),
                     .is_pub = var_def.is_pub,
                     .type = final_type,
-                    .is_mut = var_def.binding == .is_mut,
+                    .is_mut = var_def.binding == .let_mut,
                 });
             },
             .binding_type_declaration => |btd| {
@@ -678,9 +678,7 @@ pub fn compileBlock(
             },
         } else (try Type.infer(self, capture.condition.*)).optional.*;
 
-        try self.compileVariableSignature(capture.capture.name, inner_type, .{
-            .binding_mut = capture.capture.takes_ref == .some and capture.capture.takes_ref.some,
-        });
+        try self.compileVariableSignature(capture.capture.name, inner_type, .let);
         try self.print(" = {s}(", .{if (capture.capture.takes_ref == .some) "&" else ""});
         try expressions.compile(self, capture.condition, .{});
         try self.write(").payload;\n");
@@ -703,7 +701,7 @@ pub fn compileBlock(
             else => unreachable,
         };
 
-        try self.compileVariableSignature(iterator.capture.name, inner_type, .{ .binding_mut = iterator.capture.takes_ref == .some and iterator.capture.takes_ref.some });
+        try self.compileVariableSignature(iterator.capture.name, inner_type, .let);
         try self.print(" = {s}(", .{if (iterator.capture.takes_ref == .some) "&" else ""});
         try expressions.compile(self, iterator.iter_expr, .{});
         try self.write(")");
@@ -748,7 +746,7 @@ pub fn compileBlock(
 
             const return_type = opts.return_type_override orelse self.current_return_type.?;
             self.currentSection().current_statement = self.currentWriter().items.len;
-            try self.compileVariableSignature("__zag_ret_val", return_type, .{ .binding_mut = true });
+            try self.compileVariableSignature("__zag_ret_val", return_type, .let);
             try self.write(" = ");
             if (opts.return_type_override_is_array) try self.print("({s}){{ .items = ", .{opts.return_type_override.?.@"struct".inner_name});
             try expressions.compile(self, e, .{
@@ -872,7 +870,7 @@ pub fn compileType(
                 try self.compileVariableSignature(
                     "ptr",
                     .{ .reference = .{ .is_mut = true, .inner = slice.inner } },
-                    .{ .binding_mut = true },
+                    .let_mut,
                 );
                 try self.write(";\nsize_t len;\n");
                 try self.print("}} {s};\n", .{type_name});
@@ -926,16 +924,13 @@ pub fn compileVariableSignature(
     self: *Self,
     name: []const u8,
     t: Type,
-    opts: struct {
-        binding_mut: bool = false,
-        is_const: bool = false,
-    },
+    binding: utils.Binding,
 ) CompilerError!void {
     if (t == .type) unreachable;
 
-    if (opts.is_const) try self.write("static ");
+    if (binding == .@"const") try self.write("static ");
 
-    const binding_mut = opts.binding_mut or t == .slice and t.slice.is_mut;
+    const binding_mut = binding == .let_mut or t == .slice and t.slice.is_mut;
 
     switch (t) {
         .array => |array| {
@@ -951,7 +946,7 @@ pub fn compileVariableSignature(
             try self.compileType(function.return_type.*, .{ .binding_mut = true });
             try self.print(" (*{s})(", .{name});
             for (function.params.items, 0..) |param, i| {
-                try self.compileType(param.type, .{ .binding_mut = opts.binding_mut });
+                try self.compileType(param.type, .{ .binding_mut = binding == .let_mut });
                 if (i < function.params.items.len - 1) try self.write(", ");
             }
             try self.write(")");

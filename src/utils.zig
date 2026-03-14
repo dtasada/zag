@@ -4,10 +4,13 @@ pub const Capture = struct {
     name: []const u8,
     takes_ref: union(enum) {
         none,
+        /// is mutable
         some: bool,
     },
     index: ?[]const u8,
 };
+
+pub const Binding = enum { let_mut, let, @"const" };
 
 pub const CompoundTypeTag = enum {
     @"struct",

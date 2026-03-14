@@ -89,6 +89,8 @@ pub const Type = union(enum) {
                 is_pub: bool,
                 type: Type,
                 inner_name: []const u8,
+                value: Value,
+                binding: utils.Binding,
             };
 
             name: []const u8,
@@ -720,18 +722,30 @@ pub const Type = union(enum) {
             .array_instantiation => |array| try inferArrayInstantiationExpression(compiler, array),
             .block => |block| try inferBlock(compiler, block),
             .@"if" => |@"if"| if (@"if".@"else") |@"else"| {
+                // If the condition is comptime-known, only infer the taken branch.
+                // This allows the branches to have different types (e.g. comptime type dispatch).
+                if (compiler.solveComptimeExpression(@"if".condition.*)) |val| {
+                    return switch (val) {
+                        .bool => |cond| if (cond)
+                            try infer(compiler, @"if".body.*)
+                        else
+                            try infer(compiler, @"else".*),
+                        else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
+                    };
+                } else |_| {}
+
+                // Runtime if: both branches must have compatible types.
                 try compiler.pushScope(false);
                 if (@"if".capture) |capture| {
                     const capture_type = switch (try infer(compiler, @"if".condition.*)) {
                         .optional => |optional| optional.*,
                         else => |other| other,
                     };
-
                     try compiler.registerSymbol(capture.name, .{ .symbol = .{ .type = capture_type } }, .{});
                 }
 
                 const expected: Type = try infer(compiler, @"if".body.*);
-                if (@"if".capture) |_| compiler.popScope();
+                compiler.popScope();
 
                 const received: Type = try infer(compiler, @"else".*);
                 if (!received.check(expected))
@@ -958,9 +972,14 @@ pub const Type = union(enum) {
             const value = try compiler.solveComptimeExpression(variable.assigned_value);
             const var_type = if (variable.type == .inferred) value.getType() else try fromAst(compiler, variable.type);
 
-            try compiler.registerSymbol(variable.variable_name, .{
-                .constant = .{ .type = var_type, .value = value },
-            }, .{});
+            try compiler.registerSymbol(
+                variable.variable_name,
+                if (variable.binding == .@"const")
+                    .{ .constant = .{ .type = var_type, .value = value } }
+                else
+                    .{ .symbol = .{ .is_mut = variable.binding == .let_mut, .type = var_type } },
+                .{},
+            );
 
             try compound_type.variables.put(
                 variable.variable_name,
@@ -972,6 +991,8 @@ pub const Type = union(enum) {
                         .{ inner_name, variable.variable_name },
                     ),
                     .type = var_type,
+                    .value = value,
+                    .binding = variable.binding,
                 },
             );
         }
