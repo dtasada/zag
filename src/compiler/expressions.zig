@@ -668,6 +668,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
                 delimiter = .@".";
             },
             .method => |method| try self.write(method.inner_name),
+            .subtype => |subtype| try self.write(subtype.inner_name),
         } else return errors.undeclaredProperty(.{ .@"struct" = @"struct" }, expr.member_name, expr.pos),
 
         .@"enum" => |@"enum"| if (@"enum".getProperty(expr.member_name)) |property| switch (property) {
@@ -688,6 +689,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
                 }
             },
             .method => |method| try self.write(method.inner_name),
+            .subtype => |subtype| try self.write(subtype.inner_name),
         } else return errors.undeclaredProperty(.{ .@"enum" = @"enum" }, expr.member_name, expr.pos),
 
         .@"union" => |@"union"| if (@"union".getProperty(expr.member_name)) |property| switch (property) {
@@ -705,6 +707,7 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
                 delimiter = .@".";
             },
             .method => |method| try self.write(method.inner_name),
+            .subtype => |subtype| try self.write(subtype.inner_name),
         } else return errors.undeclaredProperty(.{ .@"union" = @"union" }, expr.member_name, expr.pos),
 
         .reference => |reference| {
@@ -907,42 +910,37 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
     switch (call_expr.callee.*) {
         .member => |m| {
-            if (try tryResolveStaticType(self, m.parent.*)) |static_type| {
-                switch (static_type) {
-                    .@"struct" => |@"struct"| if (@"struct".getProperty(m.member_name)) |property| switch (property) {
-                        .variable => |v| return errors.expressionNotCallable(v.type, call_expr.callee.getPosition()),
-                        .member => |member_type| return errors.expressionNotCallable(member_type, call_expr.callee.getPosition()),
-                        .method => |method| {
-                            try functionCall(self, .{
-                                .name = method.inner_name,
-                                .inner_name = method.inner_name,
-                                .generic_params = method.generic_params,
-                                .params = method.params,
-                                .return_type = method.return_type,
-                                .definition = method.definition,
-                                .module = @"struct".module,
-                            }, call_expr);
+            if (try tryResolveStaticType(self, m.parent.*)) |static_type| switch (static_type) {
+                inline .@"struct", .@"enum", .@"union" => |s, t| if (s.getProperty(m.member_name)) |property| switch (property) {
+                    .variable => |v| return errors.expressionNotCallable(v.type, call_expr.callee.getPosition()),
+                    .member => |member_type| return errors.expressionNotCallable(if (t == .@"enum") .usize else member_type, call_expr.callee.getPosition()),
+                    .method => |method| {
+                        try functionCall(self, Type.Function.fromMethod(
+                            std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(t)).?,
+                            method,
+                            s.module,
+                        ).function, call_expr);
+                        return;
+                    },
+                    .subtype => |st| return errors.expressionNotCallable(st.toType(), call_expr.callee.getPosition()),
+                } else return errors.undeclaredProperty(static_type, m.member_name, call_expr.pos),
+                .module => |module| if (module.symbols.get(m.member_name)) |symbol| {
+                    if (!symbol.is_pub) return errors.badAccess(module.name, m.member_name, m.pos);
+                    switch (symbol.type) {
+                        .function => |function| {
+                            try functionCall(self, function, call_expr);
                             return;
                         },
-                    } else return errors.undeclaredProperty(static_type, m.member_name, call_expr.pos),
-                    .module => |module| if (module.symbols.get(m.member_name)) |symbol| {
-                        if (!symbol.is_pub) return errors.badAccess(module.name, m.member_name, m.pos);
-                        switch (symbol.type) {
-                            .function => |function| {
-                                try functionCall(self, function, call_expr);
-                                return;
-                            },
-                            else => return errors.expressionNotCallable(symbol.type, call_expr.callee.getPosition()),
-                        }
-                    } else return utils.printErr(
-                        error.UndeclaredProperty,
-                        "comperr: Module '{s}' has no member '{s}' ({f}).\n",
-                        .{ module.name, m.member_name, call_expr.pos },
-                        .red,
-                    ),
-                    else => {},
-                }
-            }
+                        else => return errors.expressionNotCallable(symbol.type, call_expr.callee.getPosition()),
+                    }
+                } else return utils.printErr(
+                    error.UndeclaredProperty,
+                    "comperr: Module '{s}' has no member '{s}' ({f}).\n",
+                    .{ module.name, m.member_name, call_expr.pos },
+                    .red,
+                ),
+                else => {},
+            };
 
             var parent_reference_level: i32 = 0;
             var reference_is_mut = self.getExpressionMutability(m.parent.*);

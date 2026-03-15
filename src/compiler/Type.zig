@@ -61,6 +61,12 @@ pub const Type = union(enum) {
         is_pub: bool,
         type: Tag,
         inner_name: []const u8,
+
+        pub fn toType(self: Subtype) Type {
+            return switch (self.type) {
+                inline else => |s, t| @unionInit(Type, @tagName(t), s),
+            };
+        }
     };
 
     fn CompoundType(T: utils.CompoundTypeTag) type {
@@ -110,10 +116,12 @@ pub const Type = union(enum) {
                 variable: Variable,
                 member: MemberType,
                 method: Method,
+                subtype: Subtype,
             } {
                 const member = self.members.get(name);
                 const method = self.methods.get(name);
                 const variable = self.variables.get(name);
+                const subtype = self.subtypes.get(name);
 
                 return if (member) |m|
                     .{ .member = m }
@@ -121,6 +129,8 @@ pub const Type = union(enum) {
                     .{ .method = m }
                 else if (variable) |v|
                     .{ .variable = v }
+                else if (subtype) |s|
+                    .{ .subtype = s }
                 else
                     null;
             }
@@ -355,6 +365,7 @@ pub const Type = union(enum) {
                     .variable => |v| v.type,
                     .member => .{ .@"enum" = e },
                     .method => |method| Type.Function.fromMethod(.@"enum", method, e.module),
+                    .subtype => |subtype| subtype.toType(),
                 } else errors.undeclaredProperty(.{ .@"enum" = e }, member.member_name, member.pos),
                 .module => |module| if (module.symbols.get(member.member_name)) |symbol| b2: {
                     if (!symbol.is_pub) break :b2 errors.badAccess(module.name, member.member_name, member.pos);
@@ -1138,31 +1149,19 @@ pub const Type = union(enum) {
     fn inferMemberExpression(compiler: *Compiler, member: ast.Expression.Member) !Self {
         const parent_type = try infer(compiler, member.parent.*);
         b: switch (parent_type) {
-            .@"struct" => |@"struct"| {
-                if (@"struct".getProperty(member.member_name)) |property| switch (property) {
-                    .variable => |v| return v.type,
-                    .member => |m| return m,
-                    .method => |method| return Type.Function.fromMethod(.@"struct", method, @"struct".module),
-                } else return utils.printErr(
-                    error.UndeclaredProperty,
-                    "comperr: '{f}' has no property '{s}' ({f})\n",
-                    .{ parent_type, member.member_name, member.parent.getPosition() },
-                    .red,
-                );
-            },
-            .@"union" => |@"union"| if (@"union".getProperty(member.member_name)) |property| switch (property) {
-                .variable => |v| return v.type,
-                .member => |member_type| return member_type,
-                .method => |method| return Type.Function.fromMethod(.@"struct", method, @"union".module),
-            } else return errors.undeclaredProperty(parent_type, member.member_name, member.pos),
-            .@"enum" => |@"enum"| if (@"enum".getProperty(member.member_name)) |property| switch (property) {
-                .variable => |variable| return variable.type,
-                .member => return .{ .@"enum" = @"enum" },
-                .method => |method| return Type.Function.fromMethod(.@"enum", method, @"enum".module),
-            } else return utils.printErr(
+            inline .@"struct", .@"enum", .@"union" => |s, t| return if (s.getProperty(member.member_name)) |property| switch (property) {
+                .variable => |v| v.type,
+                .member => |m| if (t == .@"enum") .{ .@"enum" = s } else m,
+                .method => |method| Type.Function.fromMethod(
+                    std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(t)).?,
+                    method,
+                    s.module,
+                ),
+                .subtype => |st| st.toType(),
+            } else utils.printErr(
                 error.UndeclaredProperty,
-                "comperr: Enum '{s}' has no property '{s}' ({f})\n",
-                .{ @"enum".name, member.member_name, member.pos },
+                "comperr: '{f}' has no property '{s}' ({f})\n",
+                .{ parent_type, member.member_name, member.parent.getPosition() },
                 .red,
             ),
             .reference => |reference| continue :b reference.inner.*,
