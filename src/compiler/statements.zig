@@ -103,6 +103,18 @@ fn compoundTypeDeclaration(
             .@"union" => |u| .{ .@"union" = u },
             .@"enum" => |e| .{ .@"enum" = e },
         };
+
+        const saved_section = self.current_section;
+        self.switchSection(.header_forward_decls);
+        const subtype_inner_name = entry.value_ptr.*.inner_name;
+        const structure_type = switch (entry.value_ptr.*.type) {
+            .@"struct" => "struct",
+            .@"union" => "union",
+            .@"enum" => "enum",
+        };
+        try self.print("typedef {s} {s} {s};\n", .{ structure_type, subtype_inner_name, subtype_inner_name });
+        self.switchSection(saved_section);
+
         try self.registerSymbol(
             entry.key_ptr.*,
             .{ .type = subtype_type },
@@ -147,7 +159,7 @@ fn compoundTypeDeclaration(
         try self.print("}} {s};\n\n", .{tag_enum.inner_name});
     }
 
-    try self.print("typedef {s} {s} {{\n", .{ structure_type, inner_name });
+    try self.print("{s} {s} {{\n", .{ structure_type, inner_name });
 
     var members = compound_type.members.iterator();
     if (T == .@"union") {
@@ -179,7 +191,7 @@ fn compoundTypeDeclaration(
 
     if (T == .@"union") try self.write("} payload;\n");
 
-    try self.print("}} {s};\n\n", .{inner_name});
+    try self.print("}};\n\n", .{});
 
     self.endTypeDefEmit();
 

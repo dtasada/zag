@@ -177,13 +177,13 @@ pub struct ArrayList<T> {
     }
 }
 
-fn hash_int<T>(key: T) usize {
+pub fn hash_int<T>(key: T) usize {
     // just a placeholder for now
     let ret: usize = undefined;
     return ret;
 }
 
-fn hash_string(key: []u8) usize {
+pub fn hash_string(key: []u8) usize {
     let mut value: usize = 0;
     for (0..key.len) |c| value = value * 37 + c;
     return value;

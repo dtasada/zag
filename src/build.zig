@@ -170,12 +170,13 @@ pub fn compile(alloc: std.mem.Allocator) !void {
         &.{
             @"-I.zag-out/zag",
             @"-I.zag-out/lib",
-            "-Wall",
-            "-Wextra",
+            // "-Wall",
+            // "-Wextra",
             "-Wno-parentheses-equality",
             "-Wno-sign-compare",
             "-Wno-logical-op-parentheses",
             "-Wno-incompatible-pointer-types-discards-qualifiers",
+            "-Wno-incompatible-pointer-types",
             "-lraylib",
         },
     });

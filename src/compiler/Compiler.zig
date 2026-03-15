@@ -1462,40 +1462,21 @@ pub fn getScopeItemWithinFunction(self: *const Self, symbol: []const u8) !ScopeI
     return error.UnknownSymbol;
 }
 
-fn getTypeDefDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
+pub fn collectTypeDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
     switch (t) {
-        .@"enum" => {}, // primitive values, no deps
-        .@"struct" => |s| {
+        inline .@"struct", .@"union" => |s| {
             var it = s.members.iterator();
-            while (it.next()) |entry| {
-                const mt = entry.value_ptr.*;
-                if (needsFullDef(mt)) try out.append(self.alloc, mt);
-            }
-        },
-        .@"union" => |u| {
-            var it = u.members.iterator();
-            while (it.next()) |entry| {
-                const mt = entry.value_ptr.*;
-                if (needsFullDef(mt)) try out.append(self.alloc, mt);
-            }
+            while (it.next()) |e| try self.appendIfConcrete(e.value_ptr.*, out);
         },
         .error_union => |eu| {
-            // both embedded by value inside the union
-            if (needsFullDef(eu.success.*)) try out.append(self.alloc, eu.success.*);
-            if (needsFullDef(eu.failure.*)) try out.append(self.alloc, eu.failure.*);
+            try self.appendIfConcrete(eu.success.*, out);
+            try self.appendIfConcrete(eu.failure.*, out);
         },
-        .slice => {}, // inner type is a pointer, forward decl is enough
-        .function => {}, // C allows incomplete types in fn ptr signatures
+        .optional => |inner| try self.appendIfConcrete(inner.*, out),
+        .array => |array| try self.appendIfConcrete(array.inner.*, out),
+        .slice => |slice| try self.appendIfConcrete(slice.inner.*, out),
         else => {},
     }
-}
-
-fn needsFullDef(t: Type) bool {
-    return switch (t) {
-        .@"struct", .@"union", .@"enum", .error_union => true,
-        .reference, .slice, .optional => false, // all pointers under the hood
-        else => false,
-    };
 }
 
 pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
@@ -1516,22 +1497,6 @@ pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
         try writer.writeAll(guard);
         try writer.writeAll(block.code.items);
         try writer.writeAll("#endif\n");
-    }
-}
-
-pub fn collectTypeDeps(self: *Self, t: Type, out: *std.ArrayList(Type)) !void {
-    switch (t) {
-        inline .@"struct", .@"union" => |s| {
-            var it = s.members.iterator();
-            while (it.next()) |e| try self.appendIfConcrete(e.value_ptr.*, out);
-        },
-        .error_union => |eu| {
-            try self.appendIfConcrete(eu.success.*, out);
-            try self.appendIfConcrete(eu.failure.*, out);
-        },
-        .optional => |inner| try self.appendIfConcrete(inner.*, out),
-        .array => |array| try self.appendIfConcrete(array.inner.*, out),
-        else => {},
     }
 }
 
