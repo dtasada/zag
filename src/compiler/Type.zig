@@ -561,7 +561,7 @@ pub const Type = union(enum) {
                     copy_decl.name = name;
                     copy_decl.generic_types = .empty;
 
-                    var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy_decl);
+                    var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy_decl, .{});
                     t.module = module;
                     t.generic_instantiation = .{
                         .base_name = base_name,
@@ -573,7 +573,7 @@ pub const Type = union(enum) {
                     var copy = d.*;
                     copy.name = name;
                     copy.generic_types = .empty;
-                    var t = try fromCompoundTypeDeclaration(compiler, .@"union", &copy);
+                    var t = try fromCompoundTypeDeclaration(compiler, .@"union", &copy, .{});
                     t.module = module;
                     t.generic_instantiation = .{
                         .base_name = base_name,
@@ -875,12 +875,15 @@ pub const Type = union(enum) {
             .@"union" => ast.Statement.UnionDeclaration,
             .@"enum" => ast.Statement.EnumDeclaration,
         },
+        opts: struct {
+            inner_name: ?[]const u8 = null,
+        },
     ) CompilerError!switch (T) {
         .@"struct" => Type.Struct,
         .@"union" => Type.Union,
         .@"enum" => Type.Enum,
     } {
-        const inner_name = try compiler.mangle(type_decl.name);
+        const inner_name = opts.inner_name orelse try compiler.mangle(type_decl.name);
         const tag_type_inner_name: []const u8 = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name});
 
         const should_define = if (compiler.getSymbolDefined(type_decl.name)) |sd| b: {
@@ -928,7 +931,7 @@ pub const Type = union(enum) {
             for (type_decl.members.items) |member|
                 try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
 
-            const tag_type_val: Type = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
+            const tag_type_val: Type = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl, .{}) };
 
             const tag_ptr = try compiler.alloc.create(Type);
             tag_ptr.* = tag_type_val;
@@ -993,14 +996,24 @@ pub const Type = union(enum) {
         }
 
         for (type_decl.subtypes.items) |subtype| switch (subtype) {
-            inline else => |st, tag| try compound_type.subtypes.put(
-                st.name,
-                .{
+            inline else => |st, tag| {
+                const subtype_inner_name = try std.fmt.allocPrint(
+                    compiler.alloc,
+                    "{s}_{s}",
+                    .{ inner_name, st.name },
+                );
+                try compound_type.subtypes.put(st.name, .{
                     .is_pub = st.is_pub,
-                    .inner_name = try std.fmt.allocPrint(compiler.alloc, "{s}_{s}", .{ inner_name, st.name }),
-                    .type = @unionInit(Type.Subtype.Tag, @tagName(tag), try fromCompoundTypeDeclaration(compiler, tag, &st)),
-                },
-            ),
+                    .inner_name = subtype_inner_name,
+                    .type = @unionInit(
+                        Type.Subtype.Tag,
+                        @tagName(tag),
+                        try fromCompoundTypeDeclaration(compiler, tag, &st, .{
+                            .inner_name = subtype_inner_name,
+                        }),
+                    ),
+                });
+            },
         };
 
         var enum_last_value: usize = 0;
@@ -1114,7 +1127,7 @@ pub const Type = union(enum) {
                     try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
 
                 // Create the tag type but DON'T compile/emit it yet
-                break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl) };
+                break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl, .{}) };
             },
         });
     }

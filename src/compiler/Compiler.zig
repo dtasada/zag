@@ -445,9 +445,9 @@ pub fn scan(self: *Self) CompilerError!void {
     };
 
     for (self.input.items) |*statement| switch (statement.*) {
-        .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl),
-        .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl),
-        .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl),
+        .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl, .{}),
+        .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl, .{}),
+        .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl, .{}),
         .function_definition => |*func| try processFunctionDefinitionSymbol(self, func),
         .binding_function_declaration => |*func| {
             var t: Type = try .fromAst(self, func.getType());
@@ -543,7 +543,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                     ast.Statement.UnionDeclaration => .@"union",
                     ast.Statement.EnumDeclaration => .@"enum",
                     else => unreachable,
-                }, struct_decl);
+                }, struct_decl, .{});
 
                 const symbol_type = @unionInit(Type, switch (@TypeOf(struct_decl.*)) {
                     ast.Statement.StructDeclaration => "struct",

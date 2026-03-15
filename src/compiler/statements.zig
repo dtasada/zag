@@ -92,7 +92,7 @@ fn compoundTypeDeclaration(
         .@"struct" => .@"struct",
         .@"union" => .@"union",
         .@"enum" => .@"enum",
-    }, type_decl);
+    }, type_decl, .{});
     try self.pushScope(false);
     defer self.popScope();
 
