@@ -556,30 +556,22 @@ pub const Type = union(enum) {
             }
 
             const new_type: Type = switch (def_wrap) {
-                .@"struct" => |s| blk: {
+                inline .@"struct", .@"union" => |s, tag| blk: {
                     var copy_decl = try s.clone(compiler.alloc);
                     copy_decl.name = name;
                     copy_decl.generic_types = .empty;
-
-                    var t = try fromCompoundTypeDeclaration(compiler, .@"struct", &copy_decl, .{});
+                    var t = try fromCompoundTypeDeclaration(
+                        compiler,
+                        std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
+                        &copy_decl,
+                        .{},
+                    );
                     t.module = module;
                     t.generic_instantiation = .{
                         .base_name = base_name,
                         .args = args.items,
                     };
-                    break :blk .{ .@"struct" = t };
-                },
-                .@"union" => |d| blk: {
-                    var copy = d.*;
-                    copy.name = name;
-                    copy.generic_types = .empty;
-                    var t = try fromCompoundTypeDeclaration(compiler, .@"union", &copy, .{});
-                    t.module = module;
-                    t.generic_instantiation = .{
-                        .base_name = base_name,
-                        .args = try compiler.alloc.dupe(Value, args.items),
-                    };
-                    break :blk .{ .@"union" = t };
+                    break :blk @unionInit(Type, @tagName(tag), t);
                 },
                 .function => |d| blk: {
                     var copy = d.*;

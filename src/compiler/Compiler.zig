@@ -537,20 +537,15 @@ pub fn analyze(self: *Self) CompilerError!void {
                     .type = t,
                 });
             },
-            inline .struct_declaration, .union_declaration, .enum_declaration => |*struct_decl| {
-                const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (@TypeOf(struct_decl.*)) {
-                    ast.Statement.StructDeclaration => .@"struct",
-                    ast.Statement.UnionDeclaration => .@"union",
-                    ast.Statement.EnumDeclaration => .@"enum",
+            inline .struct_declaration, .union_declaration, .enum_declaration => |*struct_decl, t| {
+                const tag: utils.CompoundTypeTag = switch (t) {
+                    .struct_declaration => .@"struct",
+                    .union_declaration => .@"union",
+                    .enum_declaration => .@"enum",
                     else => unreachable,
-                }, struct_decl, .{});
-
-                const symbol_type = @unionInit(Type, switch (@TypeOf(struct_decl.*)) {
-                    ast.Statement.StructDeclaration => "struct",
-                    ast.Statement.UnionDeclaration => "union",
-                    ast.Statement.EnumDeclaration => "enum",
-                    else => unreachable,
-                }, compound_type);
+                };
+                const compound_type = try Type.fromCompoundTypeDeclaration(self, tag, struct_decl, .{});
+                const symbol_type = @unionInit(Type, @tagName(tag), compound_type);
 
                 // Exported symbols logic
                 try self.exported_symbols.put(struct_decl.name, .{

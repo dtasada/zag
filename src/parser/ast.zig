@@ -302,59 +302,50 @@ pub const Statement = union(enum) {
         @"return": ?ast.Expression,
     };
 
-    pub const StructDeclaration = struct {
-        const Member = struct {
-            name: []const u8,
-            type: Type,
-        };
-        pos: utils.Position,
-        is_pub: bool,
-        name: []const u8,
-        generic_types: ParameterList,
-        variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(Subtype),
-        members: std.ArrayList(Member),
-        methods: std.ArrayList(FunctionDefinition),
-
-        pub fn clone(self: *const StructDeclaration, alloc: std.mem.Allocator) !StructDeclaration {
-            return .{
-                .pos = self.pos,
-                .is_pub = self.is_pub,
-                .name = self.name, // notice: doesn't clone the name.
-                .generic_types = try self.generic_types.clone(alloc),
-                .variables = try self.variables.clone(alloc),
-                .subtypes = try self.subtypes.clone(alloc),
-                .members = try self.members.clone(alloc),
-                .methods = try self.methods.clone(alloc),
+    fn CompoundTypeDeclaration(comptime T: enum { @"struct", @"union" }) type {
+        return struct {
+            const Member = struct {
+                name: []const u8,
+                type: if (T == .@"struct") Type else ?Type,
             };
-        }
-    };
-
-    pub const UnionDeclaration = struct {
-        const Member = struct {
+            pos: utils.Position,
+            is_pub: bool,
             name: []const u8,
-            type: ?Type,
+            generic_types: ParameterList,
+            variables: std.ArrayList(VariableDefinition),
+            subtypes: std.ArrayList(Subtype),
+            members: std.ArrayList(Member),
+            methods: std.ArrayList(FunctionDefinition),
+
+            pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) !CompoundTypeDeclaration(T) {
+                return .{
+                    .pos = self.pos,
+                    .is_pub = self.is_pub,
+                    .name = self.name, // notice: doesn't clone the name.
+                    .generic_types = try self.generic_types.clone(alloc),
+                    .variables = try self.variables.clone(alloc),
+                    .subtypes = try self.subtypes.clone(alloc),
+                    .members = try self.members.clone(alloc),
+                    .methods = try self.methods.clone(alloc),
+                };
+            }
         };
-        pos: utils.Position,
-        is_pub: bool,
-        name: []const u8,
-        generic_types: ParameterList,
-        variables: std.ArrayList(VariableDefinition),
-        subtypes: std.ArrayList(Subtype),
-        members: std.ArrayList(Member),
-        methods: std.ArrayList(FunctionDefinition),
-    };
+    }
+
+    pub const StructDeclaration = CompoundTypeDeclaration(.@"struct");
+    pub const UnionDeclaration = CompoundTypeDeclaration(.@"union");
 
     pub const EnumDeclaration = struct {
         pub const Member = struct {
             name: []const u8,
             value: ?ast.Expression = null,
         };
+
         pos: utils.Position,
         is_pub: bool,
+        name: []const u8,
         variables: std.ArrayList(VariableDefinition),
         subtypes: std.ArrayList(Subtype),
-        name: []const u8,
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
     };
