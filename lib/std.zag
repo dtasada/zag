@@ -81,6 +81,12 @@ pub fn realloc_slice<T>(slice: []mut T, new_size: usize) []mut T {
 
 pub fn memcpy<T>(dst: &mut T, src: &T) void -> c.memcpy(cast<&mut void>(dst), cast<&void>(src), sizeof<T>());
 
+pub fn memcmp<T>(a, b: &T) bool -> c.memcmp(a, b, sizeof<T>()) == 0
+pub fn memcmp_slice<T>(a, b: []T) bool {
+    if (a.len != b.len) c.panic("Size mismatch\n");
+    return c.memcmp(a.ptr, b.ptr, sizeof<T>() * a.len) == 0;
+}
+
 pub fn memcpy_slice<T>(dst: []mut T, src: []T) void {
     if (dst.len != src.len) c.panic("Size mismatch\n");
     c.memcpy(cast<&mut void>(dst.ptr), cast<&void>(src.ptr), sizeof<T>() * dst.len);
@@ -177,33 +183,60 @@ pub struct ArrayList<T> {
     }
 }
 
-pub fn hash_int<T>(key: T) usize {
-    // just a placeholder for now
-    let ret: usize = undefined;
-    return ret;
-}
-
-pub fn hash_string(key: []u8) usize {
-    let mut value: usize = 0;
-    for (0..key.len) |c| value = value * 37 + c;
-    return value;
-}
-
-pub struct HashMap<K, V> {
+pub struct StringHashMap<T> {
     const SIZE = 1e5;
-    const hash: fn (key: K) usize = if (K == []u8) hash_string else hash_int<K>;
 
     entries: []mut ?&Entry,
 
     pub struct Entry {
-        key: K,
-        value: V,
-        next: &Entry,
+        key: []mut u8,
+        value: &mut T,
+        next: ?&Entry,
     }
 
-    pub fn init() HashMap<K, V> {
-        let self = HashMap<K, V> { entries: alloc_slice<?&Entry>(SIZE) };
+    pub fn init() StringHashMap<T> {
+        let self = StringHashMap<T> { entries: alloc_slice<?&Entry>(SIZE) };
         memset_slice<?&Entry>(self.entries, nil);
         return self;
     }
+
+    pub fn put(self: StringHashMap<T>, key: []u8, value: T) void {
+        let slot = hash(key);
+        let mut entry: ?&Entry = self.entries[slot];
+
+        if (entry == nil) {
+            self.entries[slot] = pair(key, value);
+            return;
+        }
+
+        let mut prev: &Entry = undefined;
+        while (entry) |&mut e| { // e: &mut &Entry
+            if (memcmp_slice<u8>(e.key, key)) {
+                free<T>(e.*.value);
+                e.value = alloc<T>();
+                memcpy<T>(e.*.value, &value);
+                return;
+            }
+
+            prev = e.*;
+            entry = prev.next;
+        }
+    }
+
+    fn hash(key: []u8) usize {
+        let mut value: usize = 0;
+        for (0..key.len) |c| value = value * 37 + c;
+        return value;
+    }
+
+    fn pair(key: []u8, value: T) &Entry {
+        let entry = alloc<Entry>();
+        entry.key = alloc_slice<u8>(key.len);
+        entry.value = alloc<T>();
+        memcpy_slice<u8>(entry.key, key);
+        memcpy<T>(entry.value, &value);
+        entry.next = nil;
+        return entry;
+    }
+
 }

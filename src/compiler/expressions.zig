@@ -651,7 +651,7 @@ fn unionInstantiation(self: *Self, struct_inst: ast.Expression.StructInstantiati
 
 fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
     const parent_type: Type = try .infer(self, expr.parent.*);
-    var delimiter: enum { @".", @"->" } = .@".";
+    var deref_level: usize = 0;
     b: switch (parent_type) {
         .type => |t| continue :b t.*,
         .type_type => return errors.illegalMemberExpression(parent_type, expr.pos),
@@ -663,9 +663,10 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
                 try self.write(variable.inner_name);
             },
             .member => {
+                try self.write("(");
+                for (0..deref_level) |_| try self.write("*");
                 try compile(self, expr.parent, .{});
-                try self.print("{s}{s}", .{ @tagName(delimiter), expr.member_name });
-                delimiter = .@".";
+                try self.print(").{s}", .{expr.member_name});
             },
             .method => |method| try self.write(method.inner_name),
             .subtype => |subtype| try self.write(subtype.inner_name),
@@ -699,19 +700,17 @@ fn member(self: *Self, expr: ast.Expression.Member) CompilerError!void {
                 try self.write(variable.inner_name);
             },
             .member => {
+                try self.write("(");
+                for (0..deref_level) |_| try self.write("*");
                 try compile(self, expr.parent, .{});
-                try self.print("{s}payload.{s}", .{
-                    @tagName(delimiter),
-                    expr.member_name,
-                });
-                delimiter = .@".";
+                try self.print(").payload.{s}", .{expr.member_name});
             },
             .method => |method| try self.write(method.inner_name),
             .subtype => |subtype| try self.write(subtype.inner_name),
         } else return errors.undeclaredProperty(.{ .@"union" = @"union" }, expr.member_name, expr.pos),
 
         .reference => |reference| {
-            delimiter = .@"->";
+            deref_level += 1;
             continue :b reference.inner.*;
         },
 

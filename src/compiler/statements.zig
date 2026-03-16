@@ -19,7 +19,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         .function_definition => |*fn_def| try functionDefinition(self, false, fn_def),
         .import => |import_statement| try import(self, import_statement),
         .binding_function_declaration => |*bind| try functionDefinition(self, true, bind),
-        .struct_declaration => |*struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl),
+        .struct_declaration => |*struct_decl| try compoundTypeDeclaration(self, .@"struct", struct_decl, .{}),
         .@"return" => |return_expr| try @"return"(self, return_expr),
         .variable_definition => |var_decl| try variableDefinition(self, var_decl, .{}),
         .expression => |*expr| {
@@ -30,8 +30,8 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         .@"while" => |while_stmt| try conditional(self, .@"while", while_stmt),
         .@"for" => |for_stmt| try conditional(self, .@"for", for_stmt),
         .block => |block| try self.compileBlock(block.block, .{}),
-        .enum_declaration => |*enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl),
-        .union_declaration => |*union_decl| try compoundTypeDeclaration(self, .@"union", union_decl),
+        .enum_declaration => |*enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl, .{}),
+        .union_declaration => |*union_decl| try compoundTypeDeclaration(self, .@"union", union_decl, .{}),
         .@"break", .@"continue" => try self.print("{s};\n", .{@tagName(statement.*)}),
         .block_eval => |block_eval| if (try Type.infer(self, block_eval) == .void) {
             try expressions.compile(self, &block_eval, .{});
@@ -62,7 +62,7 @@ fn handleArrayReturnType(self: *Self, return_type: *Type) !bool {
     const is_array = return_type.* == .array;
     if (is_array) {
         const inner_type = return_type.*;
-        const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{return_type.hash()});
+        const return_type_name = try std.fmt.allocPrint(self.alloc, "__zag_{x}", .{return_type.hash()});
         return_type.* = .{ .@"struct" = try Type.Struct.init(self, return_type_name, return_type_name, null) };
         try return_type.@"struct".members.put("items", inner_type);
 
@@ -87,14 +87,19 @@ fn compoundTypeDeclaration(
         .@"union" => ast.Statement.UnionDeclaration,
         .@"enum" => ast.Statement.EnumDeclaration,
     },
+    opts: struct {
+        inner_name: ?[]const u8 = null,
+    },
 ) CompilerError!void {
     const compound_type = try Type.fromCompoundTypeDeclaration(self, switch (T) {
         .@"struct" => .@"struct",
         .@"union" => .@"union",
         .@"enum" => .@"enum",
-    }, type_decl, .{});
+    }, type_decl, .{ .inner_name = opts.inner_name });
     try self.pushScope(false);
     defer self.popScope();
+
+    const inner_name = opts.inner_name orelse try self.getInnerName(type_decl.name);
 
     var subtype_it = compound_type.subtypes.iterator();
     while (subtype_it.next()) |entry| {
@@ -106,7 +111,7 @@ fn compoundTypeDeclaration(
 
         const saved_section = self.current_section;
         self.switchSection(.header_forward_decls);
-        const subtype_inner_name = entry.value_ptr.*.inner_name;
+        const subtype_inner_name = entry.value_ptr.inner_name;
         const structure_type = switch (entry.value_ptr.*.type) {
             .@"struct" => "struct",
             .@"union" => "union",
@@ -120,6 +125,11 @@ fn compoundTypeDeclaration(
             .{ .type = subtype_type },
             .{ .inner_name = entry.value_ptr.*.inner_name, .is_defined = false },
         );
+
+        switch (entry.value_ptr.*.type) {
+            inline .@"struct", .@"union", .@"enum" => |ct, tag| if (ct.definition) |def|
+                try compoundTypeDeclaration(self, tag, def, .{ .inner_name = entry.value_ptr.inner_name }),
+        }
     }
 
     if (T != .@"enum" and type_decl.generic_types.items.len > 0) return;
@@ -128,7 +138,6 @@ fn compoundTypeDeclaration(
     self.switchSection(.header_type_defs);
     defer self.switchSection(saved_section);
 
-    const inner_name = try self.getInnerName(type_decl.name);
     const structure_type = switch (T) {
         .@"struct", .@"union" => "struct",
         .@"enum" => "enum",
@@ -218,6 +227,14 @@ fn compoundTypeDeclaration(
                 if (self.scopes.items[outer_scope_idx].items.get(g.name)) |outer_item|
                     try self.scopes.getLast().items.put(g.name, outer_item);
             };
+
+        var method_it = compound_type.methods.iterator();
+        while (method_it.next()) |entry| {
+            const m = entry.value_ptr.*;
+            try self.registerSymbol(m.name, .{
+                .symbol = .{ .type = Type.Function.fromMethod(T, m, compound_type.module) },
+            }, .{ .inner_name = m.inner_name });
+        }
 
         const previous_return_type = self.current_return_type;
         defer self.current_return_type = previous_return_type;

@@ -6,7 +6,7 @@ pub union Object {
     // number: f64,
     // string: []u8,
     // array: []Object,
-    object: std.HashMap<[]u8, Object>
+    object: std.StringHashMap<Object>,
 }
 
 // pub fn parse(str: []u8) Object {

@@ -480,7 +480,7 @@ pub const Type = union(enum) {
 
         _ = try mangled_name.writer(compiler.alloc).write(base_name);
 
-        for (args.items) |arg| try mangled_name.writer(compiler.alloc).print("_{}", .{arg.hash()});
+        for (args.items) |arg| try mangled_name.writer(compiler.alloc).print("_{x}", .{arg.hash()});
 
         const name = try compiler.alloc.dupe(u8, mangled_name.items);
 
@@ -557,13 +557,14 @@ pub const Type = union(enum) {
 
             const new_type: Type = switch (def_wrap) {
                 inline .@"struct", .@"union" => |s, tag| blk: {
-                    var copy_decl = try s.clone(compiler.alloc);
+                    const copy_decl = try compiler.alloc.create(@TypeOf(s.*));
+                    copy_decl.* = try s.clone(compiler.alloc);
                     copy_decl.name = name;
                     copy_decl.generic_types = .empty;
                     var t = try fromCompoundTypeDeclaration(
                         compiler,
                         std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
-                        &copy_decl,
+                        copy_decl,
                         .{},
                     );
                     t.module = module;
@@ -989,19 +990,24 @@ pub const Type = union(enum) {
 
         for (type_decl.subtypes.items) |subtype| switch (subtype) {
             inline else => |st, tag| {
-                const subtype_inner_name = try std.fmt.allocPrint(
-                    compiler.alloc,
-                    "{s}_{s}",
-                    .{ inner_name, st.name },
-                );
+                const st_ptr = try compiler.alloc.create(@TypeOf(st));
+                st_ptr.* = st;
                 try compound_type.subtypes.put(st.name, .{
                     .is_pub = st.is_pub,
-                    .inner_name = subtype_inner_name,
+                    .inner_name = try std.fmt.allocPrint(
+                        compiler.alloc,
+                        "{s}_{s}",
+                        .{ inner_name, st.name },
+                    ),
                     .type = @unionInit(
                         Type.Subtype.Tag,
                         @tagName(tag),
-                        try fromCompoundTypeDeclaration(compiler, tag, &st, .{
-                            .inner_name = subtype_inner_name,
+                        try fromCompoundTypeDeclaration(compiler, tag, st_ptr, .{
+                            .inner_name = try std.fmt.allocPrint(
+                                compiler.alloc,
+                                "{s}_{s}",
+                                .{ inner_name, st.name },
+                            ),
                         }),
                     ),
                 });
@@ -1355,7 +1361,7 @@ pub const Type = union(enum) {
                     ctx.visited.appendAssumeCapacity(.{ @as(*const anyopaque, @ptrCast(ct.members)), @as(*const anyopaque, @ptrCast(ct.members)) });
                     defer _ = ctx.visited.pop();
 
-                    h.update(ct.name);
+                    h.update(ct.inner_name);
 
                     // members (order-independent)
                     var mit = ct.members.iterator();
@@ -1436,7 +1442,10 @@ pub const Type = union(enum) {
             if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
 
             return switch (a) {
-                inline .@"struct", .@"union" => |ta| {
+                inline .@"struct", .@"union" => |ta, tag| {
+                    const tb = if (std.meta.activeTag(b) == tag) @field(b, @tagName(tag)) else return false;
+                    if (!std.mem.eql(u8, ta.inner_name, tb.inner_name)) return false;
+
                     const b_members = switch (b) {
                         inline .@"struct", .@"union" => |t| t.members,
                         else => unreachable,

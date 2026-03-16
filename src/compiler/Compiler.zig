@@ -664,12 +664,13 @@ pub fn compileBlock(
     try self.write("{\n");
 
     if (opts.capture) |capture| {
+        const condition_type: Type = try .infer(self, capture.condition.*);
         const inner_type: Type = if (capture.capture.takes_ref == .some) .{
             .reference = .{
                 .is_mut = capture.capture.takes_ref.some,
-                .inner = (try Type.infer(self, capture.condition.*)).optional,
+                .inner = condition_type.optional,
             },
-        } else (try Type.infer(self, capture.condition.*)).optional.*;
+        } else condition_type.optional.*;
 
         try self.compileVariableSignature(capture.capture.name, inner_type, .let);
         try self.print(" = {s}(", .{if (capture.capture.takes_ref == .some) "&" else ""});
@@ -813,7 +814,7 @@ pub fn compileType(
         .@"union" => |u| try self.write(u.inner_name),
         .@"enum" => |e| try self.write(e.inner_name),
         .optional => |optional| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{}", .{t.hash()});
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{x}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 try self.beginTypeDefEmit(t);
 
@@ -830,7 +831,7 @@ pub fn compileType(
             try self.write(type_name);
         },
         .error_union => |error_union| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{}", .{t.hash()});
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{x}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 try self.beginTypeDefEmit(t);
 
@@ -855,7 +856,7 @@ pub fn compileType(
             try self.write(type_name);
         },
         .slice => |slice| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{}", .{t.hash()});
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{x}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 try self.beginTypeDefEmit(t);
 
@@ -875,7 +876,7 @@ pub fn compileType(
             try self.write(type_name);
         },
         .array => |array| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_{}", .{t.hash()});
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_{x}", .{t.hash()});
             if (self.zag_header_contents.get(t) == null) {
                 try self.beginTypeDefEmit(t);
                 try self.write("typedef struct { ");
@@ -887,7 +888,7 @@ pub fn compileType(
             try self.write(type_name);
         },
         .function => |function| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_FuncPtr_{}", .{t.hash()});
+            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_FuncPtr_{x}", .{t.hash()});
 
             if (self.zag_header_contents.get(t) == null) {
                 try self.beginTypeDefEmit(t);
@@ -1491,7 +1492,7 @@ pub fn emitTypeDefsInOrder(self: *Self, writer: anytype) !void {
 
     for (order.items) |idx| {
         const block = &self.type_def_blocks.items[idx];
-        const guard = try std.fmt.allocPrint(self.alloc, "#ifndef __ZAG_TYPE_{0}\n#define __ZAG_TYPE_{0}\n", .{block.type.hash()});
+        const guard = try std.fmt.allocPrint(self.alloc, "#ifndef __ZAG_TYPE_{x}\n#define __ZAG_TYPE_{0x}\n", .{block.type.hash()});
         defer self.alloc.free(guard);
         try writer.writeAll(guard);
         try writer.writeAll(block.code.items);
