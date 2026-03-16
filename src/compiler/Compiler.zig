@@ -813,101 +813,7 @@ pub fn compileType(
         .@"struct" => |s| try self.write(s.inner_name),
         .@"union" => |u| try self.write(u.inner_name),
         .@"enum" => |e| try self.write(e.inner_name),
-        .optional => |optional| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{x}", .{t.hash()});
-            if (self.zag_header_contents.get(t) == null) {
-                try self.beginTypeDefEmit(t);
-
-                try self.write("typedef struct {\n");
-                try self.write("bool is_some;\n");
-                try self.compileType(optional.*, new_opts);
-                try self.write(" payload;\n");
-                try self.print("}} {s};\n", .{type_name});
-
-                self.endTypeDefEmit();
-                try self.zag_header_contents.put(t, type_name);
-            }
-
-            try self.write(type_name);
-        },
-        .error_union => |error_union| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{x}", .{t.hash()});
-            if (self.zag_header_contents.get(t) == null) {
-                try self.beginTypeDefEmit(t);
-
-                try self.write("typedef struct {\n");
-                try self.write("bool is_success;\n");
-                try self.write("union {\n");
-                // if the success type is void, use u8 as a small dummy type since C union members can't be void
-                try self.compileType(switch (error_union.success.*) {
-                    .void => .u8,
-                    else => |other| other,
-                }, new_opts);
-                try self.write(" success;\n");
-                try self.compileType(error_union.failure.*, new_opts);
-                try self.write(" failure;\n");
-                try self.write("} payload;\n");
-                try self.print("}} {s};\n", .{type_name});
-
-                self.endTypeDefEmit();
-                try self.zag_header_contents.put(t, type_name);
-            }
-
-            try self.write(type_name);
-        },
-        .slice => |slice| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{x}", .{t.hash()});
-            if (self.zag_header_contents.get(t) == null) {
-                try self.beginTypeDefEmit(t);
-
-                try self.write("typedef struct {\n");
-                try self.compileVariableSignature(
-                    "ptr",
-                    .{ .reference = .{ .is_mut = true, .inner = slice.inner } },
-                    .let_mut,
-                );
-                try self.write(";\nsize_t len;\n");
-                try self.print("}} {s};\n", .{type_name});
-
-                self.endTypeDefEmit();
-                try self.zag_header_contents.put(t, type_name);
-            }
-
-            try self.write(type_name);
-        },
-        .array => |array| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_{x}", .{t.hash()});
-            if (self.zag_header_contents.get(t) == null) {
-                try self.beginTypeDefEmit(t);
-                try self.write("typedef struct { ");
-                try self.compileType(array.inner.*, .{ .binding_mut = true, .is_top_level = false });
-                try self.print(" v[{}]; }} {s};\n", .{ array.size, type_name });
-                self.endTypeDefEmit();
-                try self.zag_header_contents.put(t, type_name);
-            }
-            try self.write(type_name);
-        },
-        .function => |function| {
-            const type_name = try std.fmt.allocPrint(self.alloc, "__zag_FuncPtr_{x}", .{t.hash()});
-
-            if (self.zag_header_contents.get(t) == null) {
-                try self.beginTypeDefEmit(t);
-
-                try self.write("typedef ");
-                try self.compileType(function.return_type.*, .{ .binding_mut = true, .is_top_level = new_opts.is_top_level });
-                try self.print(" (*{s})(", .{type_name});
-                for (function.params.items, 0..) |param, i| {
-                    try self.compileType(param.type, new_opts);
-                    if (i < function.params.items.len - 1) try self.write(", ");
-                }
-                try self.write(");\n");
-
-                self.endTypeDefEmit();
-                try self.zag_header_contents.put(t, type_name);
-            }
-
-            try self.write(type_name);
-        },
+        .optional, .slice, .error_union, .array, .function => try self.write(try self.getTypeFromZagHeader(t)),
         .variadic => try self.write("..."),
         .any => try self.write("void*"),
         else => |primitive| try self.write(try self.getInnerName(@tagName(primitive))),
@@ -1397,7 +1303,7 @@ pub fn getExpressionMutability(self: *Self, expr: ast.Expression) !bool {
         .member => |m| {
             const parent_type = try Type.infer(self, m.parent.*);
             return switch (parent_type) {
-                .reference => |ref| ref.is_mut and try self.getExpressionMutability(m.parent.*),
+                .reference => |ref| ref.is_mut,
                 .module => |mod| {
                     const symbol = mod.symbols.get(m.member_name) orelse return false;
                     return symbol.is_mut;
@@ -1451,6 +1357,106 @@ pub fn getInnerName(self: *const Self, symbol: []const u8) ![]const u8 {
         .{symbol},
         .red,
     );
+}
+
+pub fn getTypeFromZagHeader(self: *Self, t: Type) ![]const u8 {
+    var type_name: []const u8 = undefined;
+    switch (t) {
+        .optional => |optional| {
+            type_name = try std.fmt.allocPrint(self.alloc, "__zag_Optional_{x}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                try self.beginTypeDefEmit(t);
+
+                try self.write("typedef struct {\n");
+                try self.compileVariableSignature("is_some", .bool, .let_mut);
+                try self.write(";\n");
+                try self.compileVariableSignature("payload", optional.*, .let_mut);
+                try self.write(";\n");
+                try self.print("}} {s};\n", .{type_name});
+
+                self.endTypeDefEmit();
+                try self.zag_header_contents.put(t, type_name);
+            }
+        },
+        .error_union => |error_union| {
+            type_name = try std.fmt.allocPrint(self.alloc, "__zag_ErrorUnion_{x}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                try self.beginTypeDefEmit(t);
+
+                try self.write("typedef struct {\n");
+                try self.write("bool is_success;\n");
+                try self.write("union {\n");
+                // if the success type is void, use u8 as a small dummy type since C union members can't be void
+                try self.compileVariableSignature(
+                    "success",
+                    if (error_union.success.* == .void) .u8 else error_union.success.*,
+                    .let_mut,
+                );
+                try self.write(";\n");
+                try self.compileVariableSignature("failure", error_union.failure.*, .let_mut);
+                try self.print(";\n}} payload;\n}} {s};\n", .{type_name});
+
+                self.endTypeDefEmit();
+                try self.zag_header_contents.put(t, type_name);
+            }
+        },
+        .slice => |slice| {
+            // replace mutability with true. this is done purely for c codegen ease regarding
+            // the fact that `[]T` and `[]mut T` generate different hashes, but should be compatible
+            // with each other
+            const canonical: Type = .{ .slice = .{ .inner = slice.inner, .is_mut = true } };
+            type_name = try std.fmt.allocPrint(self.alloc, "__zag_Slice_{x}", .{canonical.hash()});
+            if (self.zag_header_contents.get(canonical) == null) {
+                try self.beginTypeDefEmit(canonical);
+
+                try self.write("typedef struct {\n");
+                try self.compileVariableSignature("ptr", .{
+                    .reference = .{
+                        .is_mut = true,
+                        .inner = slice.inner,
+                    },
+                }, .let_mut);
+                try self.write(";\n");
+                try self.compileVariableSignature("len", .usize, .let_mut);
+                try self.print(";\n}} {s};\n", .{type_name});
+
+                self.endTypeDefEmit();
+                try self.zag_header_contents.put(canonical, type_name);
+            }
+        },
+        .array => |array| {
+            type_name = try std.fmt.allocPrint(self.alloc, "__zag_{x}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                try self.beginTypeDefEmit(t);
+                try self.write("typedef struct { ");
+                try self.compileType(array.inner.*, .{ .binding_mut = true, .is_top_level = false });
+                try self.print(" v[{}]; }} {s};\n", .{ array.size, type_name });
+                self.endTypeDefEmit();
+                try self.zag_header_contents.put(t, type_name);
+            }
+        },
+        .function => |function| {
+            type_name = try std.fmt.allocPrint(self.alloc, "__zag_FuncPtr_{x}", .{t.hash()});
+            if (self.zag_header_contents.get(t) == null) {
+                try self.beginTypeDefEmit(t);
+
+                try self.write("typedef ");
+                try self.compileType(function.return_type.*, .{});
+                try self.print(" (*{s})(", .{type_name});
+                for (function.params.items, 0..) |param, i| {
+                    try self.compileType(param.type, .{});
+                    if (i < function.params.items.len - 1) try self.write(", ");
+                }
+                try self.write(");\n");
+
+                self.endTypeDefEmit();
+                try self.zag_header_contents.put(t, type_name);
+            }
+        },
+        else => unreachable,
+    }
+
+    return type_name;
 }
 
 pub fn getScopeItemWithinFunction(self: *const Self, symbol: []const u8) !ScopeItem {

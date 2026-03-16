@@ -199,12 +199,12 @@ fn compileExpected(
         .optional => |opt| switch (expr_t) {
             .@"typeof(nil)" => try self.print(
                 "({s}){{ .is_some = false }}",
-                .{self.zag_header_contents.get(expected_type).?},
+                .{try self.getTypeFromZagHeader(expected_type)},
             ),
             else => if (expr_t.check(opt.*)) {
                 try self.print(
                     "({s}){{ .is_some = true, .payload = ",
-                    .{self.zag_header_contents.get(expected_type).?},
+                    .{try self.getTypeFromZagHeader(expected_type)},
                 );
                 try compile(self, expression, .{ .expected_type = opt.* });
                 try self.write(" }");
@@ -215,7 +215,7 @@ fn compileExpected(
             ),
         },
         .error_union => |error_union| {
-            const error_union_type_name = self.zag_header_contents.get(expected_type).?;
+            const error_union_type_name = try self.getTypeFromZagHeader(expected_type);
 
             if (expr_t.check(error_union.success.*)) {
                 try self.print("({s}){{ .is_success = true, .payload.success = ", .{error_union_type_name});
