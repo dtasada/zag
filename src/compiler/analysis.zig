@@ -94,7 +94,7 @@ fn typeDefsMatch(a: Type, b: Type) bool {
         .@"enum" => |e| std.mem.eql(u8, e.inner_name, b.@"enum".inner_name),
         .error_union => |eu| typeDefsMatch(eu.success.*, b.error_union.success.*) and
             typeDefsMatch(eu.failure.*, b.error_union.failure.*),
-        .slice => |sa| typeDefsMatch(sa.inner.*, b.slice.inner.*) and sa.is_mut == b.slice.is_mut,
+        .slice => |sa| typeDefsMatch(sa.inner.*, b.slice.inner.*),
         .optional => |oa| typeDefsMatch(oa.*, b.optional.*),
         .array => |aa| typeDefsMatch(aa.inner.*, b.array.inner.*) and aa.size == b.array.size,
         else => true,

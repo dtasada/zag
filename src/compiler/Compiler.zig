@@ -810,9 +810,7 @@ pub fn compileType(
 
             if (!opts.binding_mut) try self.write(" const");
         },
-        .@"struct" => |s| try self.write(s.inner_name),
-        .@"union" => |u| try self.write(u.inner_name),
-        .@"enum" => |e| try self.write(e.inner_name),
+        inline .@"struct", .@"union", .@"enum" => |s| try self.write(s.inner_name),
         .optional, .slice, .error_union, .array, .function => try self.write(try self.getTypeFromZagHeader(t)),
         .variadic => try self.write("..."),
         .any => try self.write("void*"),
