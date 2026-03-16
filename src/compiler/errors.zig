@@ -54,6 +54,7 @@ pub fn typeMismatch(
     received_type: Type,
     position: utils.Position,
 ) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.TypeMismatch,
         "comperr: Expected '{f}', received '{f}' ({f}).\n",
@@ -156,10 +157,26 @@ pub fn genericArgumentCountMismatch(expected: usize, received: usize, pos: utils
 }
 
 pub fn badMutability(position: utils.Position) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.BadMutability,
         "comperr: Assignment expression on immutable binding ({f}).\n",
         .{position},
+        .red,
+    );
+}
+
+pub fn badMutabilityMember(
+    parent_name: []const u8,
+    member_name: []const u8,
+    member_type: Type,
+    position: utils.Position,
+) CompilerError {
+    std.debug.dumpCurrentStackTrace(null);
+    return utils.printErr(
+        error.BadMutability,
+        "comperr: Cannot assign to member '{s}.{s}' of type '{f}'. Reference must be mutable ({f}).\n",
+        .{ parent_name, member_name, member_type, position },
         .red,
     );
 }

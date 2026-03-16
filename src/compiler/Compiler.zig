@@ -1397,7 +1397,7 @@ pub fn getExpressionMutability(self: *Self, expr: ast.Expression) !bool {
         .member => |m| {
             const parent_type = try Type.infer(self, m.parent.*);
             return switch (parent_type) {
-                .reference => |ref| ref.is_mut,
+                .reference => |ref| ref.is_mut and try self.getExpressionMutability(m.parent.*),
                 .module => |mod| {
                     const symbol = mod.symbols.get(m.member_name) orelse return false;
                     return symbol.is_mut;

@@ -1230,29 +1230,31 @@ pub const Type = union(enum) {
         if (expected == .any or received.eql(expected)) return true;
 
         const fallback = switch (expected) {
-            .optional => |inner| inner.check(received),
+            .optional => |inner| received.check(inner.*),
             .error_union => |error_union| received.check(error_union.success.*) or
                 received.check(error_union.failure.*),
-            else => if (expected.isNumeric() and received.isNumeric())
-                true
-            else
-                received.eql(expected),
+            else => expected.isNumeric() and received.isNumeric() or received.eql(expected),
         };
 
         return switch (received) {
             .@"typeof(undefined)" => true,
             .@"typeof(nil)" => true,
+            .optional => |ro| switch (expected) {
+                .optional => |eo| ro.check(eo.*),
+                else => fallback,
+            },
             .slice => |rs| switch (expected) {
                 .reference => |er| rs.inner.* == .u8 and er.inner.* == .c_char,
-                .slice => |es| rs.inner.eql(es.inner.*) and (rs.is_mut or !es.is_mut),
+                .slice => |es| rs.inner.check(es.inner.*) and (rs.is_mut or !es.is_mut),
                 else => fallback,
             },
             .reference => |received_ref| switch (expected) {
-                .reference => |expected_ref| received_ref.inner.eql(expected_ref.inner.*) and
+                .optional => |expected_opt| received.check(expected_opt.*),
+                .reference => |expected_ref| received_ref.inner.check(expected_ref.inner.*) and
                     (received_ref.is_mut or !expected_ref.is_mut) or
                     expected_ref.inner.* == .void or received_ref.inner.* == .void,
                 .slice => |slc| received_ref.inner.* == .array and
-                    received_ref.inner.array.inner.eql(slc.inner.*),
+                    received_ref.inner.array.inner.check(slc.inner.*),
                 else => fallback,
             },
             else => fallback,

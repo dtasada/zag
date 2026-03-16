@@ -186,23 +186,23 @@ pub struct ArrayList<T> {
 pub struct StringHashMap<T> {
     const SIZE = 1e5;
 
-    entries: []mut ?&Entry,
+    entries: []mut ?&mut Entry,
 
     pub struct Entry {
         key: []mut u8,
         value: &mut T,
-        next: ?&Entry,
+        next: ?&mut Entry,
     }
 
     pub fn init() StringHashMap<T> {
-        let self = StringHashMap<T> { entries: alloc_slice<?&Entry>(SIZE) };
+        let self = StringHashMap<T> { entries: alloc_slice<?&mut Entry>(SIZE) };
         memset_slice<?&Entry>(self.entries, nil);
         return self;
     }
 
     pub fn put(self: StringHashMap<T>, key: []u8, value: T) void {
         let slot = hash(key);
-        let mut entry: ?&Entry = self.entries[slot];
+        let mut entry: ?&mut Entry = self.entries[slot];
 
         if (entry == nil) {
             self.entries[slot] = pair(key, value);
@@ -210,7 +210,7 @@ pub struct StringHashMap<T> {
         }
 
         let mut prev: &Entry = undefined;
-        while (entry) |&mut e| { // e: &mut &Entry
+        while (entry) |&mut e| { // e: &mut &mut Entry
             if (memcmp_slice<u8>(e.key, key)) {
                 free<T>(e.*.value);
                 e.value = alloc<T>();
@@ -229,7 +229,7 @@ pub struct StringHashMap<T> {
         return value;
     }
 
-    fn pair(key: []u8, value: T) &Entry {
+    fn pair(key: []u8, value: T) &mut Entry {
         let entry = alloc<Entry>();
         entry.key = alloc_slice<u8>(key.len);
         entry.value = alloc<T>();

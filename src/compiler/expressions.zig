@@ -17,6 +17,7 @@ const Opts = struct {
     binding_mut: bool = false,
     expected_type: ?Type = null, // null means infer the type from the expression
     is_variable_declaration: bool = false,
+    is_assignment: bool = false,
 };
 pub fn compile(
     self: *Self,
@@ -200,7 +201,7 @@ fn compileExpected(
                 "({s}){{ .is_some = false }}",
                 .{self.zag_header_contents.get(expected_type).?},
             ),
-            else => if (opt.check(expr_t)) {
+            else => if (expr_t.check(opt.*)) {
                 try self.print(
                     "({s}){{ .is_some = true, .payload = ",
                     .{self.zag_header_contents.get(expected_type).?},
@@ -254,6 +255,7 @@ fn compileExpected(
     if (run_standard) try compile(self, expression, .{
         .binding_mut = opts.binding_mut,
         .is_variable_declaration = opts.is_variable_declaration,
+        .is_assignment = opts.is_assignment,
     });
 }
 
@@ -751,7 +753,7 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
 
     switch (expr.op) {
         .@"^=" => {
-            try compile(self, expr.assignee, .{});
+            try compile(self, expr.assignee, .{ .is_assignment = true });
             try self.write(" = pow(");
             try compile(self, expr.assignee, .{});
             try self.write(",");
@@ -759,7 +761,7 @@ fn assignment(self: *Self, expr: ast.Expression.Assignment) CompilerError!void {
             try self.write(")");
         },
         else => {
-            try compile(self, expr.assignee, .{});
+            try compile(self, expr.assignee, .{ .is_assignment = true });
             try self.print(" {s} ", .{@tagName(expr.op)});
             try compile(self, expr.value, .{ .expected_type = expected_type });
         },
