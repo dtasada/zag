@@ -385,7 +385,11 @@ fn processFunctionDefinitionSymbol(self: *Self, func: *const ast.Statement.Funct
 
 pub fn scan(self: *Self) CompilerError!void {
     for (self.input.items) |*statement| switch (statement.*) {
-        .import => |*import_stmt| try self.registerSymbol(import_stmt.alias orelse import_stmt.module_name.getLast(), .{ .module = try self.processImport(import_stmt) }, .{}),
+        .import => |*import_stmt| try self.registerSymbol(
+            import_stmt.alias orelse import_stmt.module_name[import_stmt.module_name.len - 1],
+            .{ .module = try self.processImport(import_stmt) },
+            .{},
+        ),
         .struct_declaration => |*struct_decl| {
             try self.registerSymbol(
                 struct_decl.name,
@@ -471,7 +475,7 @@ pub fn analyze(self: *Self) CompilerError!void {
         switch (statement.*) {
             .import => |*import_stmt| {
                 const mod = try self.processImport(import_stmt);
-                const name = import_stmt.alias orelse import_stmt.module_name.getLast();
+                const name = import_stmt.alias orelse import_stmt.module_name[import_stmt.module_name.len - 1];
                 try self.registerSymbol(name, .{ .module = mod }, .{});
                 try self.imported_modules.put(name, mod);
             },
@@ -566,7 +570,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     defer parts.deinit(self.alloc);
 
     if (std.fs.path.dirname(self.source_path)) |dir| try parts.append(self.alloc, dir);
-    for (import_stmt.module_name.items) |part| try parts.append(self.alloc, part);
+    for (import_stmt.module_name) |part| try parts.append(self.alloc, part);
 
     const rel_path = try std.fs.path.join(self.alloc, parts.items);
     defer self.alloc.free(rel_path);
@@ -584,7 +588,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
         defer stdlib_parts.deinit(self.alloc);
 
         try stdlib_parts.append(self.alloc, build_options.stdlib_path);
-        for (import_stmt.module_name.items) |part| try stdlib_parts.append(self.alloc, part);
+        for (import_stmt.module_name) |part| try stdlib_parts.append(self.alloc, part);
 
         const stdlib_rel = try std.fs.path.join(self.alloc, stdlib_parts.items);
         defer self.alloc.free(stdlib_rel);
@@ -595,7 +599,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
         std.fs.cwd().access(stdlib_full, .{}) catch return utils.printErr(
             error.ModuleNotFound,
             "Module not found: '{s}'\n  searched: {s}\n  searched: {s}\n",
-            .{ import_stmt.module_name.getLast(), full_path, stdlib_full },
+            .{ import_stmt.module_name[import_stmt.module_name.len - 1], full_path, stdlib_full },
             .red,
         );
 
@@ -612,7 +616,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     try child_compiler.analyze();
 
-    var mod: Module = try .init(self.alloc, import_stmt.alias orelse import_stmt.module_name.getLast());
+    var mod: Module = try .init(self.alloc, import_stmt.alias orelse import_stmt.module_name[import_stmt.module_name.len - 1]);
 
     var it = child_compiler.exported_symbols.iterator();
     while (it.next()) |entry| {
@@ -706,7 +710,7 @@ pub fn compileBlock(
     }
 
     var returns: union(enum) { yes: ?ast.Expression, no, @"break", @"continue" } = .no;
-    for (block.items) |*statement| switch (statement.*) {
+    for (block) |*statement| switch (statement.*) {
         .@"return" => |r| {
             returns = .{ .yes = r.@"return" };
             break;
@@ -859,14 +863,13 @@ pub fn compileVariableSignature(
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
     return switch (expression) {
-        .int => |int| .{ .i64 = int.int },
-        .uint => |uint| .{ .u64 = uint.uint },
-        .float => |float| .{ .f64 = float.float },
-        .char => |char| .{ .u8 = char.char },
+        .int => |int| .{ .i64 = @intCast(int.payload) },
+        .float => |float| .{ .f64 = float.payload },
+        .char => |char| .{ .u8 = char.payload },
         .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
             .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
         .ident => |ident| b: {
-            const item = self.getScopeItem(ident.ident) catch |err| switch (err) {
+            const item = self.getScopeItem(ident.payload) catch |err| switch (err) {
                 error.UnknownSymbol => return err, // Or handle primitive types if not in scope?
                 else => return err,
             };
@@ -1003,7 +1006,7 @@ fn solveGenerics(self: *Self) !void {
 
         switch (instantiation.t) {
             inline .@"struct", .@"union" => |s, tag| {
-                for (s.generic_types.items, 0..) |param, j| {
+                for (s.generic_types, 0..) |param, j| {
                     const val = instantiation.args[j];
                     switch (val) {
                         .type => |t| try self.registerSymbol(param.name, .{ .type = t }, .{}),
@@ -1021,7 +1024,7 @@ fn solveGenerics(self: *Self) !void {
                     @tagName(tag) ++ "_declaration",
                     .{
                         .name = instantiation.inner_name,
-                        .generic_types = .empty,
+                        .generic_types = &.{},
                         .is_pub = true,
                         .pos = s.pos,
                         .variables = s.variables,
@@ -1032,7 +1035,7 @@ fn solveGenerics(self: *Self) !void {
                 ));
             },
             .function => |f| {
-                for (f.generic_parameters.items, 0..) |param, j| {
+                for (f.generic_parameters, 0..) |param, j| {
                     const val = instantiation.args[j];
                     switch (val) {
                         .type => |t| try self.registerSymbol(param.name, .{ .type = t }, .{}),
@@ -1048,7 +1051,7 @@ fn solveGenerics(self: *Self) !void {
                 try statements.compile(self, &.{
                     .function_definition = .{
                         .name = instantiation.inner_name,
-                        .generic_parameters = .empty,
+                        .generic_parameters = &.{},
                         .is_pub = true,
                         .pos = f.pos,
                         .parameters = f.parameters,
@@ -1297,7 +1300,7 @@ pub fn getSymbolDefined(self: *const Self, symbol: []const u8) !bool {
 
 pub fn getExpressionMutability(self: *Self, expr: ast.Expression) !bool {
     return switch (expr) {
-        .ident => |ident| self.getSymbolMutability(ident.ident),
+        .ident => |ident| self.getSymbolMutability(ident.payload),
         .member => |m| {
             const parent_type = try Type.infer(self, m.parent.*);
             return switch (parent_type) {

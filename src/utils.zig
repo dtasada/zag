@@ -26,6 +26,14 @@ pub const Position = struct {
     pub fn format(self: Position, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s}:{}:{}", .{ self.path, self.line, self.col });
     }
+
+    pub fn clone(self: Position, alloc: std.mem.Allocator) !Position {
+        return .{
+            .line = self.line,
+            .col = self.col,
+            .path = try alloc.dupe(u8, self.path),
+        };
+    }
 };
 
 const Color = enum { white, red, green, blue, yellow };

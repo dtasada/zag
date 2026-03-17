@@ -34,18 +34,16 @@ pub fn compile(
         .block => |blk| try block(self, blk),
         .binary => |b| try binary(self, b),
         .comparison => |comp| try comparison(self, comp),
-        .float => |float| try self.print("{}", .{float.float}),
-        .int => |int| try self.print("{}", .{int.int}),
-        .uint => |uint| try self.print("{}", .{uint.uint}),
+        inline .int, .float => |c| try self.print("{}", .{c.payload}),
         .string => |string| {
             try self.write("(");
             try self.compileType(.{ .slice = .{ .inner = &.u8, .is_mut = false } }, .{});
             try self.print("){{ .ptr = (const uint8_t*)\"{s}\", .len = {} }}", .{
-                string.string,
-                string.string.len,
+                string.payload,
+                string.payload.len,
             });
         },
-        .char => |char| try self.print("'{c}'", .{char.char}),
+        .char => |char| try self.print("'{c}'", .{char.payload}),
         .call => |c| try call(self, c),
         .member => |m| try member(self, m),
         .range => |range| return utils.printErr(
@@ -68,9 +66,9 @@ pub fn compile(
                 try self.write(")");
             } else return errors.illegalPrefixExpression(prefix.op, t, prefix.pos);
         },
-        .ident => |ident| if (self.getInnerName(ident.ident)) |inner_name| {
+        .ident => |ident| if (self.getInnerName(ident.payload)) |inner_name| {
             try self.write(inner_name);
-        } else |_| return errors.unknownSymbol(ident.ident, expression.getPosition()),
+        } else |_| return errors.unknownSymbol(ident.payload, expression.getPosition()),
         .struct_instantiation => |struct_inst| b: switch (try Type.infer(self, struct_inst.type_expr.*)) {
             .@"struct" => |s| try structInstantiation(self, struct_inst, s),
             .@"union" => |u| try unionInstantiation(self, struct_inst, u),
@@ -79,11 +77,11 @@ pub fn compile(
         },
         .reference => |reference| {
             switch (reference.inner.*) {
-                .ident => |ident| if (reference.is_mut and !try self.getSymbolMutability(ident.ident))
+                .ident => |ident| if (reference.is_mut and !try self.getSymbolMutability(ident.payload))
                     return utils.printErr(
                         error.BadMutability,
                         "comperr: Can't use a mutable reference to immutable binding '{s}' ({f}).\n",
-                        .{ ident.ident, reference.pos },
+                        .{ ident.payload, reference.pos },
                         .red,
                     ),
                 else => {},
@@ -244,7 +242,7 @@ fn compileExpected(
         .reference => |ref| if (expr_t == .slice and
             expr_t.slice.inner.* == .u8 and
             ref.inner.* == .c_char) switch (expression.*) {
-            .string => |str| try self.print("\"{s}\"", .{str.string}),
+            .string => |str| try self.print("\"{s}\"", .{str.payload}),
             else => run_standard = true,
         } else {
             run_standard = true;
@@ -370,7 +368,7 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
     try self.pushScope(false);
     try self.write("{\n");
     var received_eval = false;
-    for (blk.block.items) |*stmt| {
+    for (blk.block) |*stmt| {
         switch (stmt.*) {
             .block_eval => |*be| {
                 if (received_eval) return utils.printErr(
@@ -404,7 +402,7 @@ fn slice(self: *Self, slc: ast.Expression.Slice, binding_mut: bool) !void {
 
     const is_slice = t == .slice;
     const is_mut = switch (slc.lhs.*) {
-        .ident => |ident| try self.getSymbolMutability(ident.ident),
+        .ident => |ident| try self.getSymbolMutability(ident.payload),
         else => false,
     };
 
@@ -512,16 +510,16 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
             try compile(self, m.condition, .{});
             try self.write(").tag) {\n");
 
-            for (m.cases.items) |case| {
+            for (m.cases) |case| {
                 switch (case.condition) {
-                    .opts => |cases| for (cases.items) |c| {
+                    .opts => |cases| for (cases) |c| {
                         try self.write("case ");
                         switch (c) {
                             .ident => |ident| {
-                                const mem = @"union".getMember(ident.ident) catch return utils.printErr(
+                                const mem = @"union".getMember(ident.payload) catch return utils.printErr(
                                     error.IllegalExpression,
                                     "comperr: Union type '{s}' doesn't have member '{s}' ({f}).\n",
-                                    .{ @"union".name, ident.ident, c.getPosition() },
+                                    .{ @"union".name, ident.payload, c.getPosition() },
                                     .red,
                                 );
                                 try self.print("__zag_{s}_{s}", .{ @"union".tag_type.?.@"enum".inner_name, mem.member_name });
@@ -552,9 +550,9 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
             try compile(self, m.condition, .{});
             try self.write(") {\n");
 
-            for (m.cases.items) |case| {
+            for (m.cases) |case| {
                 switch (case.condition) {
-                    .opts => |opts| for (opts.items) |opt| {
+                    .opts => |opts| for (opts) |opt| {
                         try self.write("case ");
                         try compile(self, &opt, .{});
                         try self.write(":\n");
@@ -1014,7 +1012,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
 fn tryResolveStaticType(self: *Self, expr: ast.Expression) !?Type {
     switch (expr) {
         .ident => |ident| {
-            const item = self.getScopeItem(ident.ident) catch return null;
+            const item = self.getScopeItem(ident.payload) catch return null;
             return switch (item) {
                 .type => |t| t.type,
                 .module => |m| .{ .module = m },
@@ -1061,7 +1059,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
             }
 
             const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
-            const received_args = call_expr.args.items.len;
+            const received_args = call_expr.args.len;
             if (expected_args != received_args) return errors.argumentCountMismatch(
                 expected_args,
                 received_args,
@@ -1084,7 +1082,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 }
 
                 for (method.params.items[1..], 0..) |expected_param_type, i| {
-                    const received_expr = call_expr.args.items[i];
+                    const received_expr = call_expr.args[i];
                     const received_type: Type = try .infer(self, received_expr);
                     if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
                         expected_param_type.type,
@@ -1110,9 +1108,9 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                 );
                 try compile(self, m.parent, .{});
                 if (method.params.items.len > 1) try self.write(", ");
-                for (call_expr.args.items, 1..) |*arg, i| {
+                for (call_expr.args, 1..) |*arg, i| {
                     try compile(self, arg, .{});
-                    if (i < call_expr.args.items.len) try self.write(", ");
+                    if (i < call_expr.args.len) try self.write(", ");
                 }
             }
 
@@ -1136,9 +1134,9 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.Call) !void {
     if (function.generic_instantiation) |inst| {
         if (std.mem.eql(u8, inst.base_name, "sizeof")) {
-            if (call_expr.args.items.len != 0) return errors.argumentCountMismatch(
+            if (call_expr.args.len != 0) return errors.argumentCountMismatch(
                 0,
-                call_expr.args.items.len,
+                call_expr.args.len,
                 call_expr.pos,
             );
 
@@ -1147,13 +1145,13 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
             try self.write(")");
             return;
         } else if (std.mem.eql(u8, inst.base_name, "cast")) {
-            if (call_expr.args.items.len != 1) return errors.argumentCountMismatch(
+            if (call_expr.args.len != 1) return errors.argumentCountMismatch(
                 1,
-                call_expr.args.items.len,
+                call_expr.args.len,
                 call_expr.pos,
             );
 
-            const source_type = try Type.infer(self, call_expr.args.items[0]);
+            const source_type = try Type.infer(self, call_expr.args[0]);
             const target_type = inst.args[0].type;
 
             switch (source_type) {
@@ -1163,7 +1161,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
                         try self.write("((");
                         try self.compileType(target_type, .{});
                         try self.write(")((");
-                        try compile(self, &call_expr.args.items[0], .{});
+                        try compile(self, &call_expr.args[0], .{});
                         try self.write(").ptr))");
                         return;
                     },
@@ -1172,9 +1170,9 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
                         try self.write("((");
                         try self.compileType(target_type, .{});
                         try self.write("){ .ptr = (void*)((");
-                        try compile(self, &call_expr.args.items[0], .{});
+                        try compile(self, &call_expr.args[0], .{});
                         try self.write(").ptr), .len = (");
-                        try compile(self, &call_expr.args.items[0], .{});
+                        try compile(self, &call_expr.args[0], .{});
                         try self.write(").len })");
                         return;
                     },
@@ -1186,18 +1184,18 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
             try self.write("(");
             try self.compileType(inst.args[0].type, .{});
             try self.write(")");
-            try compile(self, &call_expr.args.items[0], .{});
+            try compile(self, &call_expr.args[0], .{});
             return;
         } else if (std.mem.eql(u8, inst.base_name, "xor")) {
-            if (call_expr.args.items.len != 2) return errors.argumentCountMismatch(
+            if (call_expr.args.len != 2) return errors.argumentCountMismatch(
                 2,
-                call_expr.args.items.len,
+                call_expr.args.len,
                 call_expr.pos,
             );
 
-            try compile(self, &call_expr.args.items[0], .{});
+            try compile(self, &call_expr.args[0], .{});
             try self.write(" ^ ");
-            try compile(self, &call_expr.args.items[1], .{});
+            try compile(self, &call_expr.args[1], .{});
             return;
         }
 
@@ -1229,7 +1227,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
     };
 
     const expected_args = if (variadic_arg) |_| function.params.items.len - 1 else function.params.items.len;
-    const received_args = call_expr.args.items.len;
+    const received_args = call_expr.args.len;
 
     if (variadic_arg) |_| {
         if (received_args < expected_args) return errors.argumentCountMismatch(
@@ -1245,7 +1243,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
 
     for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_param, i| {
         const expected_type = expected_param.type;
-        const received_expr = call_expr.args.items[i];
+        const received_expr = call_expr.args[i];
         const received_type = try Type.infer(self, received_expr);
 
         if (expected_type != .variadic and !received_type.check(expected_type))
@@ -1264,10 +1262,10 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
     try compile(self, call_expr.callee, .{});
 
     try self.write("(");
-    for (call_expr.args.items, 1..) |*e, i| {
+    for (call_expr.args, 1..) |*e, i| {
         const expected_type = function.params.items[i - 1].type;
         try compile(self, e, .{ .expected_type = if (expected_type == .variadic) null else expected_type });
-        if (i < call_expr.args.items.len) try self.write(", ");
+        if (i < call_expr.args.len) try self.write(", ");
     }
     try self.write(")");
 }

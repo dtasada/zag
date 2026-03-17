@@ -132,7 +132,7 @@ fn compoundTypeDeclaration(
         }
     }
 
-    if (T != .@"enum" and type_decl.generic_types.items.len > 0) return;
+    if (T != .@"enum" and type_decl.generic_types.len > 0) return;
 
     const saved_section = self.current_section;
     self.switchSection(.header_type_defs);
@@ -222,7 +222,7 @@ fn compoundTypeDeclaration(
         // Check if we have generic params in outer scope
         const outer_scope_idx = self.scopes.items.len - 2; // -1 is current, -2 is outer
         if (outer_scope_idx >= 0 and (T == .@"struct" or T == .@"union"))
-            for (type_decl.generic_types.items) |g| {
+            for (type_decl.generic_types) |g| {
                 // Copy from outer scope if it exists there
                 if (self.scopes.items[outer_scope_idx].items.get(g.name)) |outer_item|
                     try self.scopes.getLast().items.put(g.name, outer_item);
@@ -254,13 +254,13 @@ fn compoundTypeDeclaration(
 
             try self.compileType(return_type, .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
-            for (method.parameters.items, 0..) |parameter_type, i| {
+            for (method.parameters, 0..) |parameter_type, i| {
                 try self.compileVariableSignature(
                     parameter_type.name,
                     try .fromAst(self, parameter_type.type),
                     if (parameter_type.is_mut) .let_mut else .let,
                 );
-                if (i < method.parameters.items.len - 1) try self.write(", ");
+                if (i < method.parameters.len - 1) try self.write(", ");
             }
             try self.write(");\n");
 
@@ -269,11 +269,11 @@ fn compoundTypeDeclaration(
 
         try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
-        for (method.parameters.items, 0..) |parameter, i| {
+        for (method.parameters, 0..) |parameter, i| {
             const param_type: Type = try .fromAst(self, parameter.type);
             try self.registerSymbol(parameter.name, .{ .symbol = .{ .type = param_type, .is_mut = parameter.is_mut } }, .{});
             try self.compileVariableSignature(parameter.name, param_type, if (parameter.is_mut) .let_mut else .let);
-            if (i < method.parameters.items.len - 1) try self.write(", ");
+            if (i < method.parameters.len - 1) try self.write(", ");
         }
         try self.write(") ");
 
@@ -407,7 +407,7 @@ fn variableDefinition(
             if (v.is_pub and v.binding != .let_mut) .let else v.binding,
         );
 
-        if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.ident, "undefined")) {
+        if (v.assigned_value != .ident or !std.mem.eql(u8, v.assigned_value.ident.payload, "undefined")) {
             try self.write(" = ");
 
             try expressions.compile(self, &v.assigned_value, .{
@@ -554,11 +554,7 @@ fn conditional(
     try self.compileBlock(
         switch (statement.body.*) {
             .block => |block| block.block,
-            else => b: {
-                var block: ast.Block = .empty;
-                try block.append(self.alloc, statement.body.*);
-                break :b block;
-            },
+            else => &.{statement.body.*},
         },
         switch (T) {
             .@"for" => .{
@@ -615,7 +611,7 @@ fn functionDefinition(
         },
     } }, .{ .inner_name = inner_name });
 
-    if (!binding_function and function_def.generic_parameters.items.len > 0) return;
+    if (!binding_function and function_def.generic_parameters.len > 0) return;
 
     try self.pushScope(false);
     defer self.popScope();
@@ -638,9 +634,9 @@ fn functionDefinition(
         // function's return type is `const` qualified.
         try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
-        for (function_def.parameters.items, 0..) |parameter, i| {
+        for (function_def.parameters, 0..) |parameter, i| {
             try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), if (parameter.is_mut) .let_mut else .let);
-            if (i < function_def.parameters.items.len - 1) try self.write(", ");
+            if (i < function_def.parameters.len - 1) try self.write(", ");
         }
         try self.write(");\n");
     }
@@ -650,13 +646,13 @@ fn functionDefinition(
         // function's return type is `const` qualified.
         try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
-        for (function_def.parameters.items, 0..) |parameter, i| {
+        for (function_def.parameters, 0..) |parameter, i| {
             try self.compileVariableSignature(
                 parameter.name,
                 try .fromAst(self, parameter.type),
                 if (parameter.is_mut) .let_mut else .let,
             );
-            if (i < function_def.parameters.items.len - 1) try self.write(", ");
+            if (i < function_def.parameters.len - 1) try self.write(", ");
 
             try self.registerSymbol(parameter.name, .{
                 .symbol = .{
@@ -697,14 +693,14 @@ fn functionDefinition(
 fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
     const module = try self.processImport(&statement);
 
-    const name = statement.alias orelse statement.module_name.getLast();
+    const name = statement.alias orelse statement.module_name[statement.module_name.len - 1];
     try self.registerSymbol(name, .{ .module = module }, .{});
 
     // Emit #include "path/to/header.h"
     try self.write("#include \"");
-    for (statement.module_name.items, 0..) |part, i| {
+    for (statement.module_name, 0..) |part, i| {
         try self.write(part);
-        if (i < statement.module_name.items.len - 1) try self.write("/");
+        if (i < statement.module_name.len - 1) try self.write("/");
     }
     try self.write(".zag.h\"\n");
 
@@ -713,9 +709,9 @@ fn import(self: *Self, statement: ast.Statement.Import) CompilerError!void {
     defer self.switchSection(saved_section);
 
     try self.write("#include \"");
-    for (statement.module_name.items, 0..) |part, i| {
+    for (statement.module_name, 0..) |part, i| {
         try self.write(part);
-        if (i < statement.module_name.items.len - 1) try self.write("/");
+        if (i < statement.module_name.len - 1) try self.write("/");
     }
     try self.write(".zag.h\"\n");
 }

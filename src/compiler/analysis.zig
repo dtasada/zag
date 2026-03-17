@@ -4,7 +4,7 @@ const Compiler = @import("Compiler.zig");
 const Type = @import("Type.zig").Type;
 
 pub fn blockReturns(block: ast.Block) bool {
-    for (block.items) |stmt| {
+    for (block) |stmt| {
         if (statementReturns(stmt)) {
             // This statement guarantees a return, so any code after it is
             // effectively unreachable from a path-checking perspective.
@@ -34,11 +34,11 @@ pub fn statementReturns(statement: ast.Statement) bool {
         .expression => |expr| switch (expr) {
             .match => |match_expr| blk: {
                 var has_else = false;
-                if (match_expr.cases.items.len == 0) {
+                if (match_expr.cases.len == 0) {
                     break :blk false;
                 }
 
-                for (match_expr.cases.items) |case| {
+                for (match_expr.cases) |case| {
                     if (case.condition == .@"else") {
                         has_else = true;
                     }
@@ -54,7 +54,7 @@ pub fn statementReturns(statement: ast.Statement) bool {
 
         .@"while" => |while_stmt| blk: {
             if (while_stmt.condition == .ident) {
-                if (std.mem.eql(u8, while_stmt.condition.ident.ident, "true")) {
+                if (std.mem.eql(u8, while_stmt.condition.ident.payload, "true")) {
                     break :blk statementReturns(while_stmt.body.*);
                 }
             }

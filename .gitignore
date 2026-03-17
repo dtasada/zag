@@ -7,3 +7,4 @@ zig-out/
 .gemini/
 GEMINI.md
 zig-pkg/
+profile_json.zip

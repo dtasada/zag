@@ -45,7 +45,7 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
     const var_name = try self.expect(self.advance(), .ident, environment, env_small);
 
     // optionally parse type
-    var @"type": ast.Type = .{ .inferred = .{ .pos = self.currentPosition() } };
+    var @"type": ast.Type = .{ .inferred = .{ .pos = try self.currentPosition().clone(self.alloc) } };
     if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);
@@ -59,9 +59,9 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
 
     return .{
         .variable_definition = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .is_pub = is_pub,
-            .variable_name = var_name,
+            .variable_name = try self.alloc.dupe(u8, var_name),
             .binding = if (is_const) .@"const" else if (is_mut) .let_mut else .let,
             .assigned_value = assigned_value,
             .type = @"type",
@@ -78,51 +78,49 @@ pub fn compoundTypeDeclaration(
     const tag_name = @tagName(T) ++ "_declaration";
 
     const pos = self.currentPosition();
-
     const is_pub = isPub(self);
 
     _ = self.advance(); // consume `struct`, `enum`, or `union` keyword.
 
-    var compound = switch (T) {
-        .@"struct" => ast.Statement.StructDeclaration{
-            .pos = pos,
-            .is_pub = is_pub,
-            .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "struct name"),
-            .generic_types = .empty,
-            .variables = .empty,
-            .subtypes = .empty,
-            .members = .empty,
-            .methods = .empty,
-        },
-        .@"union" => ast.Statement.UnionDeclaration{
-            .pos = pos,
-            .is_pub = is_pub,
-            .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "union name"),
-            .generic_types = .empty,
-            .variables = .empty,
-            .subtypes = .empty,
-            .members = .empty,
-            .methods = .empty,
-        },
-        .@"enum" => ast.Statement.EnumDeclaration{
-            .pos = pos,
-            .is_pub = is_pub,
-            .name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ "enum name"),
-            .variables = .empty,
-            .subtypes = .empty,
-            .members = .empty,
-            .methods = .empty,
+    const name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ " name");
+
+    var compound: ast.Statement = switch (T) {
+        .@"struct", .@"union" => @unionInit(
+            ast.Statement,
+            tag_name,
+            .{
+                .pos = pos,
+                .is_pub = is_pub,
+                .name = try self.alloc.dupe(u8, name),
+                .generic_types = &.{},
+                .variables = .empty,
+                .subtypes = .empty,
+                .members = .empty,
+                .methods = .empty,
+            },
+        ),
+        .@"enum" => .{
+            .enum_declaration = .{
+                .pos = pos,
+                .is_pub = is_pub,
+                .name = try self.alloc.dupe(u8, name),
+                .variables = .empty,
+                .subtypes = .empty,
+                .members = .empty,
+                .methods = .empty,
+            },
         },
     };
 
-    if (self.currentToken() == .@"<") switch (T) {
-        inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
-        .@"enum" => return utils.printErr(
+    if (self.currentToken() == .@"<") switch (compound) {
+        inline .struct_declaration, .union_declaration => |*s| s.generic_types = try self.parseGenericParameters(),
+        .enum_declaration => return utils.printErr(
             error.UnexpectedToken,
             "Parser error: enum declaration can't have generic parameters ({f}).\n",
             .{self.lexer.source_map.items[self.pos]},
             .red,
         ),
+        else => unreachable,
     };
 
     try self.expect(self.advance(), .@"{", context, "{' or '<");
@@ -133,12 +131,7 @@ pub fn compoundTypeDeclaration(
                 var member_names: std.ArrayList([]const u8) = .empty;
                 defer member_names.deinit(self.alloc);
 
-                const first_name = try self.expect(
-                    self.advance(),
-                    .ident,
-                    context,
-                    "member name",
-                );
+                const first_name = try self.expect(self.advance(), .ident, context, "member name");
                 try member_names.append(self.alloc, first_name);
 
                 if (T != .@"enum") while (self.currentToken() == .@",") {
@@ -172,37 +165,50 @@ pub fn compoundTypeDeclaration(
                     else => null,
                 };
 
-                for (member_names.items) |name| try compound.members.append(self.alloc, switch (T) {
-                    .@"struct" => .{ .name = name, .type = member_type.? },
-                    .@"enum" => .{ .name = name, .value = value },
-                    .@"union" => .{ .name = name, .type = member_type },
-                });
+                for (member_names.items) |i| switch (compound) {
+                    .struct_declaration => |*sd| try sd.members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, i), .type = member_type.? }),
+                    .enum_declaration => |*ed| try ed.members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, i), .value = value }),
+                    .union_declaration => |*ud| try ud.members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, i), .type = member_type }),
+                    else => unreachable,
+                };
 
                 if (self.currentToken() == .@",") _ = self.advance() else {
                     break;
                 }
             },
-            .@"fn" => try compound.methods.append(
-                self.alloc,
-                (try functionDefinition(self)).function_definition,
-            ),
-            .let, .@"const" => try compound.variables.append(self.alloc, (try variableDefinition(self)).variable_definition),
-
-            inline .@"struct", .@"union", .@"enum" => try compound.subtypes.append(
-                self.alloc,
-                @unionInit(
-                    ast.Subtype,
-                    @tagName(T),
-                    @field(try compoundTypeDeclaration(self, .@"struct"), tag_name),
+            .@"fn" => switch (compound) {
+                inline .struct_declaration, .enum_declaration, .union_declaration => |*sd| try sd.methods.append(
+                    self.alloc,
+                    (try functionDefinition(self)).function_definition,
                 ),
-            ),
+                else => unreachable,
+            },
+            .let, .@"const" => switch (compound) {
+                inline .struct_declaration, .enum_declaration, .union_declaration => |*sd| try sd.variables.append(
+                    self.alloc,
+                    (try variableDefinition(self)).variable_definition,
+                ),
+                else => unreachable,
+            },
+
+            inline .@"struct", .@"union", .@"enum" => switch (compound) {
+                inline .struct_declaration, .enum_declaration, .union_declaration => |*sd| try sd.subtypes.append(
+                    self.alloc,
+                    @unionInit(
+                        ast.Subtype,
+                        @tagName(T),
+                        @field(try compoundTypeDeclaration(self, .@"struct"), tag_name),
+                    ),
+                ),
+                else => unreachable,
+            },
 
             .@"pub" => _ = self.advance(),
 
             else => return utils.printErr(
                 error.SyntaxError,
                 "Parser error: expected {s} variable definition, member declaration or method definition in {s} '{s}' ({f}).\n",
-                .{ @tagName(T), @tagName(T), compound.name, self.currentPosition() },
+                .{ @tagName(T), @tagName(T), name, self.currentPosition() },
                 .red,
             ),
         }
@@ -210,7 +216,7 @@ pub fn compoundTypeDeclaration(
 
     try self.expect(self.advance(), .@"}", context, "}");
 
-    return @unionInit(ast.Statement, tag_name, compound);
+    return compound;
 }
 
 pub fn structDeclaration(self: *Self) ParserError!ast.Statement {
@@ -232,7 +238,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     _ = self.advance(); // consume "fn" keyword
     const function_name = try self.expect(self.advance(), .ident, "function definition", "function name");
     const generic_parameters: ast.ParameterList = switch (self.currentToken()) {
-        .@"(" => .empty,
+        .@"(" => &.{},
         .@"<" => try self.parseGenericParameters(),
         else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
     };
@@ -251,9 +257,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
         .@"{" => try self.parseBlock(),
         .@"->" => b: {
             _ = self.advance();
-            var block: ast.Block = .empty;
-            try block.append(self.alloc, try parse(self));
-            break :b block;
+            break :b &.{try parse(self)};
         },
         else => return utils.printErr(
             error.UnexpectedToken,
@@ -267,7 +271,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
         .function_definition = .{
             .pos = pos,
             .is_pub = is_pub,
-            .name = function_name,
+            .name = try self.alloc.dupe(u8, function_name),
             .generic_parameters = generic_parameters,
             .parameters = parameters,
             .return_type = return_type,
@@ -299,9 +303,9 @@ pub fn bindingDeclaration(self: *Self) ParserError!ast.Statement {
 
             return .{
                 .binding_function_declaration = .{
-                    .pos = pos,
+                    .pos = try pos.clone(self.alloc),
                     .is_pub = is_pub,
-                    .name = function_name,
+                    .name = try self.alloc.dupe(u8, function_name),
                     .parameters = parameters,
                     .return_type = return_type,
                 },
@@ -310,10 +314,10 @@ pub fn bindingDeclaration(self: *Self) ParserError!ast.Statement {
         inline .@"struct", .@"union", .@"enum" => |_, tag| {
             const type_decl: ast.Statement = .{
                 .binding_type_declaration = .{
-                    .pos = pos,
+                    .pos = try pos.clone(self.alloc),
                     .is_pub = is_pub,
                     .type = std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
-                    .name = try self.expect(self.advance(), .ident, "binding type declaration", @tagName(tag) ++ " name"),
+                    .name = try self.alloc.dupe(u8, try self.expect(self.advance(), .ident, "binding type declaration", @tagName(tag) ++ " name")),
                 },
             };
             try self.expectSemicolon("binding type declaration");
@@ -337,7 +341,7 @@ pub fn @"return"(self: *Self) ParserError!ast.Statement {
         expression = try expressions.parse(self, .default, .{});
 
     try self.expectSemicolon("return statement");
-    return .{ .@"return" = .{ .pos = pos, .@"return" = expression } };
+    return .{ .@"return" = .{ .pos = try pos.clone(self.alloc), .@"return" = expression } };
 }
 
 pub fn @"for"(self: *Self) ParserError!ast.Statement {
@@ -352,13 +356,13 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } }
+        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } }
     else
         try parse(self);
 
     return .{
         .@"for" = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .iterator = iterator,
             .capture = capture,
             .body = body,
@@ -393,7 +397,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } }
+        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } }
     else
         try parse(self);
 
@@ -406,14 +410,14 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
                 @"else" = try self.alloc.create(ast.Statement);
                 @"else".?.* = if (self.currentToken() == .@"{")
-                    .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } }
+                    .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } }
                 else
                     try parse(self);
             }
 
             return .{
                 .@"if" = .{
-                    .pos = pos,
+                    .pos = try pos.clone(self.alloc),
                     .condition = condition,
                     .capture = capture,
                     .body = body,
@@ -423,7 +427,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
         },
         .@"while" => .{
             .@"while" = .{
-                .pos = pos,
+                .pos = try pos.clone(self.alloc),
                 .condition = condition,
                 .capture = capture,
                 .body = body,
@@ -441,7 +445,7 @@ pub fn import(self: *Self) ParserError!ast.Statement {
 
     while (true) s: switch (self.currentToken()) {
         .ident => |ident| {
-            try module.append(self.alloc, ident);
+            try module.append(self.alloc, try self.alloc.dupe(u8, ident));
             _ = self.advance();
         },
         .@"." => continue :s self.advance(),
@@ -476,8 +480,8 @@ pub fn import(self: *Self) ParserError!ast.Statement {
     return .{
         .import = .{
             .pos = pos,
-            .module_name = module,
-            .alias = alias,
+            .module_name = try module.toOwnedSlice(self.alloc),
+            .alias = if (alias) |a| try self.alloc.dupe(u8, a) else null,
         },
     };
 }

@@ -352,7 +352,7 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
     const closing_token: Lexer.Token = if (is_generic) .@">" else .@")";
     const environment = if (is_generic) "generic argument list" else "argument list";
 
-    var args: ast.ArgumentList = .empty;
+    var args: std.ArrayList(ast.Expression) = .empty;
 
     try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
@@ -372,11 +372,11 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
 
     try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
 
-    return args;
+    return args.toOwnedSlice(self.alloc);
 }
 
 pub fn parseBlock(self: *Self) !ast.Block {
-    var block: ast.Block = .empty;
+    var block: std.ArrayList(ast.Statement) = .empty;
 
     try self.expect(self.advance(), .@"{", "block", "{");
 
@@ -385,7 +385,7 @@ pub fn parseBlock(self: *Self) !ast.Block {
 
     try self.expect(self.advance(), .@"}", "block", "}");
 
-    return block;
+    return block.toOwnedSlice(self.alloc);
 }
 
 pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ParameterList {
@@ -393,7 +393,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
     const opening_token = if (is_generic) .@"<" else .@"(";
     const closing_token = if (is_generic) .@">" else .@")";
 
-    var params: ast.ParameterList = .empty;
+    var params: std.ArrayList(ast.VariableSignature) = .empty;
     try self.expect(
         self.advance(),
         opening_token,
@@ -413,7 +413,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
     } else {
         var last_arg = false;
         while (!last_arg) {
-            var param_names: std.ArrayList(struct { name: []const u8, pos: utils.Position }) = .empty;
+            var param_names: std.ArrayList([]const u8) = .empty;
             defer param_names.deinit(self.alloc);
 
             const first_pos = self.currentPosition();
@@ -424,26 +424,24 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
             } else false;
 
             const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
-            try param_names.append(self.alloc, .{ .name = first_name, .pos = first_pos });
+            try param_names.append(self.alloc, first_name);
 
             while (self.currentToken() == .@",") {
                 _ = self.advance();
-                const pos = self.currentPosition();
                 const name = try self.expect(self.advance(), .ident, context, "parameter name");
-                try param_names.append(self.alloc, .{ .name = name, .pos = pos });
+                try param_names.append(self.alloc, name);
             }
 
-            var param_type: ast.Type = .{ .inferred = .{ .pos = first_pos } };
-            if (is_generic) {
-                param_type = if (self.currentToken() == .@":") b: {
-                    _ = self.advance();
-                    break :b try self.type_parser.parseType(self.alloc, .default);
-                } else .{ .inferred = .{ .pos = first_pos } };
-            } else switch (self.advance()) {
-                .@":" => param_type = try self.type_parser.parseType(self.alloc, .default),
-                .@"..." => {
-                    param_type = .{ .variadic = .{ .pos = first_pos } };
+            const param_type: ast.Type = if (is_generic and self.currentToken() == .@":") b: {
+                _ = self.advance();
+                break :b try self.type_parser.parseType(self.alloc, .default);
+            } else if (is_generic)
+                .{ .inferred = .{ .pos = try first_pos.clone(self.alloc) } }
+            else switch (self.advance()) {
+                .@":" => try self.type_parser.parseType(self.alloc, .default),
+                .@"..." => b: {
                     last_arg = true;
+                    break :b .{ .variadic = .{ .pos = try first_pos.clone(self.alloc) } };
                 },
                 else => |actual| return utils.printErr(
                     error.UnexpectedToken,
@@ -457,11 +455,11 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                     ] },
                     .red,
                 ),
-            }
+            };
 
             for (param_names.items) |p| try params.append(self.alloc, .{
                 .is_mut = is_mut,
-                .name = p.name,
+                .name = try self.alloc.dupe(u8, p),
                 .type = param_type,
             });
 
@@ -472,7 +470,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
         }
     }
 
-    return params;
+    return params.toOwnedSlice(self.alloc);
 }
 
 pub fn parseCapture(self: *Self) !?utils.Capture {
@@ -489,16 +487,16 @@ pub fn parseCapture(self: *Self) !?utils.Capture {
             } else false;
             const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
 
-            const index = if (self.currentToken() == .@",") b2: {
+            const index: ?[]const u8 = if (self.currentToken() == .@",") b2: {
                 _ = self.advance();
                 break :b2 try self.expect(self.advance(), .ident, "capture", "index name");
             } else null;
 
             try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
             break :b if (std.mem.eql(u8, capture_name, "_")) null else .{
-                .name = capture_name,
+                .name = try self.alloc.dupe(u8, capture_name),
                 .takes_ref = if (capture_takes_ref) .{ .some = capture_ref_is_mut } else .none,
-                .index = index,
+                .index = if (index) |i| try self.alloc.dupe(u8, i) else null,
             };
         },
         else => null,

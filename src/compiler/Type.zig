@@ -299,8 +299,8 @@ pub const Type = union(enum) {
                     try compiler.pushScope(false);
                     defer compiler.popScope();
 
-                    var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.generic_parameters.items.len);
-                    for (function.generic_parameters.items) |p| {
+                    var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.generic_parameters.len);
+                    for (function.generic_parameters) |p| {
                         generic_params.appendAssumeCapacity(.{
                             .name = p.name,
                             .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
@@ -308,8 +308,8 @@ pub const Type = union(enum) {
                         try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } }, .{});
                     }
 
-                    var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.parameters.items.len);
-                    for (function.parameters.items) |p|
+                    var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, function.parameters.len);
+                    for (function.parameters) |p|
                         params.appendAssumeCapacity(.{
                             .name = p.name,
                             .type = try fromAst(compiler, p.type),
@@ -430,10 +430,10 @@ pub const Type = union(enum) {
         arguments: ast.ArgumentList,
         pos: utils.Position,
     ) CompilerError!Self {
-        var args: std.ArrayList(Value) = try .initCapacity(compiler.alloc, arguments.items.len);
+        var args: std.ArrayList(Value) = try .initCapacity(compiler.alloc, arguments.len);
         defer args.deinit(compiler.alloc);
 
-        for (arguments.items) |arg|
+        for (arguments) |arg|
             args.appendAssumeCapacity(try compiler.solveComptimeExpression(arg));
 
         // Check generic params
@@ -560,7 +560,7 @@ pub const Type = union(enum) {
                     const copy_decl = try compiler.alloc.create(@TypeOf(s.*));
                     copy_decl.* = try s.clone(compiler.alloc);
                     copy_decl.name = name;
-                    copy_decl.generic_types = .empty;
+                    copy_decl.generic_types = &.{};
                     var t = try fromCompoundTypeDeclaration(
                         compiler,
                         std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
@@ -577,7 +577,7 @@ pub const Type = union(enum) {
                 .function => |d| blk: {
                     var copy = d.*;
                     copy.name = name;
-                    copy.generic_parameters = .empty;
+                    copy.generic_parameters = &.{};
                     var t = try fromAst(compiler, copy.getType());
                     t.function.definition = d;
                     t.function.generic_instantiation = .{
@@ -631,8 +631,8 @@ pub const Type = union(enum) {
 
     pub fn infer(compiler: *Compiler, expr: ast.Expression) CompilerError!Self {
         return switch (expr) {
-            .ident => |ident| switch (compiler.getScopeItem(ident.ident) catch
-                return errors.unknownSymbol(ident.ident, expr.getPosition())) {
+            .ident => |ident| switch (compiler.getScopeItem(ident.payload) catch
+                return errors.unknownSymbol(ident.payload, expr.getPosition())) {
                 .symbol => |s| s.type,
                 .type => |*t| .{ .type = &t.type },
                 .module => |m| .{ .module = m },
@@ -640,12 +640,8 @@ pub const Type = union(enum) {
             },
             .string => .{ .slice = .{ .inner = &.u8, .is_mut = false } },
             .char => .u8,
-            .uint => |uint| if (uint.uint <= std.math.maxInt(i32)) .i32 else .i64,
-            .int => |int| if (int.int <= std.math.maxInt(i32) and int.int >= std.math.minInt(i32))
-                .i32
-            else
-                .i64,
-            .float => |float| if (float.float == @as(f64, @floatCast(@as(f32, @floatCast(float.float)))))
+            .int => |int| if (int.payload <= std.math.maxInt(i32)) .i32 else .i64,
+            .float => |float| if (float.payload == @as(f64, @floatCast(@as(f32, @floatCast(float.payload)))))
                 // if the float fits in an f32, then default to f32. if the float is too big,
                 // use f64
                 .f32
@@ -792,7 +788,7 @@ pub const Type = union(enum) {
             },
             .match => |m| {
                 var result_type: ?Type = null;
-                for (m.cases.items) |case| {
+                for (m.cases) |case| {
                     result_type = if (case.result == .expression)
                         try .infer(compiler, case.result.expression)
                     else if (result_type) |rt|
@@ -848,7 +844,7 @@ pub const Type = union(enum) {
         try self.pushScope(false);
         defer self.popScope();
 
-        for (blk.block.items) |statement| switch (statement) {
+        for (blk.block) |statement| switch (statement) {
             .variable_definition => |vd| try self.registerSymbol(vd.variable_name, .{
                 .symbol = .{ .type = try .infer(self, vd.assigned_value) },
             }, .{}),
@@ -932,7 +928,7 @@ pub const Type = union(enum) {
         }
 
         switch (T) {
-            .@"struct", .@"union" => for (type_decl.generic_types.items) |g| {
+            .@"struct", .@"union" => for (type_decl.generic_types) |g| {
                 try compound_type.generic_params.append(compiler.alloc, .{
                     .name = g.name,
                     .type = if (g.type == .inferred) .type_type else try .fromAst(compiler, g.type),
@@ -950,11 +946,11 @@ pub const Type = union(enum) {
         );
 
         if (T == .@"struct" or T == .@"union") {
-            if (type_decl.generic_types.items.len > 0) return compound_type;
+            if (type_decl.generic_types.len > 0) return compound_type;
         }
 
         switch (T) {
-            .@"struct", .@"union" => for (type_decl.generic_types.items) |g|
+            .@"struct", .@"union" => for (type_decl.generic_types) |g|
                 try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } }, .{}),
             else => {},
         }
@@ -1059,16 +1055,16 @@ pub const Type = union(enum) {
         }
 
         for (type_decl.methods.items, 0..) |method, i| {
-            var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.parameters.items.len);
+            var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.parameters.len);
 
-            for (method.parameters.items) |p|
+            for (method.parameters) |p|
                 params.appendAssumeCapacity(.{
                     .name = p.name,
                     .type = try .fromAst(compiler, p.type),
                 });
 
-            var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.generic_parameters.items.len);
-            for (method.generic_parameters.items) |p|
+            var generic_params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.generic_parameters.len);
+            for (method.generic_parameters) |p|
                 generic_params.appendAssumeCapacity(.{
                     .name = p.name,
                     .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
@@ -1133,7 +1129,7 @@ pub const Type = union(enum) {
     fn inferArrayInstantiationExpression(compiler: *Compiler, array: ast.Expression.ArrayInstantiation) !Self {
         const t = try fromAstPtr(compiler, array.type);
 
-        const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident.ident, "_"))
+        const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident.payload, "_"))
             array.contents.items.len
         else b: {
             const expected_length = (try compiler.solveComptimeExpression(array.length.*)).u64;

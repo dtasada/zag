@@ -196,7 +196,7 @@ pub struct StringHashMap<T> {
 
     pub fn init() StringHashMap<T> {
         let self = StringHashMap<T> { entries: alloc_slice<?&mut Entry>(SIZE) };
-        memset_slice<?&Entry>(self.entries, nil);
+        memset_slice<?&mut Entry>(self.entries, nil);
         return self;
     }
 

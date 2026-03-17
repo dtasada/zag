@@ -5,10 +5,10 @@ const utils = @import("utils");
 
 const LexerToken = @import("Lexer").Token;
 
-pub const ParameterList = std.ArrayList(VariableSignature);
-pub const ArgumentList = std.ArrayList(Expression);
+pub const ParameterList = []const VariableSignature;
+pub const ArgumentList = []const Expression;
 pub const RootNode = std.ArrayList(Statement);
-pub const Block = std.ArrayList(Statement);
+pub const Block = []const Statement;
 
 const ast = @This();
 
@@ -74,12 +74,11 @@ pub const Expression = union(enum) {
     bad_node: struct { pos: utils.Position },
 
     // literals
-    ident: struct { pos: utils.Position, ident: []const u8 },
-    string: struct { pos: utils.Position, string: []const u8 },
-    char: struct { pos: utils.Position, char: u8 },
-    int: struct { pos: utils.Position, int: i64 },
-    uint: struct { pos: utils.Position, uint: u64 },
-    float: struct { pos: utils.Position, float: f64 },
+    ident: struct { pos: utils.Position, payload: []const u8 },
+    string: struct { pos: utils.Position, payload: []const u8 },
+    char: struct { pos: utils.Position, payload: u8 },
+    int: struct { pos: utils.Position, payload: u64 },
+    float: struct { pos: utils.Position, payload: f64 },
 
     @"if": If,
     array_instantiation: ArrayInstantiation,
@@ -109,7 +108,7 @@ pub const Expression = union(enum) {
     pub const Match = struct {
         pub const Case = struct {
             pub const Condition = union(enum) {
-                opts: std.ArrayList(Expression),
+                opts: []const Expression,
                 @"else",
             };
 
@@ -120,7 +119,7 @@ pub const Expression = union(enum) {
 
         pos: utils.Position,
         condition: *const Expression,
-        cases: std.ArrayList(Case),
+        cases: []const Case,
     };
 
     pub const Block = struct { pos: utils.Position, block: ast.Block };
@@ -293,7 +292,7 @@ pub const Statement = union(enum) {
 
     pub const Import = struct {
         pos: utils.Position,
-        module_name: std.ArrayList([]const u8),
+        module_name: []const []const u8,
         alias: ?[]const u8,
     };
 
@@ -322,7 +321,7 @@ pub const Statement = union(enum) {
                     .pos = self.pos,
                     .is_pub = self.is_pub,
                     .name = self.name, // notice: doesn't clone the name.
-                    .generic_types = try self.generic_types.clone(alloc),
+                    .generic_types = try alloc.dupe(ast.VariableSignature, self.generic_types), // TODO: check
                     .variables = try self.variables.clone(alloc),
                     .subtypes = try self.subtypes.clone(alloc),
                     .members = try self.members.clone(alloc),
@@ -376,7 +375,7 @@ pub const Statement = union(enum) {
                 .function = .{
                     .pos = self.pos,
                     .name = self.name,
-                    .generic_parameters = .empty,
+                    .generic_parameters = &.{},
                     .parameters = self.parameters,
                     .return_type = &self.return_type,
                 },

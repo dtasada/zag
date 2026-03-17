@@ -14,11 +14,8 @@ pub fn primary(self: *Self) !ast.Expression {
     const pos = self.currentPosition();
 
     var expr: ast.Expression = switch (self.advance()) {
-        .int => |int| .{ .uint = .{ .pos = pos, .uint = int } },
-        .float => |float| .{ .float = .{ .pos = pos, .float = float } },
-        .ident => |ident| .{ .ident = .{ .pos = pos, .ident = ident } },
-        .string => |string| .{ .string = .{ .pos = pos, .string = string } },
-        .char => |char| .{ .char = .{ .pos = pos, .char = char } },
+        inline .int, .float, .char => |n, t| @unionInit(ast.Expression, @tagName(t), .{ .pos = try pos.clone(self.alloc), .payload = n }),
+        inline .ident, .string => |s, t| @unionInit(ast.Expression, @tagName(t), .{ .pos = try pos.clone(self.alloc), .payload = try self.alloc.dupe(u8, s) }),
         else => |other| return self.unexpectedToken("primary expression", "(int | float | ident | string | char)", other),
     };
 
@@ -48,7 +45,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
                 try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
                 return .{
                     .comparison = .{
-                        .pos = lhs.getPosition(),
+                        .pos = try lhs.getPosition().clone(self.alloc),
                         .left = lhs.comparison.left,
                         .comparisons = comparisons,
                     },
@@ -63,7 +60,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
                         try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
                         return .{
                             .comparison = .{
-                                .pos = lhs.getPosition(),
+                                .pos = try lhs.getPosition().clone(self.alloc),
                                 .left = lhs.binary.lhs,
                                 .comparisons = comparisons,
                             },
@@ -75,7 +72,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
 
             return .{
                 .binary = .{
-                    .pos = pos,
+                    .pos = try pos.clone(self.alloc),
                     .lhs = lhs,
                     .op = op,
                     .rhs = new_rhs,
@@ -84,7 +81,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
         },
         else => return .{
             .binary = .{
-                .pos = pos,
+                .pos = try pos.clone(self.alloc),
                 .lhs = lhs,
                 .op = op,
                 .rhs = new_rhs,
@@ -124,7 +121,7 @@ pub fn assignment(self: *Self, lhs: *const ast.Expression, bp: BindingPower) Par
 
     return .{
         .assignment = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .assignee = lhs,
             .op = .fromLexerToken(op),
             .value = rhs,
@@ -138,11 +135,11 @@ pub fn member(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserEr
     switch (self.currentToken()) {
         .ident => |ident| {
             _ = self.advance();
-            return .{ .member = .{ .pos = pos, .parent = lhs, .member_name = ident } };
+            return .{ .member = .{ .pos = try pos.clone(self.alloc), .parent = lhs, .member_name = try self.alloc.dupe(u8, ident) } };
         },
         .@"*" => {
             _ = self.advance();
-            return .{ .dereference = .{ .pos = pos, .parent = lhs } };
+            return .{ .dereference = .{ .pos = try pos.clone(self.alloc), .parent = lhs } };
         },
         else => |other| return self.unexpectedToken("member expression", "member name or dereference", other),
     }
@@ -157,7 +154,7 @@ pub fn prefix(self: *Self) ParserError!ast.Expression {
 
     return .{
         .prefix = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .op = .fromLexerToken(op),
             .rhs = rhs,
         },
@@ -176,7 +173,7 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
     try self.expect(self.advance(), .@"{", "struct instantiation", "{");
 
     var @"struct": ast.Expression.StructInstantiation = .{
-        .pos = lhs.getPosition(),
+        .pos = try lhs.getPosition().clone(self.alloc),
         .type_expr = lhs,
         .members = .init(self.alloc),
     };
@@ -186,7 +183,7 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
         try self.expect(self.advance(), .@":", "struct instantiation", ":");
         const member_value = try parse(self, .default, .{});
 
-        try @"struct".members.put(member_name, member_value);
+        try @"struct".members.put(try self.alloc.dupe(u8, member_name), member_value);
 
         if (self.currentToken() != .@"}") {
             try self.expect(self.advance(), .@",", "struct instantiation", ",");
@@ -214,7 +211,7 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
     try self.expect(self.advance(), .@"]", "array instantiation", "]");
 
     var array: ast.Expression.ArrayInstantiation = .{
-        .pos = pos,
+        .pos = try pos.clone(self.alloc),
         .type = try self.type_parser.parseType(self.alloc, .default),
         .length = length,
     };
@@ -234,7 +231,7 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
 pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
     return .{
         .call = .{
-            .pos = lhs.getPosition(),
+            .pos = try lhs.getPosition().clone(self.alloc),
             .callee = lhs,
             .args = try self.parseArguments(),
         },
@@ -269,7 +266,7 @@ pub fn generic(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserE
     const args = try self.parseGenericArguments();
     return .{
         .generic = .{
-            .pos = lhs.getPosition(),
+            .pos = try lhs.getPosition().clone(self.alloc),
             .lhs = lhs,
             .arguments = args,
         },
@@ -347,7 +344,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
                 try conds.append(self.alloc, try parse(self, .default, .{}));
             }
 
-            break :b .{ .opts = conds };
+            break :b .{ .opts = try conds.toOwnedSlice(self.alloc) };
         };
 
         try self.expect(self.advance(), .@"->", "match statement case", "->");
@@ -363,7 +360,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
             break :b .{ .expression = try parse(self, .default, .{}) };
         };
 
-        try cases.append(self.alloc, .{ .condition = cond, .pos = pos, .result = result });
+        try cases.append(self.alloc, .{ .condition = cond, .pos = try pos.clone(self.alloc), .result = result });
 
         self.expectSilent(self.currentToken(), .@",") catch break;
         _ = self.advance();
@@ -376,13 +373,13 @@ pub fn match(self: *Self) ParserError!ast.Expression {
         .match = .{
             .pos = position,
             .condition = condition,
-            .cases = cases,
+            .cases = try cases.toOwnedSlice(self.alloc),
         },
     };
 }
 
 pub fn block(self: *Self) ParserError!ast.Expression {
-    return .{ .block = .{ .pos = self.currentPosition(), .block = try self.parseBlock() } };
+    return .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } };
 }
 
 pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {
@@ -399,7 +396,7 @@ pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
 
     return .{
         .range = .{
-            .pos = lhs.getPosition(),
+            .pos = try lhs.getPosition().clone(self.alloc),
             .start = lhs,
             .end = end,
             .inclusive = token != .@"..",
@@ -428,7 +425,7 @@ pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
 
         return .{
             .slice = .{
-                .pos = lhs.getPosition(),
+                .pos = try lhs.getPosition().clone(self.alloc),
                 .lhs = lhs,
                 .start = null,
                 .end = end,
@@ -442,7 +439,7 @@ pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
 
     const expr: ast.Expression = if (i.* == .range) .{
         .slice = .{
-            .pos = lhs.getPosition(),
+            .pos = try lhs.getPosition().clone(self.alloc),
             .lhs = lhs,
             .start = i.range.start,
             .end = i.range.end,
@@ -450,7 +447,7 @@ pub fn index(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserErr
         },
     } else .{
         .index = .{
-            .pos = lhs.getPosition(),
+            .pos = try lhs.getPosition().clone(self.alloc),
             .lhs = lhs,
             .index = i,
         },
@@ -473,7 +470,7 @@ pub fn reference(self: *Self) ParserError!ast.Expression {
 
     return .{
         .reference = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .inner = inner,
             .is_mut = is_mut,
         },
@@ -487,7 +484,7 @@ pub fn @"try"(self: *Self) ParserError!ast.Expression {
     const expr = try self.alloc.create(ast.Expression);
     expr.* = try parse(self, .default, .{});
 
-    return .{ .@"try" = .{ .@"try" = expr, .pos = pos } };
+    return .{ .@"try" = .{ .@"try" = expr, .pos = try pos.clone(self.alloc) } };
 }
 
 pub fn functionType(self: *Self) !ast.Expression {

@@ -131,9 +131,9 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
 
     return .{
         .generic = .{
-            .pos = lhs.getPosition(), // Simplification: use start pos
+            .pos = try lhs.getPosition().clone(self.parent_parser.alloc), // Simplification: use start pos
             .lhs = ptr,
-            .arguments = args,
+            .arguments = try args.toOwnedSlice(self.parent_parser.alloc),
         },
     };
 }
@@ -147,7 +147,12 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
         "type name",
     );
 
-    return .{ .symbol = .{ .symbol = ident, .pos = position } };
+    return .{
+        .symbol = .{
+            .symbol = try self.parent_parser.alloc.dupe(u8, ident),
+            .pos = position,
+        },
+    };
 }
 
 pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
@@ -176,7 +181,12 @@ pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
     const inner = try alloc.create(ast.Type);
     inner.* = try parseType(self, alloc, .default);
 
-    return .{ .optional = .{ .pos = position, .inner = inner } };
+    return .{
+        .optional = .{
+            .pos = try position.clone(self.parent_parser.alloc),
+            .inner = inner,
+        },
+    };
 }
 
 pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
@@ -186,14 +196,19 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError
     const success = try alloc.create(ast.Type);
     success.* = try parseType(self, alloc, .default);
 
-    return .{ .error_union = .{ .pos = position, .success = success } };
+    return .{
+        .error_union = .{
+            .pos = try position.clone(self.parent_parser.alloc),
+            .success = success,
+        },
+    };
 }
 
 pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
     const pos = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume "fn" keyword
     const generic_parameters: ast.ParameterList = switch (self.parent_parser.currentToken()) {
-        .@"(" => .empty,
+        .@"(" => &.{},
         .@"<" => try self.parent_parser.parseGenericParameters(),
         else => |other| return self.parent_parser.unexpectedToken("function type", "(' or '<", other),
     };
@@ -211,7 +226,7 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
 
     return .{
         .function = .{
-            .pos = pos,
+            .pos = try pos.clone(self.parent_parser.alloc),
             .name = "function_type",
             .parameters = parameters,
             .generic_parameters = generic_parameters,
@@ -231,7 +246,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
 
     return .{
         .error_union = .{
-            .pos = position,
+            .pos = try position.clone(self.parent_parser.alloc),
             .success = success,
             .failure = failure,
         },
@@ -264,13 +279,13 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
 
     return if (size) |s| .{
         .array = .{
-            .pos = position,
+            .pos = try position.clone(self.parent_parser.alloc),
             .inner = inner,
             .size = s,
         },
     } else .{
         .slice = .{
-            .pos = position,
+            .pos = try position.clone(self.parent_parser.alloc),
             .inner = inner,
             .is_mut = is_mut.?,
         },
@@ -299,9 +314,9 @@ pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: 
 
     return .{
         .member = .{
-            .pos = pos,
+            .pos = try pos.clone(self.parent_parser.alloc),
             .parent = lhs_ptr,
-            .member_name = member_name,
+            .member_name = try self.parent_parser.alloc.dupe(u8, member_name),
         },
     };
 }

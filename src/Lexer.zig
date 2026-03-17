@@ -137,6 +137,13 @@ pub const Token = union(enum) {
             else => |token| writer.print("{s}", .{@tagName(token)}),
         };
     }
+
+    fn deinit(self: *Token, alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            inline .ident, .string => |str| alloc.free(str),
+            else => {},
+        }
+    }
 };
 
 /// Initializes and runs tokenizer. Populates `tokens`.
@@ -158,6 +165,7 @@ pub fn init(input: []const u8, alloc: std.mem.Allocator, file_path: []const u8) 
 
 /// Frees resources
 pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+    for (self.tokens.items) |*i| i.deinit(alloc);
     self.tokens.deinit(alloc);
     self.source_map.deinit(alloc);
     alloc.destroy(self);
@@ -247,13 +255,13 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) !void {
                 try string.append(alloc, char);
             }
 
-            try self.appendToken(alloc, .{ .string = string.items });
+            try self.appendToken(alloc, .{ .string = try string.toOwnedSlice(alloc) });
 
             continue;
         }
 
         if (std.ascii.isAlphabetic(self.currentChar()) or self.currentChar() == '_') {
-            var atom = std.ArrayList(u8){};
+            var atom: std.ArrayList(u8) = .empty;
             try atom.append(alloc, self.advance());
 
             while (self.pos < self.input.len and
