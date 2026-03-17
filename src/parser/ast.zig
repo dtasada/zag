@@ -895,7 +895,7 @@ pub const Statement = union(enum) {
             .@"return" => |@"return"| if (@"return".@"return") |r| r.deinit(alloc),
             .@"while" => |@"while"| {
                 @"while".condition.deinit(alloc);
-                while (@"while".capture) |c| c.deinit(alloc);
+                if (@"while".capture) |c| c.deinit(alloc);
                 @"while".body.deinitPtr(alloc);
             },
             .binding_function_declaration => |bfd| {

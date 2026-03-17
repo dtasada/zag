@@ -56,6 +56,12 @@ pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
     return self;
 }
 
+pub fn deinit(self: *Self) void {
+    self.bp_lookup.deinit();
+    self.nud_lookup.deinit();
+    self.led_lookup.deinit();
+}
+
 fn getBindingPower(self: *Self, token: Lexer.TokenKind) BindingPower {
     return self.bp_lookup.get(token) orelse .default;
 }

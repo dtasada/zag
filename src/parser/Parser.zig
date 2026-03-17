@@ -192,12 +192,11 @@ pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
 
 /// Cleans up resources
 pub fn deinit(self: *Self) void {
-    for (self.output) |i| i.deinit(self.alloc);
-
     self.bp_lookup.deinit();
-    self.nud_lookup.deinit();
     self.led_lookup.deinit();
-    self.statement_lookup.deinit();
+    self.nud_lookup.deinit();
+    self.type_parser.deinit();
+    self.alloc.destroy(self);
 }
 
 /// Returns the line and column in the source file corresponding to what is being parsed.

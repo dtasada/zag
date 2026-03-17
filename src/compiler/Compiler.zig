@@ -254,6 +254,9 @@ pub fn init(
 
 /// Frees resources
 pub fn deinit(self: *Self) void {
+    for (self.input) |i| i.deinit(self.alloc);
+    self.alloc.free(self.input);
+
     self.alloc.free(self.source_path);
 
     inline for (@typeInfo(Section.Type).@"enum".fields) |field| {
