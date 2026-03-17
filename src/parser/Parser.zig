@@ -56,7 +56,7 @@ lexer: *Lexer,
 alloc: std.mem.Allocator,
 
 /// Parser output: the root AST object.
-output: ast.RootNode = .empty,
+output: ast.RootNode = &.{},
 
 /// pratt parsing helpers
 type_parser: TypeParser,
@@ -180,8 +180,12 @@ pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
     try self.statement(.@"continue", statements.@"continue");
     try self.statement(.@"defer", statements.@"defer");
 
+    var output: std.ArrayList(ast.Statement) = .empty;
+
     while (std.meta.activeTag(self.currentToken()) != .eof)
-        try self.output.append(self.alloc, try statements.parse(self));
+        try output.append(self.alloc, try statements.parse(self));
+
+    self.output = try output.toOwnedSlice(self.alloc);
 
     return self;
 }

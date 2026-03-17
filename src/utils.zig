@@ -8,6 +8,14 @@ pub const Capture = struct {
         some: bool,
     },
     index: ?[]const u8,
+
+    pub fn clone(self: Capture, alloc: std.mem.Allocator) !Capture {
+        return .{
+            .name = try alloc.dupe(u8, self.name),
+            .takes_ref = self.takes_ref,
+            .index = if (self.index) |i| try alloc.dupe(u8, i) else null,
+        };
+    }
 };
 
 pub const Binding = enum { let_mut, let, @"const" };

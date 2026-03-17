@@ -143,3 +143,87 @@ This is the most critical and complex data structure to deinitialize. The `Type`
     5.  **Deinitialize `pending_instantiations`**: Free the `inner_name` and `args` slice for each instantiation.
     6.  The existing deinitializations for `sections`, `type_def_blocks`, etc. should be reviewed for correctness (e.g. freeing vs destroying).
     7.  Finally, call `self.alloc.destroy(self)` to free the compiler object itself.
+
+## III. Lexer, Parser, and Compiler Lifecycle (Deep-Cloning AST)
+
+**Optimal Timeline: Lexer, Parser, and Compiler Lifecycle (Deep-Cloning AST)**
+
+The goal is that the `Compiler` fully owns its AST, independent of the `Parser` and `Lexer`'s lifetimes.
+
+---
+
+**Phase 1: `Compiler.getAST(alloc, file_path)` (Temporary Memory Scope)**
+
+This phase is responsible for taking source code and producing a *deep-cloned, self-contained* Abstract Syntax Tree (AST) that the `Compiler` can then own.
+
+1.  **Read Source File:**
+    *   `std.fs.cwd().readFileAlloc(Main_Allocator, file_path)`: Reads the entire source file into a `[]u8` buffer. This buffer is allocated using `getAST`'s `alloc` (which ultimately comes from the `Compiler`'s main allocator).
+    *   `owned_path = Main_Allocator.dupe(u8, file_path)`: Duplicates the `file_path` for `Position` objects, ensuring path strings are owned.
+
+2.  **Lexer Initialization:**
+    *   `lexer = Lexer.init(file_buffer, Main_Allocator, owned_path)`: Creates a `Lexer` instance.
+        *   It stores a borrowed reference to `file_buffer` (it does **not** own or free `file_buffer`).
+        *   It receives the **Main Allocator** for its own allocations.
+        *   As it tokenizes, for every identifier or string literal, it allocates memory for these `[]const u8` values (e.g., via `toOwnedSlice` or `dupe`) using the **Main Allocator**. These allocations are now "owned" by the `Lexer` object.
+        *   It builds its internal `tokens` `ArrayList` using the **Main Allocator**.
+
+3.  **Parser Initialization & AST Construction:**
+    *   `parser = Parser.init(lexer, Main_Allocator)`: A `Parser` instance is created.
+        *   It takes a reference to the `lexer` (it does **not** own or free the `lexer`).
+        *   It receives the **Main Allocator** for its own allocations.
+        *   As it builds its AST (`parser.output`), for every `[]const u8` (identifiers, string literals, etc.) it encounters from the tokens, it *must* `Main_Allocator.dupe()` these values into its *own* memory. These are "owned" by the `Parser`.
+        *   Any nested AST nodes (`Expression`, `Statement`, `Type` structs) or collections (`ArrayList`, `StringHashMap`) are also allocated using the **Main Allocator** and "owned" by the `Parser`.
+
+4.  **Deep Clone the AST:**
+    *   `cloned_ast_root = parser.output.clone(Main_Allocator)`: This is the crucial step. The AST built by the `Parser` (`parser.output`) is **deep-cloned**.
+        *   This operation allocates a *completely new, independent copy* of the entire AST structure, including all nested nodes, string slices, and collection elements, all using the **Main Allocator**.
+        *   Each `clone` method (e.g., `Statement.clone`, `Expression.clone`, `Type.clone`, `VariableSignature.clone`, `Position.clone`) *must* ensure that any `[]const u8` fields are `Main_Allocator.dupe()`d, and any `*const` pointers are `Main_Allocator.create()`d and filled with cloned content.
+
+5.  **Deinitialize Parser & Lexer (Immediately):**
+    *   `defer parser.deinit()`: The `Parser`'s `deinit` method is called. This frees all memory that the `Parser` allocated (its internal hash maps, its `output` AST, and all the `dupe`d strings and nested nodes it owned).
+    *   `defer lexer.deinit(Main_Allocator)`: The `Lexer`'s `deinit` method is called. This frees all memory the `Lexer` allocated (its `tokens` `ArrayList` and any `toOwnedSlice`d or `dupe`d string literals it owned).
+    *   `Main_Allocator.free(owned_path)`: The duplicated file path string is freed.
+
+6.  **Return Cloned AST & Source:**
+    *   `return .{ .root = cloned_ast_root, .source = file_buffer }`: `Compiler.getAST` returns the `cloned_ast_root` and the `file_buffer`. The `file_buffer` is now the responsibility of the caller (the `Compiler` instance).
+
+---
+
+**Phase 2: `Compiler.init(alloc, ast_root, file_path, registry)` (Compiler's Lifetime Scope)**
+
+This phase integrates the deep-cloned AST into the `Compiler` instance.
+
+1.  **Compiler Initialization:**
+    *   `compiler = Main_Allocator.create(Compiler)`: The `Compiler` object itself is allocated using the main compilation `allocator` (likely `gpa.allocator()` from `build.zig`).
+    *   `compiler.alloc = Main_Allocator`: The `Compiler` explicitly stores the **Main Allocator** as its own for all subsequent internal allocations.
+    *   `compiler.input = cloned_ast_root`: The `Compiler` takes ownership of the deep-cloned AST returned by `getAST`.
+    *   `compiler.source_path = Main_Allocator.dupe(u8, original_file_path)`: The source file path is duplicated and owned by the `Compiler`.
+    *   `compiler.zag_header_contents = std.HashMap.initContext(Main_Allocator, ...)`: All of the `Compiler`'s internal data structures (scopes, symbol tables, type definition blocks, output buffers, etc.) are initialized using `compiler.alloc`. Any `[]const u8` values or other complex types added to these structures during analysis or code generation *must* be `dupe`d or `clone`d using `compiler.alloc`.
+    *   `compiler.emit()`: The core compilation logic runs, operating on `compiler.input` (the cloned AST) and populating `compiler`'s internal structures.
+
+---
+
+**Phase 3: `compiler.deinit()` (Compiler's End-of-Life)**
+
+When the `Compiler` is finished with its work (e.g., after `compiler.emit()` completes), it cleans up all its owned memory.
+
+1.  **Deinitialize Compiler Internal Structures:**
+    *   `compiler.deinit()` is called (typically via `defer`).
+    *   All of `compiler`'s internal `ArrayList`s, `StringHashMap`s, `EnumArray`s, etc., have their `deinit` methods called. This includes:
+        *   Freeing all elements they contain (which themselves might involve further `deinit` calls for complex types or `alloc.free()` for `dupe`d strings).
+        *   Freeing the backing memory of the collections themselves.
+    *   `Main_Allocator.free(compiler.source_path)`: The compiler's owned `source_path` is freed.
+
+2.  **Deinitialize Compiler-Owned AST:**
+    *   `compiler.input.deinit(Main_Allocator)`: The `ast.RootNode.deinit` method is called on the cloned AST. This (a function that would need to be implemented) recursively deinitializes all `Statement`s, `Expression`s, `Type`s, and any `dupe`d strings within the cloned AST, releasing all the memory that was allocated for it by the **Main Allocator**.
+
+3.  **Deinitialize Compiler Object:**
+    *   `Main_Allocator.destroy(compiler)`: The `Compiler` object itself is freed.
+
+---
+
+**Summary of Key Memory Principles:**
+
+*   **Ownership:** Each component (Lexer, Parser, Compiler) is responsible for `deinit`ializing only the memory that it *allocated*.
+*   **Deep Copy at Transfer:** When ownership of a complex data structure (like the AST) is transferred from one component/allocator to another, a *deep copy* (or deep clone) is performed.
+*   **Borrowing vs. Owning:** Be explicit whether a component is borrowing a reference to data (and thus not responsible for freeing it) or owning it (and thus responsible for freeing it). In this case, the `Compiler` *owns* its AST.

@@ -147,13 +147,12 @@ pub fn getAST(
     root: ast.RootNode,
     source: []u8,
 } {
-    const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20) catch |err|
-        return utils.printErr(
-            error.FailedToReadSource,
-            "Failed to open file '{s}': {}\n",
-            .{ file_path, err },
-            .red,
-        );
+    const file = std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20) catch |err| return utils.printErr(
+        error.FailedToReadSource,
+        "Failed to open file '{s}': {}\n",
+        .{ file_path, err },
+        .red,
+    );
 
     const owned_path = try alloc.dupe(u8, file_path);
 
@@ -174,7 +173,7 @@ pub fn getAST(
     defer parser.deinit();
 
     return .{
-        .root = try parser.output.clone(alloc),
+        .root = try ast.cloneSlice(ast.Statement, parser.output, alloc),
         .source = file,
     };
 }
@@ -287,10 +286,10 @@ pub fn emit(self: *Self) CompilerError!void {
     try self.print("#include \"{s}\"\n", .{std.fs.path.basename(self.module_header_path)});
 
     // Pass 1: Imports
-    for (self.input.items) |*statement| if (statement.* == .import)
+    for (self.input) |*statement| if (statement.* == .import)
         try statements.compile(self, statement);
 
-    for (self.input.items) |*statement| switch (statement.*) {
+    for (self.input) |*statement| switch (statement.*) {
         .struct_declaration,
         .union_declaration,
         .enum_declaration,
@@ -302,7 +301,7 @@ pub fn emit(self: *Self) CompilerError!void {
 
     // Pass 3: Code (Functions, Variables, etc.)
     self.switchSection(.source_function_impls);
-    for (self.input.items) |*statement| switch (statement.*) {
+    for (self.input) |*statement| switch (statement.*) {
         .import,
         .struct_declaration,
         .union_declaration,
@@ -384,7 +383,7 @@ fn processFunctionDefinitionSymbol(self: *Self, func: *const ast.Statement.Funct
 }
 
 pub fn scan(self: *Self) CompilerError!void {
-    for (self.input.items) |*statement| switch (statement.*) {
+    for (self.input) |*statement| switch (statement.*) {
         .import => |*import_stmt| try self.registerSymbol(
             import_stmt.alias orelse import_stmt.module_name[import_stmt.module_name.len - 1],
             .{ .module = try self.processImport(import_stmt) },
@@ -448,7 +447,7 @@ pub fn scan(self: *Self) CompilerError!void {
         else => {},
     };
 
-    for (self.input.items) |*statement| switch (statement.*) {
+    for (self.input) |*statement| switch (statement.*) {
         .struct_declaration => |*struct_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"struct", struct_decl, .{}),
         .union_declaration => |*union_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"union", union_decl, .{}),
         .enum_declaration => |*enum_decl| _ = try Type.fromCompoundTypeDeclaration(self, .@"enum", enum_decl, .{}),
@@ -471,7 +470,7 @@ pub fn analyze(self: *Self) CompilerError!void {
     try self.registerConstants();
     try self.scan();
 
-    for (self.input.items) |*statement| {
+    for (self.input) |*statement| {
         switch (statement.*) {
             .import => |*import_stmt| {
                 const mod = try self.processImport(import_stmt);

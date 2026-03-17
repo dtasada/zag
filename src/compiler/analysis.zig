@@ -12,6 +12,7 @@ pub fn blockReturns(block: ast.Block) bool {
             return true;
         }
     }
+
     // If we finished the loop, no statement guaranteed a return.
     return false;
 }

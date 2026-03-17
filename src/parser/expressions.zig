@@ -379,7 +379,12 @@ pub fn match(self: *Self) ParserError!ast.Expression {
 }
 
 pub fn block(self: *Self) ParserError!ast.Expression {
-    return .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } };
+    return .{
+        .block = .{
+            .pos = try self.currentPosition().clone(self.alloc),
+            .block = try self.parseBlock(),
+        },
+    };
 }
 
 pub fn range(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {

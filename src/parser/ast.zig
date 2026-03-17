@@ -7,10 +7,87 @@ const LexerToken = @import("Lexer").Token;
 
 pub const ParameterList = []const VariableSignature;
 pub const ArgumentList = []const Expression;
-pub const RootNode = std.ArrayList(Statement);
+pub const RootNode = []const Statement;
 pub const Block = []const Statement;
 
 const ast = @This();
+
+fn cloneArgumentList(args: ArgumentList, alloc: std.mem.Allocator) !ArgumentList {
+    var new_args = try std.ArrayList(Expression).initCapacity(alloc, args.len);
+    for (args) |arg| {
+        try new_args.append(alloc, try arg.clone(alloc));
+    }
+    return new_args.toOwnedSlice(alloc);
+}
+
+fn cloneComparisonItemList(items: std.ArrayList(Expression.Comparison.Item), alloc: std.mem.Allocator) !std.ArrayList(Expression.Comparison.Item) {
+    var new_items = try std.ArrayList(Expression.Comparison.Item).initCapacity(alloc, items.items.len);
+    for (items.items) |item| {
+        try new_items.append(alloc, .{ .op = item.op, .right = try item.right.clonePtr(alloc) });
+    }
+    return new_items;
+}
+
+fn cloneStringHashMapExpression(map: std.StringHashMap(Expression), alloc: std.mem.Allocator) !std.StringHashMap(Expression) {
+    var new_map = std.StringHashMap(Expression).init(alloc);
+    var it = map.iterator();
+    while (it.next()) |entry| {
+        try new_map.put(try alloc.dupe(u8, entry.key_ptr.*), try entry.value_ptr.*.clone(alloc));
+    }
+    return new_map;
+}
+
+fn cloneExpressionArrayList(list: std.ArrayList(Expression), alloc: std.mem.Allocator) !std.ArrayList(Expression) {
+    var new_list = try std.ArrayList(Expression).initCapacity(alloc, list.items.len);
+    for (list.items) |item| {
+        try new_list.append(alloc, try item.clone(alloc));
+    }
+    return new_list;
+}
+
+fn cloneMatchCaseList(list: []const Expression.Match.Case, alloc: std.mem.Allocator) ![]const Expression.Match.Case {
+    var new_list = try std.ArrayList(Expression.Match.Case).initCapacity(alloc, list.len);
+    for (list) |item| {
+        const new_case: Expression.Match.Case = .{
+            .pos = try item.pos.clone(alloc),
+            .condition = switch (item.condition) {
+                .opts => |opts| .{ .opts = try cloneExpressionSlice(opts, alloc) },
+                .@"else" => .@"else",
+            },
+            .result = try item.result.clone(alloc),
+        };
+        try new_list.append(alloc, new_case);
+    }
+    return new_list.toOwnedSlice(alloc);
+}
+
+fn cloneExpressionSlice(list: []const Expression, alloc: std.mem.Allocator) ![]const Expression {
+    var new_list = try std.ArrayList(Expression).initCapacity(alloc, list.len);
+    for (list) |item| {
+        try new_list.append(alloc, try item.clone(alloc));
+    }
+    return new_list.toOwnedSlice(alloc);
+}
+
+fn cloneParameterList(params: ParameterList, alloc: std.mem.Allocator) !ParameterList {
+    var new_params = try std.ArrayList(VariableSignature).initCapacity(alloc, params.len);
+    for (params) |param| {
+        try new_params.append(alloc, try param.clone(alloc));
+    }
+    return new_params.toOwnedSlice(alloc);
+}
+
+pub fn cloneSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) std.mem.Allocator.Error![]const T {
+    const new_list = try alloc.alloc(T, list.len);
+    for (list, 0..) |item, i| new_list[i] = try item.clone(alloc);
+    return new_list;
+}
+
+fn cloneStringSliceSlice(slice_of_slices: []const []const u8, alloc: std.mem.Allocator) ![]const []const u8 {
+    var new_list = try std.ArrayList([]const u8).initCapacity(alloc, slice_of_slices.len);
+    for (slice_of_slices) |s| try new_list.append(alloc, try alloc.dupe(u8, s));
+    return new_list.toOwnedSlice(alloc);
+}
 
 pub const BinaryOperator = enum {
     @"+",
@@ -231,6 +308,90 @@ pub const Expression = union(enum) {
             inline else => |some| some.pos,
         };
     }
+
+    fn clonePtr(self: Expression, alloc: std.mem.Allocator) std.mem.Allocator.Error!*Expression {
+        const ret = try alloc.create(Expression);
+        ret.* = try self.clone(alloc);
+        return ret;
+    }
+
+    pub fn clone(self: Expression, alloc: std.mem.Allocator) std.mem.Allocator.Error!Expression {
+        return switch (self) {
+            .bad_node => |n| .{ .bad_node = .{ .pos = try n.pos.clone(alloc) } },
+            .ident => |n| .{ .ident = .{ .pos = try n.pos.clone(alloc), .payload = try alloc.dupe(u8, n.payload) } },
+            .string => |n| .{ .string = .{ .pos = try n.pos.clone(alloc), .payload = try alloc.dupe(u8, n.payload) } },
+            .char => |n| .{ .char = .{ .pos = try n.pos.clone(alloc), .payload = n.payload } },
+            .int => |n| .{ .int = .{ .pos = try n.pos.clone(alloc), .payload = n.payload } },
+            .float => |n| .{ .float = .{ .pos = try n.pos.clone(alloc), .payload = n.payload } },
+            .block => |n| .{ .block = .{ .pos = try n.pos.clone(alloc), .block = try cloneSlice(Statement, n.block, alloc) } },
+            .generic => |n| .{ .generic = .{ .pos = try n.pos.clone(alloc), .lhs = try n.lhs.clonePtr(alloc), .arguments = try cloneArgumentList(n.arguments, alloc) } },
+            .binary => |n| .{ .binary = .{ .pos = try n.pos.clone(alloc), .lhs = try n.lhs.clonePtr(alloc), .op = n.op, .rhs = try n.rhs.clonePtr(alloc) } },
+            .comparison => |n| .{
+                .comparison = .{
+                    .pos = try n.pos.clone(alloc),
+                    .left = try n.left.clonePtr(alloc),
+                    .comparisons = try cloneComparisonItemList(n.comparisons, alloc),
+                },
+            },
+            .member => |n| .{ .member = .{ .pos = try n.pos.clone(alloc), .parent = try n.parent.clonePtr(alloc), .member_name = try alloc.dupe(u8, n.member_name) } },
+            .dereference => |n| .{ .dereference = .{ .pos = try n.pos.clone(alloc), .parent = try n.parent.clonePtr(alloc) } },
+            .call => |n| .{ .call = .{ .pos = try n.pos.clone(alloc), .callee = try n.callee.clonePtr(alloc), .args = try cloneArgumentList(n.args, alloc) } },
+            .prefix => |n| .{ .prefix = .{ .pos = try n.pos.clone(alloc), .op = n.op, .rhs = try n.rhs.clonePtr(alloc) } },
+            .assignment => |n| .{ .assignment = .{ .pos = try n.pos.clone(alloc), .assignee = try n.assignee.clonePtr(alloc), .op = n.op, .value = try n.value.clonePtr(alloc) } },
+            .struct_instantiation => |n| .{
+                .struct_instantiation = .{
+                    .pos = try n.pos.clone(alloc),
+                    .type_expr = try n.type_expr.clonePtr(alloc),
+                    .members = try cloneStringHashMapExpression(n.members, alloc),
+                },
+            },
+            .array_instantiation => |n| .{
+                .array_instantiation = .{
+                    .pos = try n.pos.clone(alloc),
+                    .length = try n.length.clonePtr(alloc),
+                    .type = try n.type.clone(alloc),
+                    .contents = try cloneExpressionArrayList(n.contents, alloc),
+                },
+            },
+            .range => |n| .{ .range = .{ .pos = try n.pos.clone(alloc), .start = try n.start.clonePtr(alloc), .end = if (n.end) |e| try e.clonePtr(alloc) else null, .inclusive = n.inclusive } },
+            .reference => |n| .{ .reference = .{ .pos = try n.pos.clone(alloc), .inner = try n.inner.clonePtr(alloc), .is_mut = n.is_mut } },
+            .@"if" => |n| .{
+                .@"if" = .{
+                    .pos = try n.pos.clone(alloc),
+                    .condition = try n.condition.clonePtr(alloc),
+                    .capture = if (n.capture) |c| try c.clone(alloc) else null,
+                    .body = try n.body.clonePtr(alloc),
+                    .@"else" = if (n.@"else") |e| try e.clonePtr(alloc) else null,
+                },
+            },
+            .index => |n| .{
+                .index = .{
+                    .pos = try n.pos.clone(alloc),
+                    .lhs = try n.lhs.clonePtr(alloc),
+                    .index = try n.index.clonePtr(alloc),
+                },
+            },
+            .slice => |n| .{
+                .slice = .{
+                    .pos = try n.pos.clone(alloc),
+                    .lhs = try n.lhs.clonePtr(alloc),
+                    .start = if (n.start) |s| try s.clonePtr(alloc) else null,
+                    .end = if (n.end) |e| try e.clonePtr(alloc) else null,
+                    .inclusive = n.inclusive,
+                },
+            },
+            .match => |n| .{
+                .match = .{
+                    .pos = try n.pos.clone(alloc),
+                    .condition = try n.condition.clonePtr(alloc),
+                    .cases = try cloneMatchCaseList(n.cases, alloc),
+                },
+            },
+            .type => |n| .{ .type = try n.clone(alloc) },
+            .@"try" => |n| .{ .@"try" = .{ .pos = try n.pos.clone(alloc), .@"try" = try n.@"try".clonePtr(alloc) } },
+            .@"catch" => |n| .{ .@"catch" = .{ .pos = try n.pos.clone(alloc), .lhs = try n.lhs.clonePtr(alloc), .rhs = try n.rhs.clonePtr(alloc) } },
+        };
+    }
 };
 
 pub const Statement = union(enum) {
@@ -301,6 +462,97 @@ pub const Statement = union(enum) {
         @"return": ?ast.Expression,
     };
 
+    fn clonePtr(self: Statement, alloc: std.mem.Allocator) std.mem.Allocator.Error!*Statement {
+        const ret = try alloc.create(Statement);
+        ret.* = try self.clone(alloc);
+        return ret;
+    }
+
+    pub fn clone(self: Statement, alloc: std.mem.Allocator) std.mem.Allocator.Error!Statement {
+        return switch (self) {
+            .@"break" => .@"break",
+            .@"continue" => .@"continue",
+            .expression => |n| .{ .expression = try n.clone(alloc) },
+            .block_eval => |n| .{ .block_eval = try n.clone(alloc) },
+            .@"defer" => |n| .{ .@"defer" = .{ .pos = try n.pos.clone(alloc), .stmt = try n.stmt.clonePtr(alloc) } },
+            .@"for" => |n| .{
+                .@"for" = .{
+                    .pos = try n.pos.clone(alloc),
+                    .iterator = try n.iterator.clone(alloc),
+                    .capture = if (n.capture) |c| try c.clone(alloc) else null,
+                    .body = try n.body.clonePtr(alloc),
+                },
+            },
+            .@"if" => |n| .{
+                .@"if" = .{
+                    .pos = try n.pos.clone(alloc),
+                    .condition = try n.condition.clone(alloc),
+                    .capture = if (n.capture) |c| try c.clone(alloc) else null,
+                    .body = try n.body.clonePtr(alloc),
+                    .@"else" = if (n.@"else") |e| try e.clonePtr(alloc) else null,
+                },
+            },
+            .@"return" => |n| .{ .@"return" = .{ .pos = try n.pos.clone(alloc), .@"return" = if (n.@"return") |r| try r.clone(alloc) else null } },
+            .@"while" => |n| .{
+                .@"while" = .{
+                    .pos = try n.pos.clone(alloc),
+                    .condition = try n.condition.clone(alloc),
+                    .capture = if (n.capture) |c| try c.clone(alloc) else null,
+                    .body = try n.body.clonePtr(alloc),
+                },
+            },
+            .binding_function_declaration => |n| .{
+                .binding_function_declaration = .{
+                    .pos = try n.pos.clone(alloc),
+                    .is_pub = n.is_pub,
+                    .name = try alloc.dupe(u8, n.name),
+                    .parameters = try cloneParameterList(n.parameters, alloc),
+                    .return_type = try n.return_type.clone(alloc),
+                },
+            },
+            .binding_type_declaration => |n| .{
+                .binding_type_declaration = .{
+                    .pos = try n.pos.clone(alloc),
+                    .is_pub = n.is_pub,
+                    .name = try alloc.dupe(u8, n.name),
+                    .type = n.type,
+                },
+            },
+            .block => |n| .{ .block = .{ .pos = try n.pos.clone(alloc), .block = try cloneSlice(ast.Statement, n.block, alloc) } },
+            .enum_declaration => |n| .{ .enum_declaration = try n.clone(alloc) },
+            .function_definition => |n| .{
+                .function_definition = .{
+                    .pos = try n.pos.clone(alloc),
+                    .is_pub = n.is_pub,
+                    .name = try alloc.dupe(u8, n.name),
+                    .generic_parameters = try cloneParameterList(n.generic_parameters, alloc),
+                    .parameters = try cloneParameterList(n.parameters, alloc),
+                    .return_type = try n.return_type.clone(alloc),
+                    .body = try cloneSlice(ast.Statement, n.body, alloc),
+                },
+            },
+            .import => |n| .{
+                .import = .{
+                    .pos = try n.pos.clone(alloc),
+                    .module_name = try cloneStringSliceSlice(n.module_name, alloc),
+                    .alias = if (n.alias) |a| try alloc.dupe(u8, a) else null,
+                },
+            },
+            .struct_declaration => |n| .{ .struct_declaration = try n.clone(alloc) },
+            .union_declaration => |n| .{ .union_declaration = try n.clone(alloc) },
+            .variable_definition => |n| .{
+                .variable_definition = .{
+                    .pos = try n.pos.clone(alloc),
+                    .is_pub = n.is_pub,
+                    .binding = n.binding,
+                    .variable_name = try alloc.dupe(u8, n.variable_name),
+                    .type = try n.type.clone(alloc),
+                    .assigned_value = try n.assigned_value.clone(alloc),
+                },
+            },
+        };
+    }
+
     fn CompoundTypeDeclaration(comptime T: enum { @"struct", @"union" }) type {
         return struct {
             const Member = struct {
@@ -317,11 +569,14 @@ pub const Statement = union(enum) {
             methods: std.ArrayList(FunctionDefinition),
 
             pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) !CompoundTypeDeclaration(T) {
+                var new_generic_types = try alloc.alloc(VariableSignature, self.generic_types.len);
+                for (self.generic_types, 0..) |p, i| new_generic_types[i] = try p.clone(alloc);
+
                 return .{
                     .pos = self.pos,
                     .is_pub = self.is_pub,
-                    .name = self.name, // notice: doesn't clone the name.
-                    .generic_types = try alloc.dupe(ast.VariableSignature, self.generic_types), // TODO: check
+                    .name = try alloc.dupe(u8, self.name),
+                    .generic_types = new_generic_types,
                     .variables = try self.variables.clone(alloc),
                     .subtypes = try self.subtypes.clone(alloc),
                     .members = try self.members.clone(alloc),
@@ -338,6 +593,13 @@ pub const Statement = union(enum) {
         pub const Member = struct {
             name: []const u8,
             value: ?ast.Expression = null,
+
+            pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
+                return .{
+                    .name = try alloc.dupe(u8, self.name),
+                    .value = self.value,
+                };
+            }
         };
 
         pos: utils.Position,
@@ -347,6 +609,21 @@ pub const Statement = union(enum) {
         subtypes: std.ArrayList(Subtype),
         members: std.ArrayList(Member),
         methods: std.ArrayList(FunctionDefinition),
+
+        pub fn clone(self: *const EnumDeclaration, alloc: std.mem.Allocator) !EnumDeclaration {
+            var new_members: std.ArrayList(Member) = try .initCapacity(alloc, self.members.items.len);
+            for (self.members.items) |*m| new_members.appendAssumeCapacity(try m.clone(alloc));
+
+            return .{
+                .pos = self.pos,
+                .is_pub = self.is_pub,
+                .name = try alloc.dupe(u8, self.name),
+                .variables = try self.variables.clone(alloc),
+                .subtypes = try self.subtypes.clone(alloc),
+                .members = new_members,
+                .methods = try self.methods.clone(alloc),
+            };
+        }
     };
 
     pub const While = struct {
@@ -397,6 +674,14 @@ pub const VariableSignature = struct {
     is_mut: bool,
     name: []const u8,
     type: Type,
+
+    pub fn clone(self: VariableSignature, alloc: std.mem.Allocator) !VariableSignature {
+        return .{
+            .is_mut = self.is_mut,
+            .name = try alloc.dupe(u8, self.name),
+            .type = self.type,
+        };
+    }
 };
 
 pub const Type = union(enum) {
@@ -457,6 +742,36 @@ pub const Type = union(enum) {
     pub inline fn getPosition(self: Type) utils.Position {
         return switch (self) {
             inline else => |some| some.pos,
+        };
+    }
+
+    fn clonePtr(self: Type, alloc: std.mem.Allocator) std.mem.Allocator.Error!*Type {
+        const ret = try alloc.create(Type);
+        ret.* = try self.clone(alloc);
+        return ret;
+    }
+
+    pub fn clone(self: Type, alloc: std.mem.Allocator) !Type {
+        return switch (self) {
+            .inferred => |n| .{ .inferred = .{ .pos = try n.pos.clone(alloc) } },
+            .symbol => |n| .{ .symbol = .{ .pos = try n.pos.clone(alloc), .symbol = try alloc.dupe(u8, n.symbol) } },
+            .optional => |n| .{ .optional = .{ .pos = try n.pos.clone(alloc), .inner = try n.inner.clonePtr(alloc) } },
+            .slice => |n| .{ .slice = .{ .pos = try n.pos.clone(alloc), .inner = try n.inner.clonePtr(alloc), .is_mut = n.is_mut } },
+            .reference => |n| .{ .reference = .{ .pos = try n.pos.clone(alloc), .inner = try n.inner.clonePtr(alloc), .is_mut = n.is_mut } },
+            .array => |n| .{ .array = .{ .pos = try n.pos.clone(alloc), .inner = try n.inner.clonePtr(alloc), .size = try n.size.clonePtr(alloc) } },
+            .error_union => |n| .{ .error_union = .{ .pos = try n.pos.clone(alloc), .success = try n.success.clonePtr(alloc), .failure = if (n.failure) |f| try f.clonePtr(alloc) else null } },
+            .function => |n| .{
+                .function = .{
+                    .pos = try n.pos.clone(alloc),
+                    .name = try alloc.dupe(u8, n.name),
+                    .parameters = try cloneParameterList(n.parameters, alloc),
+                    .generic_parameters = try cloneParameterList(n.generic_parameters, alloc),
+                    .return_type = try n.return_type.clonePtr(alloc),
+                },
+            },
+            .generic => |n| .{ .generic = .{ .pos = try n.pos.clone(alloc), .lhs = try n.lhs.clonePtr(alloc), .arguments = try cloneArgumentList(n.arguments, alloc) } },
+            .variadic => |n| .{ .variadic = .{ .pos = try n.pos.clone(alloc) } },
+            .member => |n| .{ .member = .{ .pos = try n.pos.clone(alloc), .parent = try n.parent.clonePtr(alloc), .member_name = try alloc.dupe(u8, n.member_name) } },
         };
     }
 };
