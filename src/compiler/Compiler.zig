@@ -154,9 +154,7 @@ pub fn getAST(
         .red,
     );
 
-    const owned_path = try alloc.dupe(u8, file_path);
-
-    var lexer = Lexer.init(file, alloc, owned_path) catch |err| return utils.printErr(
+    var lexer = Lexer.init(file, alloc, file_path) catch |err| return utils.printErr(
         error.FailedToTokenizeSource,
         "Failed to tokenize source code: {}\n",
         .{err},
