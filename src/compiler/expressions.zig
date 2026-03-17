@@ -107,10 +107,10 @@ pub fn compile(
         .@"if" => |i| try @"if"(self, i),
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
-        .type => |t| try self.compileType(try .fromAst(self, t), .{}),
+        .type => |t| try self.compileType(try .fromAst(self, t.payload), .{}),
         .slice => |slc| try slice(self, slc, opts.binding_mut),
         .@"try" => |t| {
-            const inner_type: Type = try .infer(self, t.@"try".*);
+            const inner_type: Type = try .infer(self, t.payload.*);
             if (inner_type != .error_union)
                 return errors.tryExpressionOnNonErrorUnion(inner_type, t.pos);
 
@@ -119,10 +119,10 @@ pub fn compile(
 
             self.currentSection().pos = self.currentSection().current_statement;
 
-            try self.compileType(try .infer(self, t.@"try".*), .{});
-            const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(t.@"try"))});
+            try self.compileType(try .infer(self, t.payload.*), .{});
+            const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(t.payload))});
             try self.print(" {s} = ", .{temp_name});
-            try compile(self, t.@"try", .{});
+            try compile(self, t.payload, .{});
             try self.print(";\nif (!{s}.is_success) return (", .{temp_name});
             try self.compileType(self.current_return_type.?, .{});
             try self.print("){{ .is_success = false, .payload.failure = {s}.payload.failure }};\n", .{temp_name});
@@ -368,24 +368,22 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
     try self.pushScope(false);
     try self.write("{\n");
     var received_eval = false;
-    for (blk.block) |*stmt| {
-        switch (stmt.*) {
-            .block_eval => |*be| {
-                if (received_eval) return utils.printErr(
-                    error.IllegalStatement,
-                    "comperr: Can only return from a block expression once ({f}).\n",
-                    .{blk.pos},
-                    .red,
-                );
+    for (blk.payload) |*stmt| switch (stmt.*) {
+        .block_eval => |*be| {
+            if (received_eval) return utils.printErr(
+                error.IllegalStatement,
+                "comperr: Can only return from a block expression once ({f}).\n",
+                .{blk.pos},
+                .red,
+            );
 
-                try self.print("{s} = ", .{temp_name.?});
-                try compile(self, be, .{});
-                try self.write(";\n");
-                received_eval = true;
-            },
-            else => try statements.compile(self, stmt),
-        }
-    }
+            try self.print("{s} = ", .{temp_name.?});
+            try compile(self, be, .{});
+            try self.write(";\n");
+            received_eval = true;
+        },
+        else => try statements.compile(self, stmt),
+    };
     try self.write("}\n");
     self.popScope();
 

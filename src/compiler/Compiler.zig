@@ -886,7 +886,7 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             };
         },
         .generic => .{ .type = try .infer(self, expression) },
-        .type => |t| .{ .type = try .fromAst(self, t) },
+        .type => |t| .{ .type = try .fromAst(self, t.payload) },
         .prefix => |prefix| switch (prefix.op) {
             .@"-" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
                 inline .i64, .u64, .f64 => |number, tag| @unionInit(

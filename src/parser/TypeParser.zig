@@ -109,8 +109,9 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
         while (true) {
             const arg: ast.Expression = b: {
                 const backup_pos = self.parent_parser.pos;
+                const current_pos = try self.parent_parser.currentPosition().clone(self.parent_parser.alloc);
                 if (self.parseType(alloc, .default)) |t|
-                    break :b .{ .type = t }
+                    break :b .{ .type = .{ .pos = current_pos, .payload = t } }
                 else |_| {
                     self.parent_parser.pos = backup_pos;
                     break :b try expressions.parse(self.parent_parser, .relational, .{});
@@ -149,7 +150,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
 
     return .{
         .symbol = .{
-            .symbol = try self.parent_parser.alloc.dupe(u8, ident),
+            .inner = try self.parent_parser.alloc.dupe(u8, ident),
             .pos = try position.clone(self.parent_parser.alloc),
         },
     };

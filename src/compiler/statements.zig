@@ -29,7 +29,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         .@"if" => |if_stmt| try conditional(self, .@"if", if_stmt),
         .@"while" => |while_stmt| try conditional(self, .@"while", while_stmt),
         .@"for" => |for_stmt| try conditional(self, .@"for", for_stmt),
-        .block => |block| try self.compileBlock(block.block, .{}),
+        .block => |block| try self.compileBlock(block.payload, .{}),
         .enum_declaration => |*enum_decl| try compoundTypeDeclaration(self, .@"enum", enum_decl, .{}),
         .union_declaration => |*union_decl| try compoundTypeDeclaration(self, .@"union", union_decl, .{}),
         .@"break", .@"continue" => try self.print("{s};\n", .{@tagName(statement.*)}),
@@ -53,7 +53,7 @@ pub fn compile(self: *Self, statement: *const ast.Statement) CompilerError!void 
         },
         .@"defer" => |d| {
             var pending_defers = self.scopes.getLast().pending_defers;
-            try pending_defers.insert(self.alloc, 0, d.stmt);
+            try pending_defers.insert(self.alloc, 0, d.payload);
         },
     }
 }
@@ -553,7 +553,7 @@ fn conditional(
 
     try self.compileBlock(
         switch (statement.body.*) {
-            .block => |block| block.block,
+            .block => |block| block.payload,
             else => &.{statement.body.*},
         },
         switch (T) {

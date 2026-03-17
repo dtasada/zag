@@ -271,12 +271,10 @@ pub const Type = union(enum) {
     pub fn fromAst(compiler: *Compiler, t: ast.Type) CompilerError!Self {
         return switch (t) {
             .symbol => |symbol| {
-                const result = compiler.getSymbolType(symbol.symbol) catch return errors.unknownSymbol(
-                    symbol.symbol,
-                    symbol.pos,
-                );
-                if (result == .void and !std.mem.eql(u8, symbol.symbol, "void"))
-                    return errors.unknownSymbol(symbol.symbol, symbol.pos);
+                const result = compiler.getSymbolType(symbol.inner) catch
+                    return errors.unknownSymbol(symbol.inner, symbol.pos);
+                if (result == .void and !std.mem.eql(u8, symbol.inner, "void"))
+                    return errors.unknownSymbol(symbol.inner, symbol.pos);
                 // If we get a .type, unwrap it to the actual type
                 if (result == .type) return result.type.*;
                 return result;
@@ -651,7 +649,7 @@ pub const Type = union(enum) {
             .call => |call| try inferCallExpression(compiler, call),
             .member => |member| try inferMemberExpression(compiler, member),
             .@"try" => |t| {
-                const inner_type = try infer(compiler, t.@"try".*);
+                const inner_type = try infer(compiler, t.payload.*);
 
                 if (compiler.current_return_type.? != .error_union)
                     return errors.tryExpressionBadReturnType(inner_type, compiler.current_return_type.?, t.pos);
@@ -798,7 +796,7 @@ pub const Type = union(enum) {
                 }
                 return result_type.?;
             },
-            .type => |t| .{ .type = try fromAstPtr(compiler, t) },
+            .type => |t| .{ .type = try fromAstPtr(compiler, t.payload) },
             .slice => |slice| switch (try infer(compiler, slice.lhs.*)) {
                 .slice => |s| .{ .slice = s },
                 .array => |a| .{ .slice = .{ .inner = a.inner, .is_mut = try compiler.getExpressionMutability(expr) } },
@@ -844,7 +842,7 @@ pub const Type = union(enum) {
         try self.pushScope(false);
         defer self.popScope();
 
-        for (blk.block) |statement| switch (statement) {
+        for (blk.payload) |statement| switch (statement) {
             .variable_definition => |vd| try self.registerSymbol(vd.variable_name, .{
                 .symbol = .{ .type = try .infer(self, vd.assigned_value) },
             }, .{}),

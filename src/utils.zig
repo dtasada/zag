@@ -16,6 +16,11 @@ pub const Capture = struct {
             .index = if (self.index) |i| try alloc.dupe(u8, i) else null,
         };
     }
+
+    pub fn deinit(self: Capture, alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+        if (self.index) |i| alloc.free(i);
+    }
 };
 
 pub const Binding = enum { let_mut, let, @"const" };
@@ -41,6 +46,10 @@ pub const Position = struct {
             .col = self.col,
             .path = try alloc.dupe(u8, self.path),
         };
+    }
+
+    pub fn deinit(self: Position, alloc: std.mem.Allocator) void {
+        alloc.free(self.path);
     }
 };
 

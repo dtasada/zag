@@ -192,6 +192,8 @@ pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
 
 /// Cleans up resources
 pub fn deinit(self: *Self) void {
+    for (self.output) |i| i.deinit(self.alloc);
+
     self.bp_lookup.deinit();
     self.nud_lookup.deinit();
     self.led_lookup.deinit();
@@ -363,8 +365,9 @@ fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast
     while (std.meta.activeTag(self.currentToken()) != closing_token) {
         try args.append(self.alloc, if (is_generic) b: {
             const backup_pos = self.pos;
+            const current_pos = try self.currentPosition().clone(self.alloc);
             if (self.type_parser.parseType(self.alloc, .default)) |t|
-                break :b .{ .type = t }
+                break :b .{ .type = .{ .pos = current_pos, .payload = t } }
             else |_| {
                 self.pos = backup_pos;
                 break :b try expressions.parse(self, .relational, .{});

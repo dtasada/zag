@@ -13,7 +13,7 @@ pub fn build() !void {
     defer arena_back.deinit();
     const arena = arena_back.allocator();
 
-    var registry = std.StringHashMap(Compiler.Module).init(arena);
+    var registry: std.StringHashMap(Compiler.Module) = .init(arena);
 
     var zag_header_types: std.ArrayList(u8) = .empty;
     var zag_header_macros: std.ArrayList(u8) = .empty;

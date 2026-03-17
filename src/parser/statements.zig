@@ -342,7 +342,7 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } }
+        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .payload = try self.parseBlock() } }
     else
         try parse(self);
 
@@ -383,7 +383,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } }
+        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .payload = try self.parseBlock() } }
     else
         try parse(self);
 
@@ -396,7 +396,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
 
                 @"else" = try self.alloc.create(ast.Statement);
                 @"else".?.* = if (self.currentToken() == .@"{")
-                    .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .block = try self.parseBlock() } }
+                    .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .payload = try self.parseBlock() } }
                 else
                     try parse(self);
             }
@@ -477,15 +477,17 @@ pub fn match(self: *Self) ParserError!ast.Statement {
 }
 
 pub fn @"break"(self: *Self) ParserError!ast.Statement {
+    const pos = try self.currentPosition().clone(self.alloc);
     _ = self.advance();
     try self.expectSemicolon("break statement");
-    return .@"break";
+    return .{ .@"break" = .{ .pos = pos } };
 }
 
 pub fn @"continue"(self: *Self) ParserError!ast.Statement {
+    const pos = try self.currentPosition().clone(self.alloc);
     _ = self.advance();
     try self.expectSemicolon("continue statement");
-    return .@"continue";
+    return .{ .@"continue" = .{ .pos = pos } };
 }
 
 pub fn @"defer"(self: *Self) ParserError!ast.Statement {
@@ -493,7 +495,7 @@ pub fn @"defer"(self: *Self) ParserError!ast.Statement {
     _ = self.advance();
     const stmt = try self.alloc.create(ast.Statement);
     stmt.* = try parse(self);
-    return .{ .@"defer" = .{ .pos = try pos.clone(self.alloc), .stmt = stmt } };
+    return .{ .@"defer" = .{ .pos = try pos.clone(self.alloc), .payload = stmt } };
 }
 
 pub fn @"pub"(self: *Self) ParserError!ast.Statement {

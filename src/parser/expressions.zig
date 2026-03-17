@@ -175,7 +175,11 @@ pub fn structInstantiation(self: *Self, lhs: *const ast.Expression, _: BindingPo
     var @"struct": ast.Expression.StructInstantiation = .{
         .pos = try lhs.getPosition().clone(self.alloc),
         .type_expr = lhs,
-        .members = .init(self.alloc),
+        .members = b: {
+            const members = try self.alloc.create(std.StringHashMap(ast.Expression));
+            members.* = .init(self.alloc);
+            break :b members;
+        },
     };
 
     while (self.currentToken() != .eof and self.currentToken() != .@"}") {
@@ -203,7 +207,12 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
 
     if (self.currentToken() == .@"]") {
         self.pos = backup_pos;
-        return .{ .type = try self.type_parser.parseType(self.alloc, .primary) };
+        return .{
+            .type = .{
+                .pos = try pos.clone(self.alloc),
+                .payload = try self.type_parser.parseType(self.alloc, .primary),
+            },
+        };
     }
 
     const length = try self.alloc.create(ast.Expression);
@@ -387,7 +396,7 @@ pub fn block(self: *Self) ParserError!ast.Expression {
     return .{
         .block = .{
             .pos = try self.currentPosition().clone(self.alloc),
-            .block = try self.parseBlock(),
+            .payload = try self.parseBlock(),
         },
     };
 }
@@ -494,12 +503,13 @@ pub fn @"try"(self: *Self) ParserError!ast.Expression {
     const expr = try self.alloc.create(ast.Expression);
     expr.* = try parse(self, .default, .{});
 
-    return .{ .@"try" = .{ .@"try" = expr, .pos = try pos.clone(self.alloc) } };
+    return .{ .@"try" = .{ .payload = expr, .pos = try pos.clone(self.alloc) } };
 }
 
 pub fn functionType(self: *Self) !ast.Expression {
+    const pos = try self.currentPosition().clone(self.alloc);
     const type_node = try self.type_parser.parseType(self.alloc, .primary);
-    return .{ .type = type_node };
+    return .{ .type = .{ .pos = pos, .payload = type_node } };
 }
 
 pub fn @"catch"(self: *Self, lhs: *const ast.Expression, binding_power: BindingPower) ParserError!ast.Expression {

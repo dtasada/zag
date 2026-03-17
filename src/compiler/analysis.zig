@@ -30,7 +30,7 @@ pub fn statementReturns(statement: ast.Statement) bool {
             break :blk false;
         },
 
-        .block => |block_stmt| blockReturns(block_stmt.block),
+        .block => |block_stmt| blockReturns(block_stmt.payload),
 
         .expression => |expr| switch (expr) {
             .match => |match_expr| blk: {
@@ -49,7 +49,7 @@ pub fn statementReturns(statement: ast.Statement) bool {
                 }
                 break :blk has_else;
             },
-            .block => |block_expr| blockReturns(block_expr.block),
+            .block => |block_expr| blockReturns(block_expr.payload),
             else => false,
         },
 
