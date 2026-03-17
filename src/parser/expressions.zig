@@ -312,7 +312,7 @@ pub fn @"if"(self: *Self) ParserError!ast.Expression {
 
     return .{
         .@"if" = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .condition = condition,
             .capture = capture,
             .body = body,
@@ -376,7 +376,7 @@ pub fn match(self: *Self) ParserError!ast.Expression {
 
     return .{
         .match = .{
-            .pos = position,
+            .pos = try position.clone(self.alloc),
             .condition = condition,
             .cases = try cases.toOwnedSlice(self.alloc),
         },
@@ -510,7 +510,7 @@ pub fn @"catch"(self: *Self, lhs: *const ast.Expression, binding_power: BindingP
 
     return .{
         .@"catch" = .{
-            .pos = lhs.getPosition(),
+            .pos = try lhs.getPosition().clone(self.alloc),
             .lhs = lhs,
             .rhs = rhs,
         },

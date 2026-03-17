@@ -862,7 +862,7 @@ pub fn compileVariableSignature(
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
     return switch (expression) {
-        .int => |int| .{ .i64 = @intCast(int.payload) },
+        .int => |int| .{ .u64 = int.payload },
         .float => |float| .{ .f64 = float.payload },
         .char => |char| .{ .u8 = char.payload },
         .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))

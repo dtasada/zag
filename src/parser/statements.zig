@@ -91,7 +91,7 @@ pub fn compoundTypeDeclaration(
     };
     var compound: Type = switch (T) {
         .@"struct", .@"union" => .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .is_pub = is_pub,
             .name = try self.alloc.dupe(u8, name),
             .generic_types = &.{},
@@ -101,7 +101,7 @@ pub fn compoundTypeDeclaration(
             .methods = &.{},
         },
         .@"enum" => .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .is_pub = is_pub,
             .name = try self.alloc.dupe(u8, name),
             .variables = &.{},
@@ -241,7 +241,9 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
         .@"{" => try self.parseBlock(),
         .@"->" => b: {
             _ = self.advance();
-            break :b &.{try parse(self)};
+            const block = try self.alloc.alloc(ast.Statement, 1);
+            block[0] = try parse(self);
+            break :b block;
         },
         else => return utils.printErr(
             error.UnexpectedToken,
@@ -253,7 +255,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
 
     return .{
         .function_definition = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .is_pub = is_pub,
             .name = try self.alloc.dupe(u8, function_name),
             .generic_parameters = generic_parameters,
@@ -463,7 +465,7 @@ pub fn import(self: *Self) ParserError!ast.Statement {
 
     return .{
         .import = .{
-            .pos = pos,
+            .pos = try pos.clone(self.alloc),
             .module_name = try module.toOwnedSlice(self.alloc),
             .alias = if (alias) |a| try self.alloc.dupe(u8, a) else null,
         },
@@ -491,7 +493,7 @@ pub fn @"defer"(self: *Self) ParserError!ast.Statement {
     _ = self.advance();
     const stmt = try self.alloc.create(ast.Statement);
     stmt.* = try parse(self);
-    return .{ .@"defer" = .{ .pos = pos, .stmt = stmt } };
+    return .{ .@"defer" = .{ .pos = try pos.clone(self.alloc), .stmt = stmt } };
 }
 
 pub fn @"pub"(self: *Self) ParserError!ast.Statement {

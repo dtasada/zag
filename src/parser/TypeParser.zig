@@ -150,7 +150,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
     return .{
         .symbol = .{
             .symbol = try self.parent_parser.alloc.dupe(u8, ident),
-            .pos = position,
+            .pos = try position.clone(self.parent_parser.alloc),
         },
     };
 }
@@ -167,7 +167,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
 
     return .{
         .reference = .{
-            .pos = position,
+            .pos = try position.clone(self.parent_parser.alloc),
             .inner = inner,
             .is_mut = is_mut,
         },

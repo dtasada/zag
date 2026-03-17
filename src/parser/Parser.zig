@@ -420,7 +420,7 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
             var param_names: std.ArrayList([]const u8) = .empty;
             defer param_names.deinit(self.alloc);
 
-            const first_pos = self.currentPosition();
+            const first_pos = try self.currentPosition().clone(self.alloc);
 
             const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
                 _ = self.advance();
@@ -440,12 +440,12 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 _ = self.advance();
                 break :b try self.type_parser.parseType(self.alloc, .default);
             } else if (is_generic)
-                .{ .inferred = .{ .pos = try first_pos.clone(self.alloc) } }
+                .{ .inferred = .{ .pos = first_pos } }
             else switch (self.advance()) {
                 .@":" => try self.type_parser.parseType(self.alloc, .default),
                 .@"..." => b: {
                     last_arg = true;
-                    break :b .{ .variadic = .{ .pos = try first_pos.clone(self.alloc) } };
+                    break :b .{ .variadic = .{ .pos = first_pos } };
                 },
                 else => |actual| return utils.printErr(
                     error.UnexpectedToken,
