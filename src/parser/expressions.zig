@@ -41,34 +41,34 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
     switch (op) {
         .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
             if (lhs.* == .comparison) {
-                var comparisons = try lhs.comparison.comparisons.clone(self.alloc);
+                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .fromOwnedSlice(try ast.cloneSlice(
+                    ast.Expression.Comparison.Item,
+                    lhs.comparison.comparisons,
+                    self.alloc,
+                ));
                 try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
                 return .{
                     .comparison = .{
                         .pos = try lhs.getPosition().clone(self.alloc),
                         .left = lhs.comparison.left,
-                        .comparisons = comparisons,
+                        .comparisons = try comparisons.toOwnedSlice(self.alloc),
                     },
                 };
             }
 
-            if (lhs.* == .binary) {
-                switch (lhs.binary.op) {
-                    .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
-                        var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .empty;
-                        try comparisons.append(self.alloc, .{ .op = lhs.binary.op, .right = lhs.binary.rhs });
-                        try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
-                        return .{
-                            .comparison = .{
-                                .pos = try lhs.getPosition().clone(self.alloc),
-                                .left = lhs.binary.lhs,
-                                .comparisons = comparisons,
-                            },
-                        };
+            if (lhs.* == .binary) switch (lhs.binary.op) {
+                .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => return .{
+                    .comparison = .{
+                        .pos = try lhs.getPosition().clone(self.alloc),
+                        .left = lhs.binary.lhs,
+                        .comparisons = &.{
+                            .{ .op = lhs.binary.op, .right = lhs.binary.rhs },
+                            .{ .op = op, .right = new_rhs },
+                        },
                     },
-                    else => {},
-                }
-            }
+                },
+                else => {},
+            };
 
             return .{
                 .binary = .{
@@ -210,22 +210,27 @@ pub fn arrayInstantiation(self: *Self) ParserError!ast.Expression {
     length.* = try parse(self, .default, .{});
     try self.expect(self.advance(), .@"]", "array instantiation", "]");
 
-    var array: ast.Expression.ArrayInstantiation = .{
-        .pos = try pos.clone(self.alloc),
-        .type = try self.type_parser.parseType(self.alloc, .default),
-        .length = length,
+    return .{
+        .array_instantiation = .{
+            .pos = try pos.clone(self.alloc),
+            .type = try self.type_parser.parseType(self.alloc, .default),
+            .length = length,
+            .contents = b: {
+                var contents: std.ArrayList(ast.Expression) = .empty;
+
+                try self.expect(self.advance(), .@"{", "array instantiation", "{");
+                while (self.currentToken() != .eof and self.currentToken() != .@"}") {
+                    try contents.append(self.alloc, try parse(self, .logical, .{}));
+
+                    if (self.currentToken() != .@"}")
+                        try self.expect(self.advance(), .@",", "array literal", ",");
+                }
+                try self.expect(self.advance(), .@"}", "array instantiation", "}");
+
+                break :b try contents.toOwnedSlice(self.alloc);
+            },
+        },
     };
-
-    try self.expect(self.advance(), .@"{", "array instantiation", "{");
-    while (self.currentToken() != .eof and self.currentToken() != .@"}") {
-        try array.contents.append(self.alloc, try parse(self, .logical, .{}));
-
-        if (self.currentToken() != .@"}")
-            try self.expect(self.advance(), .@",", "array literal", ",");
-    }
-    try self.expect(self.advance(), .@"}", "array instantiation", "}");
-
-    return .{ .array_instantiation = array };
 }
 
 pub fn call(self: *Self, lhs: *const ast.Expression, _: BindingPower) ParserError!ast.Expression {

@@ -84,43 +84,46 @@ pub fn compoundTypeDeclaration(
 
     const name = try self.expect(self.advance(), .ident, context, @tagName(T) ++ " name");
 
-    var compound: ast.Statement = switch (T) {
-        .@"struct", .@"union" => @unionInit(
-            ast.Statement,
-            tag_name,
-            .{
-                .pos = pos,
-                .is_pub = is_pub,
-                .name = try self.alloc.dupe(u8, name),
-                .generic_types = &.{},
-                .variables = .empty,
-                .subtypes = .empty,
-                .members = .empty,
-                .methods = .empty,
-            },
-        ),
+    const Type = switch (T) {
+        .@"struct" => ast.Statement.StructDeclaration,
+        .@"union" => ast.Statement.UnionDeclaration,
+        .@"enum" => ast.Statement.EnumDeclaration,
+    };
+    var compound: Type = switch (T) {
+        .@"struct", .@"union" => .{
+            .pos = pos,
+            .is_pub = is_pub,
+            .name = try self.alloc.dupe(u8, name),
+            .generic_types = &.{},
+            .variables = &.{},
+            .subtypes = &.{},
+            .members = &.{},
+            .methods = &.{},
+        },
         .@"enum" => .{
-            .enum_declaration = .{
-                .pos = pos,
-                .is_pub = is_pub,
-                .name = try self.alloc.dupe(u8, name),
-                .variables = .empty,
-                .subtypes = .empty,
-                .members = .empty,
-                .methods = .empty,
-            },
+            .pos = pos,
+            .is_pub = is_pub,
+            .name = try self.alloc.dupe(u8, name),
+            .variables = &.{},
+            .subtypes = &.{},
+            .members = &.{},
+            .methods = &.{},
         },
     };
 
-    if (self.currentToken() == .@"<") switch (compound) {
-        inline .struct_declaration, .union_declaration => |*s| s.generic_types = try self.parseGenericParameters(),
-        .enum_declaration => return utils.printErr(
+    var methods: std.ArrayList(ast.Statement.FunctionDefinition) = .empty;
+    var variables: std.ArrayList(ast.Statement.VariableDefinition) = .empty;
+    var subtypes: std.ArrayList(ast.Subtype) = .empty;
+    var members: std.ArrayList(Type.Member) = .empty;
+
+    if (self.currentToken() == .@"<") switch (T) {
+        inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
+        .@"enum" => return utils.printErr(
             error.UnexpectedToken,
             "Parser error: enum declaration can't have generic parameters ({f}).\n",
             .{self.lexer.source_map.items[self.pos]},
             .red,
         ),
-        else => unreachable,
     };
 
     try self.expect(self.advance(), .@"{", context, "{' or '<");
@@ -165,46 +168,22 @@ pub fn compoundTypeDeclaration(
                     else => null,
                 };
 
-                for (member_names.items) |i| switch (compound) {
-                    .struct_declaration => |*sd| try sd.members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, i), .type = member_type.? }),
-                    .enum_declaration => |*ed| try ed.members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, i), .value = value }),
-                    .union_declaration => |*ud| try ud.members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, i), .type = member_type }),
-                    else => unreachable,
-                };
+                for (member_names.items) |i| try members.append(self.alloc, switch (T) {
+                    .@"struct" => .{ .name = try self.alloc.dupe(u8, i), .type = member_type.? },
+                    .@"enum" => .{ .name = try self.alloc.dupe(u8, i), .value = value },
+                    .@"union" => .{ .name = try self.alloc.dupe(u8, i), .type = member_type },
+                });
 
-                if (self.currentToken() == .@",") _ = self.advance() else {
-                    break;
-                }
+                if (self.currentToken() == .@",") _ = self.advance() else break;
             },
-            .@"fn" => switch (compound) {
-                inline .struct_declaration, .enum_declaration, .union_declaration => |*sd| try sd.methods.append(
-                    self.alloc,
-                    (try functionDefinition(self)).function_definition,
-                ),
-                else => unreachable,
-            },
-            .let, .@"const" => switch (compound) {
-                inline .struct_declaration, .enum_declaration, .union_declaration => |*sd| try sd.variables.append(
-                    self.alloc,
-                    (try variableDefinition(self)).variable_definition,
-                ),
-                else => unreachable,
-            },
-
-            inline .@"struct", .@"union", .@"enum" => switch (compound) {
-                inline .struct_declaration, .enum_declaration, .union_declaration => |*sd| try sd.subtypes.append(
-                    self.alloc,
-                    @unionInit(
-                        ast.Subtype,
-                        @tagName(T),
-                        @field(try compoundTypeDeclaration(self, .@"struct"), tag_name),
-                    ),
-                ),
-                else => unreachable,
-            },
-
+            .@"fn" => try methods.append(self.alloc, (try functionDefinition(self)).function_definition),
+            .let, .@"const" => try variables.append(self.alloc, (try variableDefinition(self)).variable_definition),
+            inline .@"struct", .@"union", .@"enum" => try subtypes.append(self.alloc, @unionInit(
+                ast.Subtype,
+                @tagName(T),
+                @field(try compoundTypeDeclaration(self, .@"struct"), tag_name),
+            )),
             .@"pub" => _ = self.advance(),
-
             else => return utils.printErr(
                 error.SyntaxError,
                 "Parser error: expected {s} variable definition, member declaration or method definition in {s} '{s}' ({f}).\n",
@@ -216,7 +195,12 @@ pub fn compoundTypeDeclaration(
 
     try self.expect(self.advance(), .@"}", context, "}");
 
-    return compound;
+    compound.methods = try methods.toOwnedSlice(self.alloc);
+    compound.variables = try variables.toOwnedSlice(self.alloc);
+    compound.subtypes = try subtypes.toOwnedSlice(self.alloc);
+    compound.members = try members.toOwnedSlice(self.alloc);
+
+    return @unionInit(ast.Statement, @tagName(T) ++ "_declaration", compound);
 }
 
 pub fn structDeclaration(self: *Self) ParserError!ast.Statement {

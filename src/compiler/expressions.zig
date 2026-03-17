@@ -97,9 +97,9 @@ pub fn compile(
                 try self.print("[])", .{});
             }
             try self.write("{");
-            for (array.contents.items, 1..) |*item, i| {
+            for (array.contents, 1..) |*item, i| {
                 try compile(self, item, .{});
-                if (i < array.contents.items.len) try self.write(", ");
+                if (i < array.contents.len) try self.write(", ");
             }
             try self.write("}");
         },
@@ -858,19 +858,18 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
 }
 
 fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
-    if (comp.comparisons.items.len == 0) return;
+    if (comp.comparisons.len == 0) return;
 
     try self.write("(");
 
-    var variables = try std.ArrayList(u64).initCapacity(self.alloc, comp.comparisons.items.len);
+    var variables: std.ArrayList(u64) = try .initCapacity(self.alloc, comp.comparisons.len);
     defer variables.deinit(self.alloc);
-    for (comp.comparisons.items) |i|
-        variables.appendAssumeCapacity(std.hash.Wyhash.hash(0, std.mem.asBytes(i.right)));
+    for (comp.comparisons) |i| variables.appendAssumeCapacity(std.hash.Wyhash.hash(0, std.mem.asBytes(i.right)));
 
     self.currentSection().pos = self.currentSection().current_statement;
 
     for (variables.items, 0..) |v, i| {
-        const expr = comp.comparisons.items[i].right;
+        const expr = comp.comparisons[i].right;
         const t: Type = try .infer(self, expr.*);
         try self.compileType(t, .{});
         try self.print(" _{} = ", .{v});
@@ -889,7 +888,7 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
     );
     try compile(self, comp.left, .{});
 
-    for (comp.comparisons.items, 0..) |item, i| {
+    for (comp.comparisons, 0..) |item, i| {
         const rhs_t: Type = try .infer(self, item.right.*);
         if (!rhs_t.isNumeric() and rhs_t != .bool) return utils.printErr(
             error.IllegalExpression,
@@ -900,7 +899,7 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 
         if (i > 0) try self.print("_{} ", .{variables.items[i - 1]});
         try self.print(" {s} _{}", .{ @tagName(item.op), variables.items[i] });
-        if (i < comp.comparisons.items.len - 1) try self.write(" &&");
+        if (i < comp.comparisons.len - 1) try self.write(" &&");
     }
 
     try self.write(")");

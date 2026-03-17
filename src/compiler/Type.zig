@@ -687,7 +687,7 @@ pub const Type = union(enum) {
             },
             .comparison => |comp| {
                 var current_type = try Type.infer(compiler, comp.left.*);
-                for (comp.comparisons.items) |cmp| {
+                for (comp.comparisons) |cmp| {
                     const next_type = try Type.infer(compiler, cmp.right.*);
                     if (!next_type.check(current_type)) return utils.printErr(
                         error.TypeMismatch,
@@ -911,14 +911,15 @@ pub const Type = union(enum) {
                 .pos = type_decl.pos,
                 .is_pub = false,
                 .name = tag_type_inner_name,
-                .variables = .empty,
-                .subtypes = .empty,
-                .members = .empty,
-                .methods = .empty,
+                .variables = &.{},
+                .subtypes = &.{},
+                .members = b: {
+                    const members = try compiler.alloc.alloc(ast.Statement.EnumDeclaration.Member, type_decl.members.len);
+                    for (type_decl.members, 0..) |member, i| members[i] = .{ .name = member.name };
+                    break :b members;
+                },
+                .methods = &.{},
             };
-
-            for (type_decl.members.items) |member|
-                try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
 
             const tag_type_val: Type = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl, .{}) };
 
@@ -955,7 +956,7 @@ pub const Type = union(enum) {
             else => {},
         }
 
-        for (type_decl.variables.items) |variable| {
+        for (type_decl.variables) |variable| {
             const value = try compiler.solveComptimeExpression(variable.assigned_value);
             const var_type = if (variable.type == .inferred) value.getType() else try fromAst(compiler, variable.type);
 
@@ -984,7 +985,7 @@ pub const Type = union(enum) {
             );
         }
 
-        for (type_decl.subtypes.items) |subtype| switch (subtype) {
+        for (type_decl.subtypes) |subtype| switch (subtype) {
             inline else => |st, tag| {
                 const st_ptr = try compiler.alloc.create(@TypeOf(st));
                 st_ptr.* = st;
@@ -1011,7 +1012,7 @@ pub const Type = union(enum) {
         };
 
         var enum_last_value: usize = 0;
-        for (type_decl.members.items) |member| {
+        for (type_decl.members) |member| {
             if (compound_type.getProperty(member.name)) |_| return utils.printErr(
                 error.DuplicateMember,
                 "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",
@@ -1054,7 +1055,7 @@ pub const Type = union(enum) {
             }
         }
 
-        for (type_decl.methods.items, 0..) |method, i| {
+        for (type_decl.methods, 0..) |method, i| {
             var params: std.ArrayList(Function.Param) = try .initCapacity(compiler.alloc, method.parameters.len);
 
             for (method.parameters) |p|
@@ -1080,7 +1081,7 @@ pub const Type = union(enum) {
                 .generic_params = generic_params,
                 .params = params,
                 .return_type = return_type,
-                .definition = &type_decl.methods.items[i],
+                .definition = &type_decl.methods[i],
             });
         }
 
@@ -1104,21 +1105,22 @@ pub const Type = union(enum) {
     } {
         return try Type.CompoundType(T).init(compiler, type_decl.name, inner_name, switch (T) {
             .@"struct" => null,
-            .@"enum" => getTagType(type_decl.members.items.len),
+            .@"enum" => getTagType(type_decl.members.len),
             .@"union" => b: {
                 const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
                 enum_decl.* = .{
                     .pos = type_decl.pos,
                     .is_pub = false,
                     .name = tag_type_inner_name,
-                    .variables = .empty,
-                    .subtypes = .empty,
-                    .members = .empty,
-                    .methods = .empty,
+                    .variables = &.{},
+                    .subtypes = &.{},
+                    .members = b2: {
+                        const members = try compiler.alloc.alloc(ast.Statement.EnumDeclaration.Member, type_decl.members.len);
+                        for (type_decl.members, 0..) |member, i| members[i] = .{ .name = member.name };
+                        break :b2 members;
+                    },
+                    .methods = &.{},
                 };
-
-                for (type_decl.members.items) |member|
-                    try enum_decl.members.append(compiler.alloc, .{ .name = member.name });
 
                 // Create the tag type but DON'T compile/emit it yet
                 break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl, .{}) };
@@ -1130,11 +1132,11 @@ pub const Type = union(enum) {
         const t = try fromAstPtr(compiler, array.type);
 
         const size = if (array.length.* == .ident and std.mem.eql(u8, array.length.ident.payload, "_"))
-            array.contents.items.len
+            array.contents.len
         else b: {
             const expected_length = (try compiler.solveComptimeExpression(array.length.*)).u64;
 
-            const received_length = array.contents.items.len;
+            const received_length = array.contents.len;
             if (received_length != expected_length) return utils.printErr(
                 error.ArgumentCountMismatch,
                 "comperr: Expected {} items in array initializer list, found {} ({f}).\n",

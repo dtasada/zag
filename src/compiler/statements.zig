@@ -204,7 +204,7 @@ fn compoundTypeDeclaration(
 
     self.endTypeDefEmit();
 
-    for (type_decl.variables.items) |variable|
+    for (type_decl.variables) |variable|
         try variableDefinition(self, variable, .{
             .inner_name = compound_type
                 .variables
@@ -213,7 +213,7 @@ fn compoundTypeDeclaration(
         });
 
     self.switchSection(.source_function_impls);
-    for (type_decl.methods.items) |method| {
+    for (type_decl.methods) |method| {
         try self.pushScope(false);
         defer self.popScope();
         self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;

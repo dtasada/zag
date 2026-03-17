@@ -403,7 +403,7 @@ pub fn scan(self: *Self) CompilerError!void {
         ),
         .enum_declaration => |*enum_decl| try self.registerSymbol(
             enum_decl.name,
-            .{ .type = .{ .@"enum" = try Type.Enum.init(self, enum_decl.name, try self.mangle(enum_decl.name), Type.getTagType(enum_decl.members.items.len)) } },
+            .{ .type = .{ .@"enum" = try Type.Enum.init(self, enum_decl.name, try self.mangle(enum_decl.name), Type.getTagType(enum_decl.members.len)) } },
             .{ .inner_name = try self.mangle(enum_decl.name), .is_defined = false },
         ),
         .binding_type_declaration => |btd| try self.registerSymbol(btd.name, .{
