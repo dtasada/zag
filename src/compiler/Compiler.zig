@@ -47,15 +47,15 @@ const Section = struct {
     buffer: std.ArrayList(u8) = .empty,
 };
 
-const Buffer = struct {
-    writer: std.Io.Writer,
-
-    fn init(alloc: std.mem.Allocator) !Buffer {
-        return .{
-            .writer = std.Io.Writer.Allocating.init(alloc),
-        };
-    }
-};
+// const Buffer = struct {
+//     writer: std.Io.Writer,
+//
+//     fn init(alloc: std.mem.Allocator) !Buffer {
+//         return .{
+//             .writer = std.Io.Writer.Allocating.init(alloc),
+//         };
+//     }
+// };
 
 alloc: std.mem.Allocator,
 
