@@ -153,6 +153,7 @@ pub fn getAST(
         .{ file_path, err },
         .red,
     );
+    defer alloc.free(file);
 
     var lexer = Lexer.init(file, alloc, file_path) catch |err| return utils.printErr(
         error.FailedToTokenizeSource,

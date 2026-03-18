@@ -192,6 +192,9 @@ pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
 
 /// Cleans up resources
 pub fn deinit(self: *Self) void {
+    for (self.output) |i| i.deinit(self.alloc);
+    self.alloc.free(self.output);
+
     self.bp_lookup.deinit();
     self.led_lookup.deinit();
     self.nud_lookup.deinit();
@@ -463,10 +466,10 @@ pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserErro
                 ),
             };
 
-            for (param_names.items) |p| try params.append(self.alloc, .{
+            for (param_names.items, 0..) |p, i| try params.append(self.alloc, .{
                 .is_mut = is_mut,
                 .name = try self.alloc.dupe(u8, p),
-                .type = param_type,
+                .type = if (i == 0) param_type else try param_type.clone(self.alloc),
             });
 
             if (self.currentToken() == .@",") _ = self.advance() else {

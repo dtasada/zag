@@ -9,19 +9,19 @@ pub fn build() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var arena_back: std.heap.ArenaAllocator = .init(alloc);
-    defer arena_back.deinit();
-    const arena = arena_back.allocator();
-
-    var registry: std.StringHashMap(Compiler.Module) = .init(arena);
+    var registry: std.StringHashMap(Compiler.Module) = .init(alloc);
+    defer registry.deinit();
 
     var zag_header_types: std.ArrayList(u8) = .empty;
+    defer zag_header_types.deinit(alloc);
+
     var zag_header_macros: std.ArrayList(u8) = .empty;
+    defer zag_header_macros.deinit(alloc);
 
     // Transpile stdlib first so user code can import from it
-    try transpileModuleWithHeaders(arena, build_options.stdlib_path, &registry, &zag_header_types, &zag_header_macros);
+    try transpileModuleWithHeaders(alloc, build_options.stdlib_path, &registry, &zag_header_types, &zag_header_macros);
 
-    try transpileModuleWithHeaders(arena, "src", &registry, &zag_header_types, &zag_header_macros);
+    try transpileModuleWithHeaders(alloc, "src", &registry, &zag_header_types, &zag_header_macros);
 
     try writeZagHeader(zag_header_types.items, zag_header_macros.items);
 
@@ -64,7 +64,11 @@ fn transpileWithHeaders(
 
     const ast = try Compiler.getAST(alloc, file_path);
 
-    var compiler = Compiler.init(alloc, ast.root, file_path, registry) catch |err|
+    var arena_back: std.heap.ArenaAllocator = .init(alloc);
+    defer arena_back.deinit();
+    const arena = arena_back.allocator();
+
+    var compiler = Compiler.init(arena, ast.root, file_path, registry) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",

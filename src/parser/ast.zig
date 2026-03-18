@@ -20,6 +20,7 @@ pub fn cloneSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) !
 
 pub fn deinitSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) void {
     for (list) |i| i.deinit(alloc);
+    alloc.free(list);
 }
 
 pub const BinaryOperator = enum {
@@ -890,7 +891,7 @@ pub const Statement = union(enum) {
                 @"if".condition.deinit(alloc);
                 if (@"if".capture) |c| c.deinit(alloc);
                 @"if".body.deinitPtr(alloc);
-                if (@"if".@"else") |e| e.deinit(alloc);
+                if (@"if".@"else") |e| e.deinitPtr(alloc);
             },
             .@"return" => |@"return"| if (@"return".@"return") |r| r.deinit(alloc),
             .@"while" => |@"while"| {
@@ -945,7 +946,7 @@ pub const VariableSignature = struct {
         return .{
             .is_mut = self.is_mut,
             .name = try alloc.dupe(u8, self.name),
-            .type = self.type,
+            .type = try self.type.clone(alloc),
         };
     }
 

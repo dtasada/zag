@@ -573,7 +573,7 @@ pub const Type = union(enum) {
                     break :blk @unionInit(Type, @tagName(tag), t);
                 },
                 .function => |d| blk: {
-                    var copy = d.*;
+                    var copy = try d.clone(compiler.alloc);
                     copy.name = name;
                     copy.generic_parameters = &.{};
                     var t = try fromAst(compiler, copy.getType());
