@@ -1,10 +1,10 @@
 const std = @import("std");
 
 const utils = @import("utils");
-const ast = @import("Parser").ast;
+const ast = @import("ast");
 
 const Compiler = @import("Compiler.zig");
-const Type = @import("Type.zig").Type;
+const Type = @import("types/Type.zig").Type;
 
 pub const Value = union(enum) {
     i8: i8,

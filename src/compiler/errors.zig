@@ -1,7 +1,7 @@
 const std = @import("std");
 const utils = @import("utils");
 
-const Type = @import("Type.zig").Type;
+const Type = @import("types/Type.zig").Type;
 
 pub const CompilerError = error{
     AccessDenied,
@@ -190,7 +190,7 @@ pub fn symbolShadowing(name: []const u8, pos: utils.Position) CompilerError {
     );
 }
 
-pub fn illegalPrefixExpression(op: @import("Parser").ast.PrefixOperator, t: Type, pos: utils.Position) CompilerError {
+pub fn illegalPrefixExpression(op: @import("ast").PrefixOperator, t: Type, pos: utils.Position) CompilerError {
     return utils.printErr(
         error.IllegalExpression,
         "comperr: Illegal prefix operator '{s}' used on '{f}' ({f}).\n",

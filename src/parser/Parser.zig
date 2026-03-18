@@ -1,6 +1,6 @@
 const std = @import("std");
 const utils = @import("utils");
-pub const ast = @import("ast.zig");
+const ast = @import("ast");
 
 const statements = @import("statements.zig");
 const expressions = @import("expressions.zig");

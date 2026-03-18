@@ -95,3 +95,8 @@ pub fn cloneSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) !
     for (list, 0..) |item, i| new_list[i] = try item.clone(alloc);
     return new_list;
 }
+
+pub fn deinitSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) void {
+    for (list) |i| i.deinit(alloc);
+    alloc.free(list);
+}

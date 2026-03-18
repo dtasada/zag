@@ -2,14 +2,14 @@ const std = @import("std");
 
 const utils = @import("utils");
 
-const ast = @import("Parser").ast;
+const ast = @import("ast");
 const errors = @import("errors.zig");
 const statements = @import("statements.zig");
 const hash = @import("Parser").hash;
 
 const Self = @import("Compiler.zig");
 const Value = @import("Value.zig").Value;
-const Type = @import("Type.zig").Type;
+const Type = @import("types/Type.zig").Type;
 
 const CompilerError = errors.CompilerError;
 
@@ -911,11 +911,7 @@ fn call(self: *Self, call_expr: ast.Expression.Call) CompilerError!void {
                     .variable => |v| return errors.expressionNotCallable(v.type, call_expr.callee.getPosition()),
                     .member => |member_type| return errors.expressionNotCallable(if (t == .@"enum") .usize else member_type, call_expr.callee.getPosition()),
                     .method => |method| {
-                        try functionCall(self, Type.Function.fromMethod(
-                            std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(t)).?,
-                            method,
-                            s.module,
-                        ).function, call_expr);
+                        try functionCall(self, Type.Function.fromMethod(method, s.module).function, call_expr);
                         return;
                     },
                     .subtype => |st| return errors.expressionNotCallable(st.toType(), call_expr.callee.getPosition()),

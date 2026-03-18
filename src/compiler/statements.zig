@@ -1,12 +1,12 @@
 const std = @import("std");
 
 const utils = @import("utils");
-const ast = @import("Parser").ast;
+const ast = @import("ast");
 const expressions = @import("expressions.zig");
 const errors = @import("errors.zig");
 const analysis = @import("analysis.zig");
 
-const Type = @import("Type.zig").Type;
+const Type = @import("types/Type.zig").Type;
 const Module = @import("Module.zig");
 
 const Self = @import("Compiler.zig");
@@ -232,7 +232,7 @@ fn compoundTypeDeclaration(
         while (method_it.next()) |entry| {
             const m = entry.value_ptr.*;
             try self.registerSymbol(m.name, .{
-                .symbol = .{ .type = Type.Function.fromMethod(T, m, compound_type.module) },
+                .symbol = .{ .type = Type.Function.fromMethod(m, compound_type.module) },
             }, .{ .inner_name = m.inner_name });
         }
 

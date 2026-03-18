@@ -1,7 +1,7 @@
 const std = @import("std");
-const ast = @import("Parser").ast;
+const ast = @import("ast");
 const Compiler = @import("Compiler.zig");
-const Type = @import("Type.zig").Type;
+const Type = @import("types/Type.zig").Type;
 
 pub fn blockReturns(block: ast.Block) bool {
     for (block) |stmt| {

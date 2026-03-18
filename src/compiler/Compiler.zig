@@ -2,7 +2,7 @@ const std = @import("std");
 const build_options = @import("build_options");
 
 const utils = @import("utils");
-const ast = @import("Parser").ast;
+const ast = @import("ast");
 
 const analysis = @import("analysis.zig");
 const expressions = @import("expressions.zig");
@@ -12,7 +12,7 @@ const errors = @import("errors.zig");
 const Lexer = @import("Lexer");
 const Parser = @import("Parser");
 
-const Type = @import("Type.zig").Type;
+const Type = @import("types/Type.zig").Type;
 const Value = @import("Value.zig").Value;
 
 const Self = @This();

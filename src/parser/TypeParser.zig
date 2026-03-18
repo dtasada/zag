@@ -8,7 +8,7 @@ const Parser = @import("Parser.zig");
 const BindingPower = Parser.BindingPower;
 const ParserError = Parser.ParserError;
 
-const ast = @import("ast.zig");
+const ast = @import("ast");
 
 const Self = @This();
 

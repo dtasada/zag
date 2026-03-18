@@ -53,6 +53,7 @@ pub fn build(b: *std.Build) void {
     const utils_mod = modules.create("utils", "src/utils.zig");
     const lexer_mod = modules.create("Lexer", "src/Lexer.zig");
     const parser_mod = modules.create("Parser", "src/parser/Parser.zig");
+    const ast_mod = modules.create("ast", "src/ast/ast.zig");
     const compiler_mod = modules.create("Compiler", "src/compiler/Compiler.zig");
     zag_mod.mod.addImport("build_options", options_mod);
     compiler_mod.mod.addImport("build_options", options_mod);
@@ -63,10 +64,14 @@ pub fn build(b: *std.Build) void {
     zag_mod.addImport(&utils_mod);
 
     parser_mod.addImport(&utils_mod);
+    parser_mod.addImport(&ast_mod);
     lexer_mod.addImport(&utils_mod);
     compiler_mod.addImport(&utils_mod);
     compiler_mod.addImport(&lexer_mod);
+    compiler_mod.addImport(&ast_mod);
     parser_mod.addImport(&lexer_mod);
+    ast_mod.addImport(&utils_mod);
+    ast_mod.addImport(&lexer_mod);
 
     compiler_mod.addImport(&parser_mod);
 
