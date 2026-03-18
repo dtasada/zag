@@ -274,6 +274,11 @@ pub fn deinit(self: *Self) void {
         self.alloc.destroy(i.items);
     }
     self.scopes.deinit(self.alloc);
+
+    for (self.pending_instantiations.items) |inst| {
+        self.alloc.free(inst.inner_name);
+        utils.deinitSlice(Value, inst.args, self.alloc);
+    }
     self.pending_instantiations.deinit(self.alloc);
 
     var import_mods_it = self.imported_modules.valueIterator();
@@ -358,7 +363,7 @@ fn writeOutputFiles(self: *Self) !void {
     defer header_file.close();
     var header_file_writer = header_file.writer(&header_file_buf);
 
-    const guard_name = try std.fmt.allocPrint(self.alloc, "__ZAG_MODULE_{}_H", .{std.hash.Wyhash.hash(0, self.source_path)});
+    const guard_name = try std.fmt.allocPrint(self.alloc, "__ZAG_MODULE_{x}_H", .{std.hash.Wyhash.hash(0, self.source_path)});
     defer self.alloc.free(guard_name);
 
     try header_file_writer.interface.print("#ifndef {s}\n#define {s}\n\n", .{ guard_name, guard_name });

@@ -363,7 +363,7 @@ pub const Type = union(enum) {
                         .{},
                     );
                     t.module = module;
-                    t.generic_instantiation = .{ .base_name = base_name, .args = args };
+                    t.generic_instantiation = .{ .base_name = base_name, .args = try utils.cloneSlice(Value, args, compiler.alloc) };
                     break :blk @unionInit(Type, @tagName(tag), t);
                 },
                 .function => |d| blk: {
@@ -399,7 +399,7 @@ pub const Type = union(enum) {
             // Add to pending instantiations
             try compiler.pending_instantiations.append(compiler.alloc, .{
                 .inner_name = try name.toOwnedSlice(compiler.alloc),
-                .args = args,
+                .args = try utils.cloneSlice(Value, args, compiler.alloc),
                 .module = module,
                 .t = switch (def_wrap) {
                     .@"struct" => |d| .{ .@"struct" = d.* },
@@ -1398,7 +1398,7 @@ pub const Type = union(enum) {
                     for (def.generic_parameters) |param| param.type.deinit(alloc);
                     def.return_type.deinit(alloc);
                 }
-                if (f.generic_instantiation) |gi| for (gi.args) |arg| arg.deinit(alloc);
+                if (f.generic_instantiation) |gi| utils.deinitSlice(Value, gi.args, alloc);
             },
             inline .@"struct", .@"union", .@"enum" => |ct, t| {
                 // alloc.free(ct.name);
@@ -1441,8 +1441,10 @@ pub const Type = union(enum) {
 
                 for (ct.generic_params) |param| param.type.deinit(alloc);
                 if (ct.tag_type) |tt| tt.deinitPtr(alloc);
-                if (ct.definition) |def| alloc.destroy(def);
-                if (ct.generic_instantiation) |gi| for (gi.args) |arg| arg.deinit(alloc);
+                if (ct.generic_instantiation != null) {
+                    if (ct.definition) |def| alloc.destroy(def);
+                }
+                if (ct.generic_instantiation) |gi| utils.deinitSlice(Value, gi.args, alloc);
             },
             else => {},
         }
@@ -1483,18 +1485,21 @@ pub const Type = union(enum) {
                 .inner_name = try alloc.dupe(u8, ct.inner_name),
                 .variables = b: {
                     const variables = try alloc.create(std.StringHashMap(types.Variable));
+                    variables.* = .init(alloc);
                     var vars_it = ct.variables.iterator();
                     while (vars_it.next()) |entry| try variables.put(entry.key_ptr.*, try entry.value_ptr.clone(alloc));
                     break :b variables;
                 },
                 .subtypes = b: {
                     const subtypes = try alloc.create(std.StringHashMap(types.Subtype));
+                    subtypes.* = .init(alloc);
                     var subtypes_it = ct.subtypes.iterator();
                     while (subtypes_it.next()) |entry| try subtypes.put(entry.key_ptr.*, try entry.value_ptr.clone(alloc));
                     break :b subtypes;
                 },
                 .members = b: {
                     const members = try alloc.create(std.StringArrayHashMap(@TypeOf(ct).MemberType));
+                    members.* = .init(alloc);
                     var members_it = ct.members.iterator();
                     while (members_it.next()) |entry| try members.put(
                         entry.key_ptr.*,
@@ -1504,6 +1509,7 @@ pub const Type = union(enum) {
                 },
                 .methods = b: {
                     const methods = try alloc.create(std.StringArrayHashMap(types.Method));
+                    methods.* = .init(alloc);
                     var methods_it = ct.methods.iterator();
                     while (methods_it.next()) |entry| try methods.put(
                         entry.key_ptr.*,

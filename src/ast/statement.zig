@@ -132,7 +132,7 @@ pub const Statement = union(enum) {
 
             pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) !CompoundTypeDeclaration(T) {
                 return .{
-                    .pos = self.pos,
+                    .pos = try self.pos.clone(alloc),
                     .is_pub = self.is_pub,
                     .name = try alloc.dupe(u8, self.name),
                     .generic_types = try utils.cloneSlice(ast.VariableSignature, self.generic_types, alloc),
@@ -186,7 +186,7 @@ pub const Statement = union(enum) {
 
         pub fn clone(self: *const EnumDeclaration, alloc: std.mem.Allocator) !EnumDeclaration {
             return .{
-                .pos = self.pos,
+                .pos = try self.pos.clone(alloc),
                 .is_pub = self.is_pub,
                 .name = try alloc.dupe(u8, self.name),
                 .variables = try utils.cloneSlice(VariableDefinition, self.variables, alloc),

@@ -478,13 +478,15 @@ fn conditional(
                 if (!end_t.isNumeric()) return errors.badRangeBound(end_t, end.getPosition());
 
                 try self.compileType(start_t, .{});
-                const start_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(range.start))});
+                var start_temp_name_buf: [17]u8 = undefined;
+                const start_temp_name = try std.fmt.bufPrint(&start_temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(range.start))});
                 try self.print(" {s} = ", .{start_temp_name});
                 try expressions.compile(self, range.start, .{ .expected_type = start_t, .is_variable_declaration = true });
                 try self.write(";\n");
 
                 try self.compileType(end_t, .{});
-                const end_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(end))});
+                var end_temp_name_buf: [17]u8 = undefined;
+                const end_temp_name = try std.fmt.bufPrint(&end_temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(end))});
                 try self.print(" {s} = ", .{end_temp_name});
                 try expressions.compile(self, end, .{ .expected_type = end_t, .is_variable_declaration = true });
                 try self.write(";\n");
@@ -494,7 +496,7 @@ fn conditional(
                 capture_ident = if (statement.capture) |c|
                     c.name
                 else
-                    try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+                    try std.fmt.allocPrint(self.alloc, "_{x}", .{utils.randInt(u64)});
 
                 try self.compileVariableSignature(capture_ident, start_t, .let_mut);
                 try self.print(" = {s};", .{start_temp_name});
@@ -513,7 +515,7 @@ fn conditional(
                 }
             },
             else => |other| {
-                capture_ident = try std.fmt.allocPrint(self.alloc, "_{}", .{utils.randInt(u64)});
+                capture_ident = try std.fmt.allocPrint(self.alloc, "_{x}", .{utils.randInt(u64)});
 
                 try self.compileType(.usize, .{ .binding_mut = true });
                 try self.print(" {s} = 0", .{capture_ident});

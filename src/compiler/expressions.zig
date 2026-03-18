@@ -120,7 +120,8 @@ pub fn compile(
             self.currentSection().pos = self.currentSection().current_statement;
 
             try self.compileType(try .infer(self, t.payload.*), .{});
-            const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(t.payload))});
+            var temp_name_buf: [17]u8 = undefined;
+            const temp_name = try std.fmt.bufPrint(&temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(t.payload))});
             try self.print(" {s} = ", .{temp_name});
             try compile(self, t.payload, .{});
             try self.print(";\nif (!{s}.is_success) return (", .{temp_name});
@@ -143,7 +144,8 @@ pub fn compile(
             if (!(inner.eql(rhs_t) or inner.check(rhs_t) or inner.check(lhs_t)))
                 return errors.typeMismatchCatchExpression(lhs_t, rhs_t, c.pos);
 
-            const temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(c.lhs))});
+            var temp_name_buf: [17]u8 = undefined;
+            const temp_name = try std.fmt.bufPrint(&temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(c.lhs))});
 
             self.currentSection().pos = self.currentSection().current_statement;
             try self.compileType(lhs_t, .{});
@@ -288,15 +290,17 @@ fn @"if"(self: *Self, expr: ast.Expression.If) !void {
             break :b .{ .optional = inner };
         } else null;
 
+        var temp_name_buf: [17]u8 = undefined;
         var temp_name: ?[]const u8 = null;
         if (body_type != .void) {
             try self.compileType(body_type, .{ .binding_mut = true });
-            temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&expr))});
+            temp_name = try std.fmt.bufPrint(&temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&expr))});
             try self.print(" {s};\n", .{temp_name.?});
         }
 
         // Use a temporary for the condition expression to avoid re-evaluation.
-        const cond_var = try std.fmt.allocPrint(self.alloc, "_if_cond_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.condition))});
+        var cond_var_buf: [25]u8 = undefined;
+        const cond_var = try std.fmt.bufPrint(&cond_var_buf, "_if_cond_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.condition))});
         try self.compileType(condition_type, .{});
         try self.print(" {s} = ", .{cond_var});
         try compile(self, expr.condition, .{ .expected_type = opt_type });
@@ -358,10 +362,11 @@ fn block(self: *Self, blk: ast.Expression.Block) !void {
     self.currentSection().pos = self.currentSection().current_statement;
 
     const block_t: Type = try .inferBlock(self, blk);
+    var temp_name_buf: [17]u8 = undefined;
     var temp_name: ?[]const u8 = null;
     if (block_t != .void) {
         try self.compileType(block_t, .{ .binding_mut = true });
-        temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&blk))});
+        temp_name = try std.fmt.bufPrint(&temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&blk))});
         try self.print(" {s};\n", .{temp_name.?});
     }
 
@@ -495,10 +500,11 @@ fn match(self: *Self, m: ast.Expression.Match) !void {
     self.currentSection().pos = self.currentSection().current_statement;
 
     const block_t: Type = try .infer(self, .{ .match = m });
+    var temp_name_buf: [17]u8 = undefined;
     var temp_name: ?[]const u8 = null;
     if (block_t != .void) {
         try self.compileType(block_t, .{ .binding_mut = true });
-        temp_name = try std.fmt.allocPrint(self.alloc, "_{}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&m))});
+        temp_name = try std.fmt.bufPrint(&temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(&m))});
         try self.print(" {s};\n", .{temp_name.?});
     }
 
@@ -798,13 +804,15 @@ fn binary(self: *Self, expr: ast.Expression.Binary) CompilerError!void {
             self.currentSection().pos = self.currentSection().current_statement;
 
             try self.compileType(lhs_t, .{});
-            const lhs_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.lhs))});
+            var lhs_temp_name_buf: [17]u8 = undefined;
+            const lhs_temp_name = try std.fmt.bufPrint(&lhs_temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.lhs))});
             try self.print(" {s} = ", .{lhs_temp_name});
             try compile(self, expr.lhs, .{ .expected_type = lhs_t, .is_variable_declaration = true });
             try self.write(";\n");
 
             try self.compileType(if (rhs_t == .@"typeof(nil)") lhs_t else rhs_t, .{});
-            const rhs_temp_name = try std.fmt.allocPrint(self.alloc, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.rhs))});
+            var rhs_temp_name_buf: [17]u8 = undefined;
+            const rhs_temp_name = try std.fmt.bufPrint(&rhs_temp_name_buf, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(expr.rhs))});
             try self.print(" {s} = ", .{rhs_temp_name});
             try compile(self, expr.rhs, .{
                 .expected_type = if (rhs_t == .@"typeof(nil)") lhs_t else rhs_t,
@@ -860,17 +868,17 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
 
     try self.write("(");
 
-    var variables: std.ArrayList(u64) = try .initCapacity(self.alloc, comp.comparisons.len);
-    defer variables.deinit(self.alloc);
-    for (comp.comparisons) |i| variables.appendAssumeCapacity(std.hash.Wyhash.hash(0, std.mem.asBytes(i.right)));
+    const variables = try self.alloc.alloc(u64, comp.comparisons.len);
+    defer self.alloc.free(variables);
+    for (comp.comparisons, 0..) |cmp, i| variables[i] = std.hash.Wyhash.hash(0, std.mem.asBytes(cmp.right));
 
     self.currentSection().pos = self.currentSection().current_statement;
 
-    for (variables.items, 0..) |v, i| {
+    for (variables, 0..) |v, i| {
         const expr = comp.comparisons[i].right;
         const t: Type = try .infer(self, expr.*);
         try self.compileType(t, .{});
-        try self.print(" _{} = ", .{v});
+        try self.print(" _{x} = ", .{v});
         try compile(self, expr, .{});
         try self.write(";\n");
     }
@@ -895,8 +903,8 @@ fn comparison(self: *Self, comp: ast.Expression.Comparison) CompilerError!void {
             .red,
         );
 
-        if (i > 0) try self.print("_{} ", .{variables.items[i - 1]});
-        try self.print(" {s} _{}", .{ @tagName(item.op), variables.items[i] });
+        if (i > 0) try self.print("_{x} ", .{variables[i - 1]});
+        try self.print(" {s} _{x}", .{ @tagName(item.op), variables[i] });
         if (i < comp.comparisons.len - 1) try self.write(" &&");
     }
 
