@@ -64,11 +64,7 @@ fn transpileWithHeaders(
 
     const ast = try Compiler.getAST(alloc, file_path);
 
-    var arena_back: std.heap.ArenaAllocator = .init(alloc);
-    defer arena_back.deinit();
-    const arena = arena_back.allocator();
-
-    var compiler = Compiler.init(arena, ast.root, file_path, registry) catch |err|
+    var compiler = Compiler.init(alloc, ast.root, file_path, registry) catch |err|
         return utils.printErr(
             error.FailedToCreateCompiler,
             "Failed to create compiler: {}\n",

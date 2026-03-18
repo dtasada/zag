@@ -47,16 +47,6 @@ const Section = struct {
     buffer: std.ArrayList(u8) = .empty,
 };
 
-// const Buffer = struct {
-//     writer: std.Io.Writer,
-//
-//     fn init(alloc: std.mem.Allocator) !Buffer {
-//         return .{
-//             .writer = std.Io.Writer.Allocating.init(alloc),
-//         };
-//     }
-// };
-
 alloc: std.mem.Allocator,
 
 /// Input AST to be compiled.
@@ -120,16 +110,19 @@ pub const ScopeItem = union(enum) {
         is_mut: bool,
         inner_name: []const u8,
         is_defined: bool,
+        should_free: bool,
     },
     type: struct {
         type: Type,
         inner_name: []const u8,
         is_defined: bool,
+        should_free: bool,
     },
     constant: struct {
         type: Type,
         value: Value,
         inner_name: []const u8,
+        should_free: bool,
     },
     module: Module,
 };
@@ -172,7 +165,7 @@ pub fn getAST(
     defer parser.deinit();
 
     return .{
-        .root = try ast.cloneSlice(ast.Statement, parser.output, alloc),
+        .root = try utils.cloneSlice(ast.Statement, parser.output, alloc),
         .source = file,
     };
 }
@@ -269,9 +262,24 @@ pub fn deinit(self: *Self) void {
     self.type_def_blocks.deinit(self.alloc);
     self.type_def_stack.deinit(self.alloc);
 
+    for (self.scopes.items) |i| {
+        var it = i.items.iterator();
+        while (it.next()) |scope| {
+            switch (scope.value_ptr.*) {
+                .module => {},
+                inline else => |s| if (s.should_free) self.alloc.free(s.inner_name),
+            }
+        }
+        i.items.deinit();
+        self.alloc.destroy(i.items);
+    }
     self.scopes.deinit(self.alloc);
     self.pending_instantiations.deinit(self.alloc);
+
+    var import_mods_it = self.imported_modules.valueIterator();
+    while (import_mods_it.next()) |mod| mod.deinit(self.alloc);
     self.imported_modules.deinit();
+    self.module.deinit(self.alloc);
 }
 
 /// Entry point for the compiler. Compiles AST into C code.
@@ -379,6 +387,7 @@ fn processFunctionDefinitionSymbol(self: *Self, func: *const ast.Statement.Funct
         .{ .symbol = .{ .type = t } },
         .{
             .inner_name = try self.mangle(func.name),
+            .should_free = true,
             .is_defined = false,
         },
     );
@@ -848,9 +857,9 @@ pub fn compileVariableSignature(
 
             try self.compileType(function.return_type.*, .{ .binding_mut = true });
             try self.print(" (*{s})(", .{name});
-            for (function.params.items, 0..) |param, i| {
+            for (function.params, 0..) |param, i| {
                 try self.compileType(param.type, .{ .binding_mut = binding == .let_mut });
-                if (i < function.params.items.len - 1) try self.write(", ");
+                if (i < function.params.len - 1) try self.write(", ");
             }
             try self.write(")");
         },
@@ -905,26 +914,21 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
         },
-        .struct_instantiation => |inst| {
-            var fields: std.ArrayList(Value.ComptimeStruct.Field) = .empty;
-            errdefer fields.deinit(self.alloc);
-
-            var it = inst.members.iterator();
-            while (it.next()) |member| {
-                try fields.append(self.alloc, .{
-                    .name = member.key_ptr.*,
-                    .value = self.solveComptimeExpression(member.value_ptr.*) catch
-                        return error.ExpressionCannotBeEvaluatedAtCompileTime,
-                });
-            }
-
-            const inferred_type = try Type.infer(self, expression);
-            return .{
-                .comptime_struct = .{
-                    .type = inferred_type,
-                    .fields = try fields.toOwnedSlice(self.alloc),
+        .struct_instantiation => |inst| .{
+            .comptime_struct = .{
+                .type = try Type.infer(self, expression),
+                .fields = b: {
+                    const fields = try self.alloc.alloc(Value.ComptimeStruct.Field, inst.members.count());
+                    var i: usize = 0;
+                    var it = inst.members.iterator();
+                    while (it.next()) |member| : (i += 1) fields[i] = .{
+                        .name = member.key_ptr.*,
+                        .value = self.solveComptimeExpression(member.value_ptr.*) catch
+                            return error.ExpressionCannotBeEvaluatedAtCompileTime,
+                    };
+                    break :b fields;
                 },
-            };
+            },
         },
         .member => |member_expr| {
             const parent_val = self.solveComptimeExpression(member_expr.parent.*) catch
@@ -987,6 +991,7 @@ fn solveGenerics(self: *Self) !void {
                         .type = sym.type,
                         .inner_name = sym.inner_name,
                         .is_defined = true,
+                        .should_free = false,
                     },
                 },
                 else => .{
@@ -995,6 +1000,7 @@ fn solveGenerics(self: *Self) !void {
                         .inner_name = sym.inner_name,
                         .is_mut = false,
                         .is_defined = true,
+                        .should_free = false,
                     },
                 },
             };
@@ -1102,6 +1108,7 @@ pub fn registerSymbol(
     },
     opts: struct {
         inner_name: ?[]const u8 = null,
+        should_free: bool = false,
         is_defined: bool = true,
     },
 ) !void {
@@ -1112,6 +1119,7 @@ pub fn registerSymbol(
                 .is_defined = opts.is_defined,
                 .type = symbol.type,
                 .inner_name = opts.inner_name orelse name,
+                .should_free = opts.should_free,
             },
         },
         .type => |@"type"| .{
@@ -1119,6 +1127,7 @@ pub fn registerSymbol(
                 .type = @"type",
                 .is_defined = opts.is_defined,
                 .inner_name = opts.inner_name orelse name,
+                .should_free = opts.should_free,
             },
         },
         .module => |module| .{ .module = module },
@@ -1127,6 +1136,7 @@ pub fn registerSymbol(
                 .type = constant.type,
                 .value = constant.value,
                 .inner_name = opts.inner_name orelse name,
+                .should_free = opts.should_free,
             },
         },
     });
@@ -1185,8 +1195,8 @@ fn registerConstants(self: *Self) !void {
                     .name = "sizeof",
                     .inner_name = "sizeof",
                     .generic_params = b: {
-                        var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .type_type });
+                        const params = try self.alloc.alloc(Type.Function.Param, 1);
+                        params[0] = .{ .name = "T", .type = .type_type };
                         break :b params;
                     },
                     .return_type = b: {
@@ -1194,7 +1204,7 @@ fn registerConstants(self: *Self) !void {
                         t.* = .usize;
                         break :b t;
                     },
-                    .params = .empty,
+                    .params = &.{},
                     .module = builtins,
                 },
             },
@@ -1209,8 +1219,8 @@ fn registerConstants(self: *Self) !void {
                     .name = "cast",
                     .inner_name = "cast",
                     .generic_params = b: {
-                        var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .type_type });
+                        const params = try self.alloc.alloc(Type.Function.Param, 1);
+                        params[0] = .{ .name = "T", .type = .type_type };
                         break :b params;
                     },
                     .return_type = b: {
@@ -1219,8 +1229,8 @@ fn registerConstants(self: *Self) !void {
                         break :b t;
                     },
                     .params = b: {
-                        var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "val", .type = .any });
+                        const params = try self.alloc.alloc(Type.Function.Param, 1);
+                        params[0] = .{ .name = "val", .type = .any };
                         break :b params;
                     },
                     .module = builtins,
@@ -1237,8 +1247,8 @@ fn registerConstants(self: *Self) !void {
                     .name = "xor",
                     .inner_name = "xor",
                     .generic_params = b: {
-                        var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "T", .type = .type_type });
+                        const params = try self.alloc.alloc(Type.Function.Param, 1);
+                        params[0] = .{ .name = "T", .type = .type_type };
                         break :b params;
                     },
                     .return_type = b: {
@@ -1247,9 +1257,9 @@ fn registerConstants(self: *Self) !void {
                         break :b t;
                     },
                     .params = b: {
-                        var params: std.ArrayList(Type.Function.Param) = .empty;
-                        try params.append(self.alloc, .{ .name = "a", .type = .any });
-                        try params.append(self.alloc, .{ .name = "b", .type = .any });
+                        const params = try self.alloc.alloc(Type.Function.Param, 2);
+                        params[0] = .{ .name = "a", .type = .any };
+                        params[1] = .{ .name = "b", .type = .any };
                         break :b params;
                     },
                     .module = builtins,
@@ -1445,9 +1455,9 @@ pub fn getTypeFromZagHeader(self: *Self, t: Type) ![]const u8 {
                 try self.write("typedef ");
                 try self.compileType(function.return_type.*, .{});
                 try self.print(" (*{s})(", .{type_name});
-                for (function.params.items, 0..) |param, i| {
+                for (function.params, 0..) |param, i| {
                     try self.compileType(param.type, .{});
-                    if (i < function.params.items.len - 1) try self.write(", ");
+                    if (i < function.params.len - 1) try self.write(", ");
                 }
                 try self.write(");\n");
 

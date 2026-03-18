@@ -12,12 +12,6 @@ pub const Block = []const Statement;
 
 const ast = @This();
 
-pub fn cloneSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) ![]T {
-    const new_list = try alloc.alloc(T, list.len);
-    for (list, 0..) |item, i| new_list[i] = try item.clone(alloc);
-    return new_list;
-}
-
 pub fn deinitSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) void {
     for (list) |i| i.deinit(alloc);
     alloc.free(list);
@@ -127,11 +121,11 @@ pub const Expression = union(enum) {
             condition: Condition,
             result: Statement,
 
-            fn clone(self: Case, alloc: std.mem.Allocator) !Case {
+            pub fn clone(self: Case, alloc: std.mem.Allocator) !Case {
                 return .{
                     .pos = try self.pos.clone(alloc),
                     .condition = switch (self.condition) {
-                        .opts => |opts| .{ .opts = try cloneSlice(ast.Expression, opts, alloc) },
+                        .opts => |opts| .{ .opts = try utils.cloneSlice(ast.Expression, opts, alloc) },
                         .@"else" => .@"else",
                     },
                     .result = try self.result.clone(alloc),
@@ -287,14 +281,14 @@ pub const Expression = union(enum) {
             .block => |block| .{
                 .block = .{
                     .pos = try block.pos.clone(alloc),
-                    .payload = try cloneSlice(Statement, block.payload, alloc),
+                    .payload = try utils.cloneSlice(Statement, block.payload, alloc),
                 },
             },
             .generic => |generic| .{
                 .generic = .{
                     .pos = try generic.pos.clone(alloc),
                     .lhs = try generic.lhs.clonePtr(alloc),
-                    .arguments = try cloneSlice(ast.Expression, generic.arguments, alloc),
+                    .arguments = try utils.cloneSlice(ast.Expression, generic.arguments, alloc),
                 },
             },
             .binary => |binary| .{
@@ -309,7 +303,7 @@ pub const Expression = union(enum) {
                 .comparison = .{
                     .pos = try comparison.pos.clone(alloc),
                     .left = try comparison.left.clonePtr(alloc),
-                    .comparisons = try cloneSlice(Comparison.Item, comparison.comparisons, alloc),
+                    .comparisons = try utils.cloneSlice(Comparison.Item, comparison.comparisons, alloc),
                 },
             },
             .member => |member| .{
@@ -329,7 +323,7 @@ pub const Expression = union(enum) {
                 .call = .{
                     .pos = try call.pos.clone(alloc),
                     .callee = try call.callee.clonePtr(alloc),
-                    .args = try cloneSlice(ast.Expression, call.args, alloc),
+                    .args = try utils.cloneSlice(ast.Expression, call.args, alloc),
                 },
             },
             .prefix => |prefix| .{
@@ -368,7 +362,7 @@ pub const Expression = union(enum) {
                     .pos = try ai.pos.clone(alloc),
                     .length = try ai.length.clonePtr(alloc),
                     .type = try ai.type.clone(alloc),
-                    .contents = try cloneSlice(ast.Expression, ai.contents, alloc),
+                    .contents = try utils.cloneSlice(ast.Expression, ai.contents, alloc),
                 },
             },
             .range => |range| .{
@@ -415,7 +409,7 @@ pub const Expression = union(enum) {
                 .match = .{
                     .pos = try match.pos.clone(alloc),
                     .condition = try match.condition.clonePtr(alloc),
-                    .cases = try cloneSlice(Expression.Match.Case, match.cases, alloc),
+                    .cases = try utils.cloneSlice(Expression.Match.Case, match.cases, alloc),
                 },
             },
             .type => |t| .{ .type = .{ .pos = try t.pos.clone(alloc), .payload = try t.payload.clone(alloc) } },
@@ -435,7 +429,7 @@ pub const Expression = union(enum) {
         };
     }
 
-    pub fn deinitPtr(self: *const Expression, alloc: std.mem.Allocator) void {
+    fn deinitPtr(self: *const Expression, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
         alloc.destroy(self);
     }
@@ -575,10 +569,10 @@ pub const Statement = union(enum) {
                 .pos = try self.pos.clone(alloc),
                 .is_pub = self.is_pub,
                 .name = try alloc.dupe(u8, self.name),
-                .generic_parameters = try cloneSlice(VariableSignature, self.generic_parameters, alloc),
-                .parameters = try cloneSlice(VariableSignature, self.parameters, alloc),
+                .generic_parameters = try utils.cloneSlice(VariableSignature, self.generic_parameters, alloc),
+                .parameters = try utils.cloneSlice(VariableSignature, self.parameters, alloc),
                 .return_type = try self.return_type.clone(alloc),
-                .body = try cloneSlice(ast.Statement, self.body, alloc),
+                .body = try utils.cloneSlice(ast.Statement, self.body, alloc),
             };
         }
 
@@ -617,7 +611,7 @@ pub const Statement = union(enum) {
                 name: []const u8,
                 type: if (T == .@"struct") Type else ?Type,
 
-                fn clone(self: Member, alloc: std.mem.Allocator) !Member {
+                pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
                     return switch (T) {
                         .@"struct" => .{
                             .name = try alloc.dupe(u8, self.name),
@@ -652,11 +646,11 @@ pub const Statement = union(enum) {
                     .pos = self.pos,
                     .is_pub = self.is_pub,
                     .name = try alloc.dupe(u8, self.name),
-                    .generic_types = try cloneSlice(VariableSignature, self.generic_types, alloc),
-                    .variables = try cloneSlice(VariableDefinition, self.variables, alloc),
-                    .subtypes = try cloneSlice(Subtype, self.subtypes, alloc),
-                    .members = try cloneSlice(Member, self.members, alloc),
-                    .methods = try cloneSlice(FunctionDefinition, self.methods, alloc),
+                    .generic_types = try utils.cloneSlice(VariableSignature, self.generic_types, alloc),
+                    .variables = try utils.cloneSlice(VariableDefinition, self.variables, alloc),
+                    .subtypes = try utils.cloneSlice(Subtype, self.subtypes, alloc),
+                    .members = try utils.cloneSlice(Member, self.members, alloc),
+                    .methods = try utils.cloneSlice(FunctionDefinition, self.methods, alloc),
                 };
             }
 
@@ -706,10 +700,10 @@ pub const Statement = union(enum) {
                 .pos = self.pos,
                 .is_pub = self.is_pub,
                 .name = try alloc.dupe(u8, self.name),
-                .variables = try cloneSlice(VariableDefinition, self.variables, alloc),
-                .subtypes = try cloneSlice(Subtype, self.subtypes, alloc),
-                .members = try cloneSlice(Member, self.members, alloc),
-                .methods = try cloneSlice(FunctionDefinition, self.methods, alloc),
+                .variables = try utils.cloneSlice(VariableDefinition, self.variables, alloc),
+                .subtypes = try utils.cloneSlice(Subtype, self.subtypes, alloc),
+                .members = try utils.cloneSlice(Member, self.members, alloc),
+                .methods = try utils.cloneSlice(FunctionDefinition, self.methods, alloc),
             };
         }
 
@@ -836,7 +830,7 @@ pub const Statement = union(enum) {
                     .pos = try bfd.pos.clone(alloc),
                     .is_pub = bfd.is_pub,
                     .name = try alloc.dupe(u8, bfd.name),
-                    .parameters = try cloneSlice(VariableSignature, bfd.parameters, alloc),
+                    .parameters = try utils.cloneSlice(VariableSignature, bfd.parameters, alloc),
                     .return_type = try bfd.return_type.clone(alloc),
                 },
             },
@@ -851,7 +845,7 @@ pub const Statement = union(enum) {
             .block => |block| .{
                 .block = .{
                     .pos = try block.pos.clone(alloc),
-                    .payload = try cloneSlice(ast.Statement, block.payload, alloc),
+                    .payload = try utils.cloneSlice(ast.Statement, block.payload, alloc),
                 },
             },
             .import => |import| .{
@@ -1061,8 +1055,8 @@ pub const Type = union(enum) {
                 .function = .{
                     .pos = try n.pos.clone(alloc),
                     .name = try alloc.dupe(u8, n.name),
-                    .parameters = try cloneSlice(VariableSignature, n.parameters, alloc),
-                    .generic_parameters = try cloneSlice(VariableSignature, n.generic_parameters, alloc),
+                    .parameters = try utils.cloneSlice(VariableSignature, n.parameters, alloc),
+                    .generic_parameters = try utils.cloneSlice(VariableSignature, n.generic_parameters, alloc),
                     .return_type = try n.return_type.clonePtr(alloc),
                 },
             },
@@ -1070,7 +1064,7 @@ pub const Type = union(enum) {
                 .generic = .{
                     .pos = try n.pos.clone(alloc),
                     .lhs = try n.lhs.clonePtr(alloc),
-                    .arguments = try cloneSlice(Expression, n.arguments, alloc),
+                    .arguments = try utils.cloneSlice(Expression, n.arguments, alloc),
                 },
             },
             .variadic => |n| .{ .variadic = .{ .pos = try n.pos.clone(alloc) } },

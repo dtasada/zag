@@ -1045,17 +1045,17 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
     b: switch (parent) {
         inline .@"struct", .@"union" => |@"struct"| {
             if (!is_instance_method) {
-                if (method.params.items.len == 0)
+                if (method.params.len == 0)
                     return errors.notAnInstanceMethod(@"struct".name, m.member_name, m.pos);
 
-                const first_type = method.params.items[0].type;
+                const first_type = method.params[0].type;
                 if (!first_type.check(parent) and
                     (first_type != .reference or !first_type.reference.inner.check(parent)) and
                     (parent != .reference or !parent.reference.inner.check(first_type)))
                     return errors.notAnInstanceMethod(@"struct".name, m.member_name, m.pos);
             }
 
-            const expected_args = if (is_instance_method) method.params.items.len else method.params.items.len - 1;
+            const expected_args = if (is_instance_method) method.params.len else method.params.len - 1;
             const received_args = call_expr.args.len;
             if (expected_args != received_args) return errors.argumentCountMismatch(
                 expected_args,
@@ -1064,8 +1064,8 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
             );
 
             try self.print("{s}(", .{method.name});
-            if (method.params.items.len > 0) {
-                const expected_type = method.params.items[0].type;
+            if (method.params.len > 0) {
+                const expected_type = method.params[0].type;
                 switch (expected_type) {
                     .reference => |param_arg| if (param_arg.is_mut and !reference_is_mut) return utils.printErr(
                         error.BadMutability,
@@ -1078,7 +1078,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     else => {},
                 }
 
-                for (method.params.items[1..], 0..) |expected_param_type, i| {
+                for (method.params[1..], 0..) |expected_param_type, i| {
                     const received_expr = call_expr.args[i];
                     const received_type: Type = try .infer(self, received_expr);
                     if (expected_param_type.type != .variadic and !expected_param_type.type.eql(received_type)) return errors.typeMismatch(
@@ -1090,7 +1090,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
 
                 const ref_level_diff = parent_reference_level - b2: {
                     var self_method_reference_level: i32 = 0;
-                    count_ref_level: switch (method.params.items[0].type) {
+                    count_ref_level: switch (method.params[0].type) {
                         .reference => |reference| {
                             self_method_reference_level += 1;
                             continue :count_ref_level reference.inner.*;
@@ -1104,7 +1104,7 @@ fn methodCall(self: *Self, call_expr: ast.Expression.Call, m: ast.Expression.Mem
                     if (ref_level_diff > 0) "*" else if (ref_level_diff < 0) "&" else unreachable,
                 );
                 try compile(self, m.parent, .{});
-                if (method.params.items.len > 1) try self.write(", ");
+                if (method.params.len > 1) try self.write(", ");
                 for (call_expr.args, 1..) |*arg, i| {
                     try compile(self, arg, .{});
                     if (i < call_expr.args.len) try self.write(", ");
@@ -1218,12 +1218,12 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
     }
 
     const variadic_arg: ?usize = b: {
-        for (function.params.items, 0..) |param_type, i|
+        for (function.params, 0..) |param_type, i|
             if (param_type.type == .variadic) break :b i;
         break :b null;
     };
 
-    const expected_args = if (variadic_arg) |_| function.params.items.len - 1 else function.params.items.len;
+    const expected_args = if (variadic_arg) |_| function.params.len - 1 else function.params.len;
     const received_args = call_expr.args.len;
 
     if (variadic_arg) |_| {
@@ -1238,7 +1238,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
         call_expr.pos,
     );
 
-    for (function.params.items[0 .. variadic_arg orelse function.params.items.len], 0..) |expected_param, i| {
+    for (function.params[0 .. variadic_arg orelse function.params.len], 0..) |expected_param, i| {
         const expected_type = expected_param.type;
         const received_expr = call_expr.args[i];
         const received_type = try Type.infer(self, received_expr);
@@ -1260,7 +1260,7 @@ fn functionCall(self: *Self, function: Type.Function, call_expr: ast.Expression.
 
     try self.write("(");
     for (call_expr.args, 1..) |*e, i| {
-        const expected_type = function.params.items[i - 1].type;
+        const expected_type = function.params[i - 1].type;
         try compile(self, e, .{ .expected_type = if (expected_type == .variadic) null else expected_type });
         if (i < call_expr.args.len) try self.write(", ");
     }

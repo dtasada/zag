@@ -10,6 +10,11 @@ pub const Symbol = struct {
     inner_name: []const u8,
     type: Type,
     is_mut: bool = false,
+
+    fn deinit(self: Symbol, alloc: std.mem.Allocator) void {
+        alloc.free(self.inner_name);
+        self.type.deinit(alloc);
+    }
 };
 
 name: []const u8,
@@ -32,8 +37,13 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Self {
 }
 
 pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+    var symbols_it = self.symbols.valueIterator();
+    while (symbols_it.next()) |sym| sym.deinit(alloc);
     self.symbols.deinit();
+    alloc.destroy(self.symbols);
+
+    var imports_it = self.imports.valueIterator();
+    while (imports_it.next()) |sym| sym.deinit(alloc);
     self.imports.deinit();
-    if (self.source_buffer) |s| alloc.free(s);
-    alloc.free(self.source_path);
+    alloc.destroy(self.imports);
 }

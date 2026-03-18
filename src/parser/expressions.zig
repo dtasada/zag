@@ -41,7 +41,7 @@ pub fn binary(self: *Self, lhs: *const ast.Expression, bp: BindingPower) ParserE
     switch (op) {
         .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
             if (lhs.* == .comparison) {
-                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .fromOwnedSlice(try ast.cloneSlice(
+                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .fromOwnedSlice(try utils.cloneSlice(
                     ast.Expression.Comparison.Item,
                     lhs.comparison.comparisons,
                     self.alloc,

@@ -89,3 +89,9 @@ pub fn randInt(comptime T: type) T {
     const rand = prng.random();
     return rand.int(T);
 }
+
+pub fn cloneSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) ![]T {
+    const new_list = try alloc.alloc(T, list.len);
+    for (list, 0..) |item, i| new_list[i] = try item.clone(alloc);
+    return new_list;
+}

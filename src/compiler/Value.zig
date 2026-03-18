@@ -202,4 +202,37 @@ pub const Value = union(enum) {
         }
         return h.final();
     }
+
+    pub fn deinit(self: Value, alloc: std.mem.Allocator) void {
+        switch (self) {
+            .type => |t| t.deinit(alloc),
+            .function => |f| (Type{ .function = f }).deinit(alloc),
+            .comptime_struct => |cts| {
+                cts.type.deinit(alloc);
+                for (cts.fields) |f| f.value.deinit(alloc);
+            },
+            else => {},
+        }
+    }
+
+    pub fn clone(self: Value, alloc: std.mem.Allocator) std.mem.Allocator.Error!Value {
+        return switch (self) {
+            .type => |t| .{ .type = try t.clone(alloc) },
+            .function => |f| .{ .function = (try (Type{ .function = f }).clone(alloc)).function },
+            .comptime_struct => |cts| .{
+                .comptime_struct = .{
+                    .type = try cts.type.clone(alloc),
+                    .fields = b: {
+                        const fields = try alloc.alloc(ComptimeStruct.Field, cts.fields.len);
+                        for (cts.fields, 0..) |f, i| fields[i] = .{
+                            .name = try alloc.dupe(u8, f.name),
+                            .value = try f.value.clone(alloc),
+                        };
+                        break :b fields;
+                    },
+                },
+            },
+            else => self,
+        };
+    }
 };
