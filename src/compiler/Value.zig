@@ -86,7 +86,7 @@ pub const Value = union(enum) {
             .f32 => .f32,
             .f64 => .f64,
             .bool => .bool,
-            .type => |*t| .{ .type = t },
+            .type => |*t| .{ .type = t }, // TODO: this is returning address of stack value
             .void => .void,
             .comptime_struct => |cs| cs.type,
             .function => |f| .{ .function = f },

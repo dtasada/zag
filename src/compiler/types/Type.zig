@@ -72,6 +72,7 @@ pub const Type = union(enum) {
     pub const Enum = types.Enum;
     pub const CompoundType = types.CompoundType;
     pub const Subtype = types.Subtype;
+    pub const fromCompoundTypeDeclaration = types.fromCompoundTypeDeclaration;
 
     /// Converts an AST type to a Compiler type.
     /// `infer` is the expression with which the type is inferred.
@@ -356,7 +357,7 @@ pub const Type = union(enum) {
                     copy_decl.* = try s.clone(compiler.alloc);
                     copy_decl.name = try compiler.alloc.dupe(u8, name.items);
                     copy_decl.generic_types = &.{};
-                    var t = try fromCompoundTypeDeclaration(
+                    var t = try types.fromCompoundTypeDeclaration(
                         compiler,
                         std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
                         copy_decl,
@@ -647,278 +648,6 @@ pub const Type = union(enum) {
         };
 
         return .void;
-    }
-
-    /// Returns a type from an AST compound type declaration statement.
-    pub fn fromCompoundTypeDeclaration(
-        compiler: *Compiler,
-        comptime T: utils.CompoundTypeTag,
-        type_decl: *const switch (T) {
-            .@"struct" => ast.Statement.StructDeclaration,
-            .@"union" => ast.Statement.UnionDeclaration,
-            .@"enum" => ast.Statement.EnumDeclaration,
-        },
-        opts: struct {
-            inner_name: ?[]const u8 = null,
-        },
-    ) CompilerError!switch (T) {
-        .@"struct" => Type.Struct,
-        .@"union" => Type.Union,
-        .@"enum" => Type.Enum,
-    } {
-        const inner_name = opts.inner_name orelse try compiler.mangle(type_decl.name);
-        const tag_type_inner_name = try std.fmt.allocPrint(compiler.alloc, "{s}_tag_type", .{type_decl.name});
-
-        const should_define = if (compiler.getSymbolDefined(type_decl.name)) |sd| b: {
-            if (sd)
-                return errors.symbolShadowing(type_decl.name, type_decl.pos)
-            else
-                break :b false;
-        } else |err| switch (err) {
-            error.SymbolNotVariable => return err,
-            else => true,
-        };
-
-        // register struct in scope
-        var compound_type: switch (T) {
-            .@"struct" => Type.Struct,
-            .@"union" => Type.Union,
-            .@"enum" => Type.Enum,
-        } = if (compiler.getSymbolType(type_decl.name)) |existing| b: {
-            switch (T) {
-                .@"struct" => if (existing == .@"struct") break :b existing.@"struct",
-                .@"union" => if (existing == .@"union") break :b existing.@"union",
-                .@"enum" => if (existing == .@"enum") break :b existing.@"enum",
-            }
-            // If type mismatch or not found (logic error in scan?), create new.
-            // But strict forward decl implies we should find it.
-            // However, we fallback to init for safety/standalone usage.
-            break :b try compoundTypeInit(compiler, T, type_decl, inner_name, tag_type_inner_name);
-        } else |_| try compoundTypeInit(compiler, T, type_decl, inner_name, tag_type_inner_name);
-
-        // If definition is set, it means we already populated this type.
-        if (compound_type.definition != null) return compound_type;
-
-        if (T == .@"union" and compound_type.tag_type == null) {
-            const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
-            enum_decl.* = .{
-                .pos = type_decl.pos,
-                .is_pub = false,
-                .name = tag_type_inner_name,
-                .variables = &.{},
-                .subtypes = &.{},
-                .members = b: {
-                    const members = try compiler.alloc.alloc(ast.Statement.EnumDeclaration.Member, type_decl.members.len);
-                    for (type_decl.members, 0..) |member, i| members[i] = .{ .name = member.name };
-                    break :b members;
-                },
-                .methods = &.{},
-            };
-
-            const tag_type_val: Type = .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl, .{}) };
-
-            const tag_ptr = try compiler.alloc.create(Type);
-            tag_ptr.* = tag_type_val;
-            compound_type.tag_type = tag_ptr;
-        }
-
-        switch (T) {
-            .@"struct", .@"union" => for (type_decl.generic_types) |g| {
-                // const generics: std.ArrayList(Type.types.Function.Param) = try .fromOwnedSlice(compound_type.generic_params);
-                compound_type.generic_params = try compiler.alloc.realloc(compound_type.generic_params, compound_type.generic_params.len + 1);
-                compound_type.generic_params[compound_type.generic_params.len - 1] = .{
-                    .name = g.name,
-                    .type = if (g.type == .inferred) .type_type else try .fromAst(compiler, g.type),
-                };
-            },
-            else => {},
-        }
-
-        compound_type.definition = type_decl;
-
-        try compiler.registerSymbol(
-            type_decl.name,
-            .{ .type = @unionInit(Type, @tagName(T), compound_type) },
-            .{ .is_defined = should_define, .inner_name = try compiler.mangle(type_decl.name) },
-        );
-
-        if (T == .@"struct" or T == .@"union") {
-            if (type_decl.generic_types.len > 0) return compound_type;
-        }
-
-        switch (T) {
-            .@"struct", .@"union" => for (type_decl.generic_types) |g|
-                try compiler.registerSymbol(g.name, .{ .type = .{ .generic_param = g.name } }, .{}),
-            else => {},
-        }
-
-        for (type_decl.variables) |variable| {
-            const value = try compiler.solveComptimeExpression(variable.assigned_value);
-            const var_type = if (variable.type == .inferred) value.getType() else try fromAst(compiler, variable.type);
-
-            try compiler.registerSymbol(
-                variable.variable_name,
-                if (variable.binding == .@"const")
-                    .{ .constant = .{ .type = var_type, .value = value } }
-                else
-                    .{ .symbol = .{ .is_mut = variable.binding == .let_mut, .type = var_type } },
-                .{},
-            );
-
-            try compound_type.variables.put(
-                variable.variable_name,
-                .{
-                    .is_pub = variable.is_pub,
-                    .inner_name = try std.fmt.allocPrint(
-                        compiler.alloc,
-                        "{s}_{s}",
-                        .{ inner_name, variable.variable_name },
-                    ),
-                    .type = var_type,
-                    .value = value,
-                    .binding = variable.binding,
-                },
-            );
-        }
-
-        for (type_decl.subtypes) |subtype| switch (subtype) {
-            inline else => |st, tag| {
-                const st_ptr = try compiler.alloc.create(@TypeOf(st));
-                st_ptr.* = st;
-                try compound_type.subtypes.put(st.name, .{
-                    .is_pub = st.is_pub,
-                    .inner_name = try std.fmt.allocPrint(
-                        compiler.alloc,
-                        "{s}_{s}",
-                        .{ inner_name, st.name },
-                    ),
-                    .type = @unionInit(
-                        Type.Subtype.Tag,
-                        @tagName(tag),
-                        try fromCompoundTypeDeclaration(compiler, tag, st_ptr, .{
-                            .inner_name = try std.fmt.allocPrint(
-                                compiler.alloc,
-                                "{s}_{s}",
-                                .{ inner_name, st.name },
-                            ),
-                        }),
-                    ),
-                });
-            },
-        };
-
-        var enum_last_value: usize = 0;
-        for (type_decl.members) |member| {
-            if (compound_type.getProperty(member.name)) |_| return utils.printErr(
-                error.DuplicateMember,
-                "comperr: Duplicate member '{s}' declared in '{s}' at {f}.\n",
-                .{ member.name, type_decl.name, type_decl.pos },
-                .red,
-            );
-
-            switch (T) {
-                inline .@"struct", .@"union" => {
-                    const member_type: Type = switch (T) {
-                        .@"struct" => try fromAst(compiler, member.type),
-                        .@"union" => if (member.type) |t| try fromAst(compiler, t) else .void,
-                        else => unreachable,
-                    };
-                    switch (member_type) {
-                        inline .@"struct", .@"union" => |ct, tag| {
-                            var inner_members = ct.members.iterator();
-                            while (inner_members.next()) |inner_member| {
-                                if (inner_member.value_ptr.eql(@unionInit(Type, @tagName(T), compound_type)))
-                                    return utils.printErr(
-                                        error.CircularTypeDefinition,
-                                        "comperr: {s} '{s}' depends on itself. Member '{s}' is of type '{s}' ({f}).\n",
-                                        .{ @tagName(tag), compound_type.name, inner_member.key_ptr.*, compound_type.name, type_decl.pos },
-                                        .red,
-                                    );
-                            }
-                        },
-                        else => {},
-                    }
-
-                    try compound_type.members.put(member.name, member_type);
-                },
-                .@"enum" => try compound_type.members.put(member.name, if (member.value) |value|
-                    (try compiler.solveComptimeExpression(value)).u64
-                else b: {
-                    const val = enum_last_value;
-                    enum_last_value += 1;
-                    break :b val;
-                }),
-            }
-        }
-
-        for (type_decl.methods, 0..) |method, i| {
-            const params = try compiler.alloc.alloc(types.Function.Param, method.parameters.len);
-            for (method.parameters, 0..) |p, j| params[j] = .{
-                .name = p.name,
-                .type = try .fromAst(compiler, p.type),
-            };
-
-            const generic_params = try compiler.alloc.alloc(types.Function.Param, method.generic_parameters.len);
-            for (method.generic_parameters, 0..) |p, j| generic_params[j] = .{
-                .name = p.name,
-                .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
-            };
-
-            const return_type = try fromAstPtr(compiler, method.return_type);
-            try compound_type.methods.put(method.name, .{
-                .name = method.name,
-                .inner_name = try std.fmt.allocPrint(compiler.alloc, "__zag_{s}_{s}", .{
-                    type_decl.name,
-                    method.name,
-                }),
-                .generic_params = generic_params,
-                .params = params,
-                .return_type = return_type,
-                .definition = &type_decl.methods[i],
-            });
-        }
-
-        return compound_type;
-    }
-
-    fn compoundTypeInit(
-        compiler: *Compiler,
-        comptime T: utils.CompoundTypeTag,
-        type_decl: *const switch (T) {
-            .@"struct" => ast.Statement.StructDeclaration,
-            .@"union" => ast.Statement.UnionDeclaration,
-            .@"enum" => ast.Statement.EnumDeclaration,
-        },
-        inner_name: []const u8,
-        tag_type_inner_name: []const u8,
-    ) !switch (T) {
-        .@"struct" => Type.Struct,
-        .@"union" => Type.Union,
-        .@"enum" => Type.Enum,
-    } {
-        return try Type.CompoundType(T).init(compiler, type_decl.name, inner_name, switch (T) {
-            .@"struct" => null,
-            .@"enum" => getTagType(type_decl.members.len),
-            .@"union" => b: {
-                const enum_decl = try compiler.alloc.create(ast.Statement.EnumDeclaration);
-                enum_decl.* = .{
-                    .pos = type_decl.pos,
-                    .is_pub = false,
-                    .name = tag_type_inner_name,
-                    .variables = &.{},
-                    .subtypes = &.{},
-                    .members = b2: {
-                        const members = try compiler.alloc.alloc(ast.Statement.EnumDeclaration.Member, type_decl.members.len);
-                        for (type_decl.members, 0..) |member, i| members[i] = .{ .name = member.name };
-                        break :b2 members;
-                    },
-                    .methods = &.{},
-                };
-
-                // Create the tag type but DON'T compile/emit it yet
-                break :b .{ .@"enum" = try Type.fromCompoundTypeDeclaration(compiler, .@"enum", enum_decl, .{}) };
-            },
-        });
     }
 
     fn inferArrayInstantiationExpression(compiler: *Compiler, array: ast.Expression.ArrayInstantiation) !Type {
@@ -1498,7 +1227,7 @@ pub const Type = union(enum) {
                     break :b subtypes;
                 },
                 .members = b: {
-                    const members = try alloc.create(std.StringArrayHashMap(@TypeOf(ct).MemberType));
+                    const members = try alloc.create(std.StringHashMap(@TypeOf(ct).MemberType));
                     members.* = .init(alloc);
                     var members_it = ct.members.iterator();
                     while (members_it.next()) |entry| try members.put(
@@ -1508,7 +1237,7 @@ pub const Type = union(enum) {
                     break :b members;
                 },
                 .methods = b: {
-                    const methods = try alloc.create(std.StringArrayHashMap(types.Method));
+                    const methods = try alloc.create(std.StringHashMap(types.Method));
                     methods.* = .init(alloc);
                     var methods_it = ct.methods.iterator();
                     while (methods_it.next()) |entry| try methods.put(
