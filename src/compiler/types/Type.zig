@@ -77,79 +77,82 @@ pub const Type = union(enum) {
     /// Converts an AST type to a Compiler type.
     /// `infer` is the expression with which the type is inferred.
     pub fn fromAst(compiler: *Compiler, t: ast.Type) CompilerError!Type {
-        return switch (t) {
-            .symbol => |symbol| {
-                const result = compiler.getSymbolType(symbol.inner) catch
-                    return errors.unknownSymbol(symbol.inner, symbol.pos);
-                if (result == .void and !std.mem.eql(u8, symbol.inner, "void"))
-                    return errors.unknownSymbol(symbol.inner, symbol.pos);
-                // If we get a .type, unwrap it to the actual type
-                if (result == .type) return result.type.*;
-                return result;
+    var raw_result: Type = switch (t) {
+        .symbol => |symbol| {
+            const result = compiler.getSymbolType(symbol.inner) catch
+                return errors.unknownSymbol(symbol.inner, symbol.pos);
+            if (result == .void and !std.mem.eql(u8, symbol.inner, "void"))
+                return errors.unknownSymbol(symbol.inner, symbol.pos);
+            // If we get a .type, unwrap it to the actual type and clone it
+            if (result == .type) return try result.type.*.clone(compiler.alloc);
+            // Otherwise, clone the result
+            return try result.clone(compiler.alloc);
+        },
+        .generic => |generic| try instantiateGeneric(
+            compiler,
+            try fromAst(compiler, generic.lhs.*),
+            generic.arguments,
+            generic.pos,
+        ),
+        .variadic => .variadic,
+        .reference => |reference| .{
+            .reference = .{
+                .inner = try .fromAstPtr(compiler, reference.inner.*),
+                .is_mut = reference.is_mut,
             },
-            .generic => |generic| try instantiateGeneric(
-                compiler,
-                try fromAst(compiler, generic.lhs.*),
-                generic.arguments,
-                generic.pos,
-            ),
-            .variadic => .variadic,
-            .reference => |reference| .{
-                .reference = .{
-                    .inner = try .fromAstPtr(compiler, reference.inner.*),
-                    .is_mut = reference.is_mut,
-                },
-            },
-            .function => |function| .{
-                .function = b: {
-                    try compiler.pushScope(false);
-                    defer compiler.popScope();
+        },
+        .function => |function| .{
+            .function = b: {
+                try compiler.pushScope(false);
+                defer compiler.popScope();
 
-                    const generic_params = try compiler.alloc.alloc(types.Function.Param, function.generic_parameters.len);
-                    for (function.generic_parameters, 0..) |p, i| {
-                        generic_params[i] = .{
-                            .name = p.name,
-                            .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
-                        };
-                        try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } }, .{});
-                    }
-
-                    const params = try compiler.alloc.alloc(types.Function.Param, function.parameters.len);
-                    for (function.parameters, 0..) |p, i| params[i] = .{
+                const generic_params = try compiler.alloc.alloc(types.Function.Param, function.generic_parameters.len);
+                for (function.generic_parameters, 0..) |p, i| {
+                    generic_params[i] = .{
                         .name = p.name,
-                        .type = try fromAst(compiler, p.type),
+                        .type = if (p.type == .inferred) .type_type else try .fromAst(compiler, p.type),
                     };
+                    try compiler.registerSymbol(p.name, .{ .type = .{ .generic_param = p.name } }, .{});
+                }
 
-                    break :b .{
-                        .name = function.name,
-                        .inner_name = try compiler.mangle(function.name),
-                        .params = params,
-                        .generic_params = generic_params,
-                        .return_type = try .fromAstPtr(compiler, function.return_type.*),
-                        .module = compiler.module,
-                    };
-                },
-            },
-            .array => |array| .{
-                .array = .{
-                    .inner = try .fromAstPtr(compiler, array.inner.*),
-                    .size = (try compiler.solveComptimeExpression(array.size.*)).u64,
-                },
-            },
-            .slice => |slice| .{ .slice = .{ .is_mut = slice.is_mut, .inner = try .fromAstPtr(compiler, slice.inner.*) } },
-            .optional => |optional| .{ .optional = try .fromAstPtr(compiler, optional.inner.*) },
-            .error_union => |error_union| .{
-                .error_union = b: {
-                    const success: *Type = try .fromAstPtr(compiler, error_union.success.*);
+                const params = try compiler.alloc.alloc(types.Function.Param, function.parameters.len);
+                for (function.parameters, 0..) |p, i| params[i] = .{
+                    .name = p.name,
+                    .type = try fromAst(compiler, p.type),
+                };
 
-                    const failure: *Type = try compiler.alloc.create(Type);
-                    failure.* = if (error_union.failure) |err| try fromAst(compiler, err.*) else .void;
-
-                    break :b .{ .success = success, .failure = failure };
-                },
+                break :b .{
+                    .name = function.name,
+                    .inner_name = try compiler.mangle(function.name),
+                    .params = params,
+                    .generic_params = generic_params,
+                    .return_type = try .fromAstPtr(compiler, function.return_type.*),
+                    .module = compiler.module,
+                };
             },
-            .inferred => unreachable,
-            .member => |member| b: switch (try fromAst(compiler, member.parent.*)) {
+        },
+        .array => |array| .{
+            .array = .{
+                .inner = try .fromAstPtr(compiler, array.inner.*),
+                .size = (try compiler.solveComptimeExpression(array.size.*)).u64,
+            },
+        },
+        .slice => |slice| .{ .slice = .{ .is_mut = slice.is_mut, .inner = try .fromAstPtr(compiler, slice.inner.*) } },
+        .optional => |optional| .{ .optional = try .fromAstPtr(compiler, optional.inner.*) },
+        .error_union => |error_union| .{
+            .error_union = b: {
+                const success: *Type = try .fromAstPtr(compiler, error_union.success.*);
+
+                const failure: *Type = try compiler.alloc.create(Type);
+                failure.* = if (error_union.failure) |err| try fromAst(compiler, err.*) else .void;
+
+                break :b .{ .success = success, .failure = failure };
+            },
+        },
+        .inferred => unreachable,
+        .member => |member| {
+            const parent_type = try fromAst(compiler, member.parent.*);
+            return switch (parent_type) {
                 inline .@"struct", .@"union" => |s, tag| if (s.subtypes.get(member.member_name)) |subtype_wrapper| {
                     const ptr = try compiler.alloc.create(Type);
                     ptr.* = switch (subtype_wrapper.type) {
@@ -159,26 +162,34 @@ pub const Type = union(enum) {
                     };
                     return .{ .type = ptr };
                 } else if (s.variables.get(member.member_name)) |v|
-                    v.type
+                    return v.type
                 else
-                    errors.undeclaredProperty(@unionInit(Type, @tagName(tag), s), member.member_name, member.pos),
+                    return errors.undeclaredProperty(@unionInit(Type, @tagName(tag), s), member.member_name, member.pos),
                 .@"enum" => |e| if (e.getProperty(member.member_name)) |property| switch (property) {
-                    .variable => |v| v.type,
-                    .member => .{ .@"enum" = e },
-                    .method => |method| Type.Function.fromMethod(method, e.module),
-                    .subtype => |subtype| subtype.toType(),
-                } else errors.undeclaredProperty(.{ .@"enum" = e }, member.member_name, member.pos),
+                    .variable => |v| return v.type,
+                    .member => return .{ .@"enum" = e },
+                    .method => |method| return Type.Function.fromMethod(method, e.module),
+                    .subtype => |st| return st.toType(),
+                } else return errors.undeclaredProperty(.{ .@"enum" = e }, member.member_name, member.pos),
                 .module => |module| if (module.symbols.get(member.member_name)) |symbol| b2: {
                     if (!symbol.is_pub) break :b2 errors.badAccess(module.name, member.member_name, member.pos);
-                    break :b symbol.type;
-                } else errors.undeclaredProperty(.{ .module = module }, member.member_name, member.pos),
-                .reference => |ref| continue :b ref.inner.*,
-                .type => |type_ptr| continue :b type_ptr.*,
-                .type_type => errors.illegalMemberExpression(.type_type, member.pos),
-                else => |other| errors.illegalMemberExpression(other, member.pos),
-            },
-        };
-    }
+                    return symbol.type;
+                } else return errors.undeclaredProperty(.{ .module = module }, member.member_name, member.pos),
+                .reference => |ref| return try ref.inner.*.clone(compiler.alloc),
+                .type => |type_ptr| return try type_ptr.*.clone(compiler.alloc),
+                .type_type => return errors.illegalMemberExpression(.type_type, member.pos),
+                else => return errors.illegalMemberExpression(parent_type, member.pos),
+            };
+        },
+    };
+
+    // Deep clone if it's a type that manages heap resources
+    return switch (raw_result) {
+        inline .@"struct", .@"enum", .@"union",
+        .function, .optional, .slice, .reference, .array, .error_union => try raw_result.clone(compiler.alloc),
+        else => raw_result, // Primitive types, or types from symbol table, can be copied directly
+    };
+}
 
     pub fn fromAstPtr(compiler: *Compiler, t: ast.Type) CompilerError!*Type {
         const ptr = try compiler.alloc.create(Type);
@@ -1205,7 +1216,7 @@ pub const Type = union(enum) {
                         d.* = try def.clone(alloc);
                         break :b d;
                     } else null,
-                    .module = self.module,
+                    .module = f.module,
                     .generic_instantiation = if (f.generic_instantiation) |gi| try gi.clone(alloc) else null,
                 },
             },

@@ -192,8 +192,7 @@ pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
 
 /// Cleans up resources
 pub fn deinit(self: *Self) void {
-    for (self.output) |i| i.deinit(self.alloc);
-    self.alloc.free(self.output);
+    utils.deinitSlice(ast.Statement, self.output, self.alloc);
 
     self.bp_lookup.deinit();
     self.led_lookup.deinit();

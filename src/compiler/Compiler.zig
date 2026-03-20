@@ -248,8 +248,7 @@ pub fn init(
 
 /// Frees resources
 pub fn deinit(self: *Self) void {
-    for (self.input) |i| i.deinit(self.alloc);
-    self.alloc.free(self.input);
+    utils.deinitSlice(ast.Statement, self.input, self.alloc);
 
     self.alloc.free(self.source_path);
 
@@ -877,7 +876,7 @@ pub fn compileVariableSignature(
 }
 
 pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
-    return switch (expression) {
+    const original_result: Value = switch (expression) {
         .int => |int| .{ .u64 = int.payload },
         .float => |float| .{ .f64 = float.payload },
         .char => |char| .{ .u8 = char.payload },
@@ -907,16 +906,19 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         .type => |t| .{ .type = try .fromAst(self, t.payload) },
         .prefix => |prefix| switch (prefix.op) {
             .@"-" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
-                inline .i64, .u64, .f64 => |number, tag| @unionInit(
-                    Value,
-                    if (tag == .u64) "i64" else @tagName(tag),
-                    if (tag == .u64) -@as(i64, @intCast(number)) else -number,
-                ),
-                else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
+                inline .i64, .u64, .f64 => |number, tag| if (tag == .u64)
+                    .{ .i64 = -@as(i64, @intCast(number)) }
+                else if (tag == .i64)
+                    .{ .i64 = -number }
+                else if (tag == .f64)
+                    .{ .f64 = -number }
+                else
+                    unreachable,
+                else => |other| return errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
             .@"!" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
                 .bool => |b| .{ .bool = !b },
-                else => |other| errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
+                else => |other| return errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
             },
         },
         .struct_instantiation => |inst| .{
@@ -960,11 +962,20 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
             else if (expr.@"else") |else_branch|
                 try self.solveComptimeExpression(else_branch.*)
             else
-                errors.ifExpressionMustContainElseClause(expr.pos),
+                return errors.ifExpressionMustContainElseClause(expr.pos),
             else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
         },
         else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };
+
+    return if (original_result == .type)
+        .{ .type = try original_result.type.clone(self.alloc) }
+    else if (original_result == .comptime_struct) .{
+        .comptime_struct = .{
+            .type = try original_result.comptime_struct.type.clone(self.alloc),
+            .fields = try utils.cloneSlice(Value.ComptimeStruct.Field, original_result.comptime_struct.fields, self.alloc),
+        },
+    } else original_result;
 }
 
 fn solveGenerics(self: *Self) !void {

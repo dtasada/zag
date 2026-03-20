@@ -36,6 +36,10 @@ pub const Value = union(enum) {
         pub const Field = struct {
             name: []const u8,
             value: Value,
+
+            pub fn clone(self: Field, alloc: std.mem.Allocator) !Field {
+                return .{ .name = self.name, .value = try self.value.clone(alloc) };
+            }
         };
     };
 
