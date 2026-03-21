@@ -3,6 +3,7 @@ const utils = @import("utils");
 const ast = @import("ast");
 
 const statements = @import("statements.zig");
+const top_level_statements = @import("top_level_statements.zig");
 const expressions = @import("expressions.zig");
 
 const lexer = @import("lexer");
@@ -10,6 +11,9 @@ const TypeParser = @import("TypeParser.zig");
 
 /// Function signature for a statement handler.
 const StatementHandler = *const fn (*Parser) Error!ast.Statement;
+
+/// Function signature for a statement handler.
+pub const TopLevelStatementHandler = *const fn (*Parser) Error!ast.TopLevelStatement;
 
 /// Function signature for a nud handler.
 const NudHandler = *const fn (*Parser) Error!ast.Expression;
@@ -72,6 +76,9 @@ pub const Parser = struct {
 
     /// Maps a `Token` to a corresponding statement handler.
     statement_lookup: std.EnumMap(lexer.TokenKind, StatementHandler),
+
+    /// Maps a `Token` to a corresponding statement handler.
+    top_level_statement_lookup: std.EnumMap(lexer.TokenKind, TopLevelStatementHandler),
 
     expect_semicolon: bool,
 
@@ -334,6 +341,10 @@ pub const Parser = struct {
     pub inline fn expectSemicolon(self: *Parser, context: []const u8) !void {
         if (self.expect_semicolon) try self.expect(self.advance(), .@";", context, ";");
     }
+
+    pub fn isPub(self: *Parser) bool {
+        return if (self.pos <= 0) false else self.previousToken() == .@"pub";
+    }
 };
 
 /// Parses `input` and returns an AST. Takes ownership and frees `input`, but *not* `source_map`.
@@ -488,21 +499,26 @@ pub fn parse(
         .statement_lookup = .init(.{
             .let = statements.variableDefinition,
             .@"const" = statements.constDefinition,
-            .@"struct" = statements.structDeclaration,
-            .@"enum" = statements.enumDeclaration,
-            .@"union" = statements.unionDeclaration,
-            .@"fn" = statements.functionDefinition,
-            .bind = statements.bindingDeclaration,
             .@"while" = statements.@"while",
             .@"return" = statements.@"return",
             .@"for" = statements.@"for",
             .@"if" = statements.@"if",
-            .import = statements.import,
             .@"pub" = statements.@"pub",
             .match = statements.match,
             .@"break" = statements.@"break",
             .@"continue" = statements.@"continue",
             .@"defer" = statements.@"defer",
+        }),
+        .top_level_statement_lookup = .init(.{
+            .@"enum" = top_level_statements.enumDeclaration,
+            .@"struct" = top_level_statements.structDeclaration,
+            .@"union" = top_level_statements.unionDeclaration,
+            .@"fn" = top_level_statements.functionDefinition,
+            .bind = top_level_statements.bindingDeclaration,
+            .import = top_level_statements.import,
+            .let = top_level_statements.variableDefinition,
+            .@"const" = top_level_statements.constDefinition,
+            .@"pub" = top_level_statements.@"pub",
         }),
         .type_parser = undefined,
         .alloc = alloc,
@@ -512,25 +528,8 @@ pub fn parse(
 
     var output: std.ArrayList(ast.TopLevelStatement) = .empty;
 
-    while (std.meta.activeTag(self.currentToken()) != .eof) {
-        const backup_pos = self.pos;
-        try output.append(self.alloc, switch (try statements.parse(&self)) {
-            inline .binding_function_declaration,
-            .binding_type_declaration,
-            .function_definition,
-            .import,
-            .enum_declaration,
-            .struct_declaration,
-            .union_declaration,
-            .variable_definition,
-            => |stmt, t| @unionInit(ast.TopLevelStatement, @tagName(t), stmt),
-            else => |stmt| return utils.printErr(
-                error.MustBeTopLevelStatement,
-                "Parser error: found {s} but expected a top-level statement ({f}).\n",
-                .{ @tagName(std.meta.activeTag(stmt)), self.source_map[backup_pos] },
-            ),
-        });
-    }
+    while (std.meta.activeTag(self.currentToken()) != .eof)
+        try output.append(self.alloc, try top_level_statements.parse(&self));
 
     return output.toOwnedSlice(alloc);
 }
