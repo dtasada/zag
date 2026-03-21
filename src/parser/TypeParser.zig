@@ -16,9 +16,9 @@ const NudHandler = *const fn (*Self, std.mem.Allocator) Error!ast.Type;
 const LedHandler = *const fn (*Self, std.mem.Allocator, ast.Type, BindingPower) Error!ast.Type;
 
 parent_parser: *parser.Parser,
-bp_lookup: std.AutoHashMap(lexer.TokenKind, BindingPower),
-nud_lookup: std.AutoHashMap(lexer.TokenKind, NudHandler),
-led_lookup: std.AutoHashMap(lexer.TokenKind, LedHandler),
+bp_lookup: std.EnumMap(lexer.TokenKind, BindingPower),
+nud_lookup: std.EnumMap(lexer.TokenKind, NudHandler),
+led_lookup: std.EnumMap(lexer.TokenKind, LedHandler),
 
 /// A token which has a NUD handler means it expects nothing to its left
 /// Common examples of this type of token are prefix & unary expressions.
@@ -36,30 +36,20 @@ fn led(self: *Self, kind: lexer.TokenKind, bp: BindingPower, led_fn: LedHandler)
 }
 
 pub fn init(parent_parser: *parser.Parser) !Self {
-    var self: Self = .{
+    return .{
         .parent_parser = parent_parser,
-        .bp_lookup = .init(parent_parser.alloc),
-        .nud_lookup = .init(parent_parser.alloc),
-        .led_lookup = .init(parent_parser.alloc),
+        .bp_lookup = .init(.{ .@"!" = .logical, .@"<" = .call, .@"." = .member }),
+        .nud_lookup = .init(.{
+            .ident = parseSymbolType,
+            .@"[" = parseArrayType,
+            .@"&" = parseReferenceType,
+            .@"?" = parseOptionalType,
+            .@"!" = parseInferredErrorType,
+            .@"fn" = parseFunctionType,
+            .@"(" = parseGroupType,
+        }),
+        .led_lookup = .init(.{ .@"!" = parseErrorType, .@"<" = parseGenericType, .@"." = parseMemberType }),
     };
-
-    try self.nud(.ident, parseSymbolType);
-    try self.nud(.@"[", parseArrayType);
-    try self.nud(.@"&", parseReferenceType);
-    try self.nud(.@"?", parseOptionalType);
-    try self.nud(.@"!", parseInferredErrorType);
-    try self.nud(.@"fn", parseFunctionType);
-    try self.nud(.@"(", parseGroupType);
-    try self.led(.@"!", .logical, parseErrorType);
-    try self.led(.@"<", .call, parseGenericType);
-    try self.led(.@".", .member, parseMemberType);
-    return self;
-}
-
-pub fn deinit(self: *Self) void {
-    self.bp_lookup.deinit();
-    self.nud_lookup.deinit();
-    self.led_lookup.deinit();
 }
 
 fn getBindingPower(self: *Self, token: lexer.TokenKind) BindingPower {

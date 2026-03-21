@@ -61,16 +61,16 @@ pub const Parser = struct {
     type_parser: TypeParser,
 
     /// Maps a `Token` to its corresponding binding power.
-    bp_lookup: std.AutoHashMap(lexer.TokenKind, BindingPower),
+    bp_lookup: std.EnumMap(lexer.TokenKind, BindingPower),
 
     /// Maps a `Token` to a corresponding nud handler.
-    nud_lookup: std.AutoHashMap(lexer.TokenKind, NudHandler),
+    nud_lookup: std.EnumMap(lexer.TokenKind, NudHandler),
 
     /// Maps a `Token` to a corresponding led handler.
-    led_lookup: std.AutoHashMap(lexer.TokenKind, LedHandler),
+    led_lookup: std.EnumMap(lexer.TokenKind, LedHandler),
 
     /// Maps a `Token` to a corresponding statement handler.
-    statement_lookup: std.AutoHashMap(lexer.TokenKind, StatementHandler),
+    statement_lookup: std.EnumMap(lexer.TokenKind, StatementHandler),
 
     expect_semicolon: bool,
 
@@ -96,26 +96,6 @@ pub const Parser = struct {
     /// Returns token at the current position.
     pub inline fn previousToken(self: *const Parser) lexer.Token {
         return self.input[self.pos - 1];
-    }
-
-    /// A token which has a NUD handler means it expects nothing to its left
-    /// Common examples of this type of token are prefix & unary expressions.
-    fn nud(self: *Parser, kind: lexer.TokenKind, nud_fn: NudHandler) !void {
-        try self.nud_lookup.put(kind, nud_fn);
-    }
-
-    /// Tokens which have an LED expect to be between or after some other expression
-    /// to their left. Examples of this type of handler include binary expressions and
-    /// all infix expressions. Postfix expressions also fall under the LED handler.
-    fn led(self: *Parser, kind: lexer.TokenKind, bp: BindingPower, led_fn: LedHandler) !void {
-        try self.bp_lookup.put(kind, bp);
-        try self.led_lookup.put(kind, led_fn);
-    }
-
-    /// Statements are standalone objects that begin with a token and don't rely on any other state.
-    fn statement(self: *Parser, kind: lexer.TokenKind, statment_fn: StatementHandler) !void {
-        try self.bp_lookup.put(kind, .default);
-        try self.statement_lookup.put(kind, statment_fn);
     }
 
     /// Prints error message and always returns an error.
@@ -379,107 +359,177 @@ pub fn parse(
     defer utils.deinitSlice(lexer.Token, input, alloc);
     defer alloc.free(source_map);
 
+    // _ = std.EnumMap(lexer.TokenKind, NudHandler);
+    // const nuds: std.EnumMap(lexer.TokenKind, NudHandler) = .init(.{
+    //     .{ .int, expressions.primary },
+    // });
+    // _ = nuds;
+
     var self: Parser = .{
         .pos = 0,
         .input = input,
         .source_map = source_map,
-        .bp_lookup = .init(alloc),
-        .nud_lookup = .init(alloc),
-        .led_lookup = .init(alloc),
-        .statement_lookup = .init(alloc),
+        .bp_lookup = .init(.{
+            .@"=" = .assignment,
+            .@"+=" = .assignment,
+            .@"-=" = .assignment,
+            .@"*=" = .assignment,
+            .@"/=" = .assignment,
+            .@"%=" = .assignment,
+            .@"&=" = .assignment,
+            .@"|=" = .assignment,
+            .@"^=" = .assignment,
+            .@">>=" = .assignment,
+            .@"<<=" = .assignment,
+
+            // logical
+            .@"and" = .logical,
+            .but = .logical,
+            .@"or" = .logical,
+
+            // relational
+            .@"<" = .primary,
+            .@"<=" = .relational,
+            .@">" = .relational,
+            .@">=" = .relational,
+            .@"==" = .relational,
+            .@"!=" = .relational,
+
+            // additive & multiplicative
+            .@"+" = .additive,
+            .@"-" = .additive,
+            .@"*" = .multiplicative,
+            .@"/" = .multiplicative,
+            .@"&" = .multiplicative,
+            .@"%" = .multiplicative,
+            .@"|" = .additive,
+            .@"^" = .power,
+            .@"<<" = .multiplicative,
+            .@">>" = .multiplicative,
+            // Call/member expressions
+            .@"." = .member,
+            .@"{" = .call,
+            .@"(" = .call,
+
+            // other expressions
+            .@".." = .relational,
+            .@"..=" = .relational,
+            .@"[" = .call,
+            .@"catch" = .relational,
+
+            .int = .primary,
+            .float = .primary,
+            .ident = .primary,
+            .string = .primary,
+
+            // statements
+            .let = .default,
+            .@"const" = .default,
+            .@"struct" = .default,
+            .@"enum" = .default,
+            .@"union" = .default,
+            .@"fn" = .default,
+            .bind = .default,
+            .@"while" = .default,
+            .@"return" = .default,
+            .@"for" = .default,
+            .@"if" = .default,
+            .import = .default,
+            .@"pub" = .default,
+            .match = .default,
+            .@"break" = .default,
+            .@"continue" = .default,
+            .@"defer" = .default,
+        }),
+        .nud_lookup = .init(.{
+            .int = expressions.primary,
+            .float = expressions.primary,
+            .ident = expressions.primary,
+            .string = expressions.primary,
+            .@"-" = expressions.prefix,
+            .@"!" = expressions.prefix,
+            .@"(" = expressions.group,
+            .@"fn" = expressions.functionType,
+            .@"[" = expressions.arrayInstantiation,
+            .@"{" = expressions.block,
+            .@"if" = expressions.@"if",
+            .match = expressions.match,
+            .@"try" = expressions.@"try",
+            .@"&" = expressions.reference,
+        }),
+        .led_lookup = .init(.{
+            .@"=" = expressions.assignment,
+            .@"+=" = expressions.assignment,
+            .@"-=" = expressions.assignment,
+            .@"*=" = expressions.assignment,
+            .@"/=" = expressions.assignment,
+            .@"%=" = expressions.assignment,
+            .@"&=" = expressions.assignment,
+            .@"|=" = expressions.assignment,
+            .@"^=" = expressions.assignment,
+            .@">>=" = expressions.assignment,
+            .@"<<=" = expressions.assignment,
+
+            // logical
+            .@"and" = expressions.binary,
+            .but = expressions.binary,
+            .@"or" = expressions.binary,
+
+            // relational
+            .@"<" = expressions.ambiguousLessThan,
+            .@"<=" = expressions.binary,
+            .@">" = expressions.binary,
+            .@">=" = expressions.binary,
+            .@"==" = expressions.binary,
+            .@"!=" = expressions.binary,
+
+            // additive & multiplicative
+            .@"+" = expressions.binary,
+            .@"-" = expressions.binary,
+            .@"*" = expressions.binary,
+            .@"/" = expressions.binary,
+            .@"&" = expressions.binary,
+            .@"%" = expressions.binary,
+            .@"|" = expressions.binary,
+            .@"^" = expressions.binary,
+            .@"<<" = expressions.binary,
+            .@">>" = expressions.binary,
+
+            // Call/member expressions
+            .@"." = expressions.member,
+            .@"{" = expressions.structInstantiation,
+            .@"(" = expressions.call,
+
+            // other expressions
+            .@".." = expressions.range,
+            .@"..=" = expressions.range,
+            .@"[" = expressions.index,
+            .@"catch" = expressions.@"catch",
+        }),
+        .statement_lookup = .init(.{
+            .let = statements.variableDefinition,
+            .@"const" = statements.constDefinition,
+            .@"struct" = statements.structDeclaration,
+            .@"enum" = statements.enumDeclaration,
+            .@"union" = statements.unionDeclaration,
+            .@"fn" = statements.functionDefinition,
+            .bind = statements.bindingDeclaration,
+            .@"while" = statements.@"while",
+            .@"return" = statements.@"return",
+            .@"for" = statements.@"for",
+            .@"if" = statements.@"if",
+            .import = statements.import,
+            .@"pub" = statements.@"pub",
+            .match = statements.match,
+            .@"break" = statements.@"break",
+            .@"continue" = statements.@"continue",
+            .@"defer" = statements.@"defer",
+        }),
         .type_parser = undefined,
         .alloc = alloc,
         .expect_semicolon = true,
     };
     self.type_parser = try .init(&self);
-
-    try self.led(.@"=", .assignment, expressions.assignment);
-    try self.led(.@"+=", .assignment, expressions.assignment);
-    try self.led(.@"-=", .assignment, expressions.assignment);
-    try self.led(.@"*=", .assignment, expressions.assignment);
-    try self.led(.@"/=", .assignment, expressions.assignment);
-    try self.led(.@"%=", .assignment, expressions.assignment);
-    try self.led(.@"&=", .assignment, expressions.assignment);
-    try self.led(.@"|=", .assignment, expressions.assignment);
-    try self.led(.@"^=", .assignment, expressions.assignment);
-    try self.led(.@">>=", .assignment, expressions.assignment);
-    try self.led(.@"<<=", .assignment, expressions.assignment);
-
-    // logical
-    try self.led(.@"and", .logical, expressions.binary);
-    try self.led(.but, .logical, expressions.binary);
-    try self.led(.@"or", .logical, expressions.binary);
-
-    // relational
-    try self.led(.@"<", .primary, expressions.ambiguousLessThan);
-    try self.led(.@"<=", .relational, expressions.binary);
-    try self.led(.@">", .relational, expressions.binary);
-    try self.led(.@">=", .relational, expressions.binary);
-    try self.led(.@"==", .relational, expressions.binary);
-    try self.led(.@"!=", .relational, expressions.binary);
-
-    // additive & multiplicative
-    try self.led(.@"+", .additive, expressions.binary);
-    try self.led(.@"-", .additive, expressions.binary);
-    try self.led(.@"*", .multiplicative, expressions.binary);
-    try self.led(.@"/", .multiplicative, expressions.binary);
-    try self.led(.@"&", .multiplicative, expressions.binary);
-    try self.led(.@"%", .multiplicative, expressions.binary);
-    try self.led(.@"|", .additive, expressions.binary);
-    try self.led(.@"^", .power, expressions.binary);
-    try self.led(.@"<<", .multiplicative, expressions.binary);
-    try self.led(.@">>", .multiplicative, expressions.binary);
-
-    // literals & symbols
-    try self.nud(.int, expressions.primary);
-    try self.bp_lookup.put(.int, .primary);
-    try self.nud(.float, expressions.primary);
-    try self.bp_lookup.put(.float, .primary);
-    try self.nud(.ident, expressions.primary);
-    try self.bp_lookup.put(.ident, .primary);
-    try self.nud(.string, expressions.primary);
-    try self.bp_lookup.put(.string, .primary);
-    try self.nud(.@"-", expressions.prefix);
-    try self.nud(.@"!", expressions.prefix);
-    try self.nud(.@"(", expressions.group);
-
-    try self.nud(.@"fn", expressions.functionType);
-
-    // Call/member expressions
-    try self.led(.@".", .member, expressions.member);
-    try self.led(.@"{", .call, expressions.structInstantiation);
-    try self.led(.@"(", .call, expressions.call);
-    try self.nud(.@"[", expressions.arrayInstantiation);
-
-    // other expressions
-    try self.nud(.@"{", expressions.block);
-    try self.nud(.@"if", expressions.@"if");
-    try self.nud(.match, expressions.match);
-    try self.nud(.@"try", expressions.@"try");
-    try self.nud(.@"&", expressions.reference);
-    try self.led(.@"..", .relational, expressions.range);
-    try self.led(.@"..=", .relational, expressions.range);
-    try self.led(.@"[", .call, expressions.index);
-    try self.led(.@"catch", .relational, expressions.@"catch");
-
-    // Statements
-    try self.statement(.let, statements.variableDefinition);
-    try self.statement(.@"const", statements.constDefinition);
-    try self.statement(.@"struct", statements.structDeclaration);
-    try self.statement(.@"enum", statements.enumDeclaration);
-    try self.statement(.@"union", statements.unionDeclaration);
-    try self.statement(.@"fn", statements.functionDefinition);
-    try self.statement(.bind, statements.bindingDeclaration);
-    try self.statement(.@"while", statements.@"while");
-    try self.statement(.@"return", statements.@"return");
-    try self.statement(.@"for", statements.@"for");
-    try self.statement(.@"if", statements.@"if");
-    try self.statement(.import, statements.import);
-    try self.statement(.@"pub", statements.@"pub");
-    try self.statement(.match, statements.match);
-    try self.statement(.@"break", statements.@"break");
-    try self.statement(.@"continue", statements.@"continue");
-    try self.statement(.@"defer", statements.@"defer");
 
     var output: std.ArrayList(ast.Statement) = .empty;
 
