@@ -63,6 +63,7 @@ fn transpileWithHeaders(
     if (registry.contains(file_path)) return;
 
     const ast = try Compiler.getAST(alloc, file_path);
+    defer alloc.free(ast.source);
 
     var compiler = Compiler.init(alloc, ast.root, file_path, registry) catch |err|
         return utils.printErr(

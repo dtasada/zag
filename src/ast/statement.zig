@@ -130,7 +130,7 @@ pub const Statement = union(enum) {
             members: []const Member,
             methods: []const FunctionDefinition,
 
-            pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) !CompoundTypeDeclaration(T) {
+            pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) std.mem.Allocator.Error!CompoundTypeDeclaration(T) {
                 return .{
                     .pos = try self.pos.clone(alloc),
                     .is_pub = self.is_pub,
@@ -171,6 +171,7 @@ pub const Statement = union(enum) {
             }
 
             pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
+                alloc.free(self.name);
                 if (self.value) |v| v.deinit(alloc);
             }
         };

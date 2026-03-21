@@ -227,10 +227,6 @@ pub fn CompoundType(T: utils.CompoundTypeTag) type {
 
             if (self.tag_type) |tt| tt.deinitPtr(alloc);
 
-            if (self.definition) |def| {
-                def.deinit(alloc);
-                alloc.destroy(def);
-            }
             if (self.generic_instantiation) |gi| {
                 gi.deinit(alloc);
             }
@@ -411,7 +407,6 @@ pub fn fromCompoundTypeDeclaration(
             const st_ptr = try compiler.alloc.create(@TypeOf(st));
             st_ptr.* = st;
             defer compiler.alloc.destroy(st_ptr);
-            defer st_ptr.deinit(compiler.alloc);
             try compound_type.subtypes.put(st.name, .{
                 .is_pub = st.is_pub,
                 .inner_name = try std.fmt.allocPrint(

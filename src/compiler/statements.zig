@@ -237,8 +237,12 @@ fn compoundTypeDeclaration(
         }
 
         const previous_return_type = self.current_return_type;
-        defer self.current_return_type = previous_return_type;
-        self.current_return_type = try Type.fromAst(self, method.return_type);
+        const new_return_type = try Type.fromAst(self, method.return_type);
+        self.current_return_type = new_return_type;
+        defer {
+            new_return_type.deinit(self.alloc);
+            self.current_return_type = previous_return_type;
+        }
 
         try self.registerSymbol(
             method.name,
@@ -255,9 +259,11 @@ fn compoundTypeDeclaration(
             try self.compileType(return_type, .{ .binding_mut = true });
             try self.print(" __zag_{s}_{s}(", .{ compound_type.name, method.name });
             for (method.parameters, 0..) |parameter_type, i| {
+                const t: Type = try .fromAst(self, parameter_type.type);
+                defer t.deinit(self.alloc);
                 try self.compileVariableSignature(
                     parameter_type.name,
-                    try .fromAst(self, parameter_type.type),
+                    t,
                     if (parameter_type.is_mut) .let_mut else .let,
                 );
                 if (i < method.parameters.len - 1) try self.write(", ");
@@ -344,6 +350,7 @@ fn variableDefinition(
 ) CompilerError!void {
     const received_type: Type = try .infer(self, v.assigned_value);
     const expected_type: ?Type = if (v.type == .inferred) null else try .fromAst(self, v.type);
+    defer if (expected_type) |et| et.deinit(self.alloc);
     const final_type = expected_type orelse received_type;
 
     if (!opts.is_static_member)
@@ -606,6 +613,7 @@ fn functionDefinition(
     try self.registerSymbol(function_def.name, .{ .symbol = .{
         .type = b: {
             var type_obj = try Type.fromAst(self, function_def.getType());
+            defer type_obj.deinit(self.alloc);
             if (!binding_function)
                 type_obj.function.definition = function_def;
 
@@ -620,10 +628,15 @@ fn functionDefinition(
     self.scopes.items[self.scopes.items.len - 1].is_function_boundary = true;
 
     var return_type: Type = try .fromAst(self, function_def.return_type);
+    defer return_type.deinit(self.alloc);
 
     const previous_return_type = self.current_return_type;
-    defer self.current_return_type = previous_return_type;
-    self.current_return_type = try .fromAst(self, function_def.return_type);
+    const new_return_type: Type = try .fromAst(self, function_def.return_type);
+    self.current_return_type = new_return_type;
+    defer {
+        new_return_type.deinit(self.alloc);
+        self.current_return_type = previous_return_type;
+    }
 
     const return_type_is_array = try handleArrayReturnType(self, &return_type);
 
@@ -637,7 +650,9 @@ fn functionDefinition(
         try self.compileType(return_type, .{ .binding_mut = true });
         try self.print(" {s}(", .{inner_name});
         for (function_def.parameters, 0..) |parameter, i| {
-            try self.compileVariableSignature(parameter.name, try .fromAst(self, parameter.type), if (parameter.is_mut) .let_mut else .let);
+            const t: Type = try .fromAst(self, parameter.type);
+            defer t.deinit(self.alloc);
+            try self.compileVariableSignature(parameter.name, t, if (parameter.is_mut) .let_mut else .let);
             if (i < function_def.parameters.len - 1) try self.write(", ");
         }
         try self.write(");\n");

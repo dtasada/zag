@@ -96,14 +96,11 @@ pub const Subtype = union(utils.CompoundTypeTag) {
     @"enum": Statement.EnumDeclaration,
     @"union": Statement.UnionDeclaration,
 
-    pub fn clone(self: Subtype, alloc: std.mem.Allocator) !Subtype {
+    pub fn clone(self: Subtype, alloc: std.mem.Allocator) std.mem.Allocator.Error!Subtype {
         return switch (self) {
-            inline else => |s, t| switch (try @unionInit(Statement, @tagName(t) ++ "_declaration", s).clone(alloc)) {
-                .enum_declaration => |ed| .{ .@"enum" = ed },
-                .struct_declaration => |sd| .{ .@"struct" = sd },
-                .union_declaration => |ud| .{ .@"union" = ud },
-                else => unreachable,
-            },
+            .@"struct" => |*s| .{ .@"struct" = try s.clone(alloc) },
+            .@"enum" => |*e| .{ .@"enum" = try e.clone(alloc) },
+            .@"union" => |*u| .{ .@"union" = try u.clone(alloc) },
         };
     }
 

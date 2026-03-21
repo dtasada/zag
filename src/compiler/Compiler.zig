@@ -146,7 +146,6 @@ pub fn getAST(
         .{ file_path, err },
         .red,
     );
-    defer alloc.free(file);
 
     var lexer = Lexer.init(file, alloc, file_path) catch |err| return utils.printErr(
         error.FailedToTokenizeSource,
@@ -531,6 +530,7 @@ pub fn analyze(self: *Self) CompilerError!void {
                 // logic similar to variableDefinition in statements.zig
                 const received_type: Type = try .infer(self, var_def.assigned_value);
                 const expected_type: ?Type = if (var_def.type == .inferred) null else try .fromAst(self, var_def.type);
+                defer if (expected_type) |et| et.deinit(self.alloc);
 
                 const final_type = expected_type orelse received_type;
 
@@ -637,6 +637,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
 
     // ── Compile the module (existing logic, unchanged) ────────────────────────
     const ast_res = try getAST(self.alloc, resolved_path);
+    defer self.alloc.free(ast_res.source);
 
     var child_compiler = try init(self.alloc, ast_res.root, resolved_path, self.module_registry);
     defer child_compiler.deinit();
@@ -893,8 +894,13 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         .int => |int| .{ .u64 = int.payload },
         .float => |float| .{ .f64 = float.payload },
         .char => |char| .{ .u8 = char.payload },
-        .binary => |binary| try (try self.solveComptimeExpression(binary.lhs.*))
-            .binaryOperation(binary.op, try self.solveComptimeExpression(binary.rhs.*)),
+        .binary => |binary| {
+            const lhs = try self.solveComptimeExpression(binary.lhs.*);
+            defer lhs.deinit(self.alloc);
+            const rhs = try self.solveComptimeExpression(binary.rhs.*);
+            defer rhs.deinit(self.alloc);
+            return try lhs.binaryOperation(binary.op, rhs);
+        },
         .ident => |ident| b: {
             const item = self.getScopeItem(ident.payload) catch |err| switch (err) {
                 error.UnknownSymbol => return err, // Or handle primitive types if not in scope?
@@ -917,22 +923,26 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         },
         .generic => .{ .type = try .infer(self, expression) },
         .type => |t| .{ .type = try .fromAst(self, t.payload) },
-        .prefix => |prefix| switch (prefix.op) {
-            .@"-" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
-                inline .i64, .u64, .f64 => |number, tag| if (tag == .u64)
-                    .{ .i64 = -@as(i64, @intCast(number)) }
-                else if (tag == .i64)
-                    .{ .i64 = -number }
-                else if (tag == .f64)
-                    .{ .f64 = -number }
-                else
-                    unreachable,
-                else => |other| return errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
-            },
-            .@"!" => switch (try self.solveComptimeExpression(prefix.rhs.*)) {
-                .bool => |b| .{ .bool = !b },
-                else => |other| return errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
-            },
+        .prefix => |prefix| {
+            const rhs = try self.solveComptimeExpression(prefix.rhs.*);
+            defer rhs.deinit(self.alloc);
+            return switch (prefix.op) {
+                .@"-" => switch (rhs) {
+                    inline .i64, .u64, .f64 => |number, tag| if (tag == .u64)
+                        .{ .i64 = -@as(i64, @intCast(number)) }
+                    else if (tag == .i64)
+                        .{ .i64 = -number }
+                    else if (tag == .f64)
+                        .{ .f64 = -number }
+                    else
+                        unreachable,
+                    else => |other| return errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
+                },
+                .@"!" => switch (rhs) {
+                    .bool => |b| .{ .bool = !b },
+                    else => |other| return errors.illegalPrefixExpression(prefix.op, other.getType(), expression.getPosition()),
+                },
+            };
         },
         .struct_instantiation => |inst| .{
             .comptime_struct = .{
@@ -953,11 +963,12 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
         .member => |member_expr| {
             const parent_val = self.solveComptimeExpression(member_expr.parent.*) catch
                 return error.ExpressionCannotBeEvaluatedAtCompileTime;
+            defer parent_val.deinit(self.alloc);
             return switch (parent_val) {
                 .comptime_struct => |cs| {
                     for (cs.fields) |field| {
                         if (std.mem.eql(u8, field.name, member_expr.member_name)) {
-                            return field.value;
+                            return try field.value.clone(self.alloc);
                         }
                     }
                     return error.ExpressionCannotBeEvaluatedAtCompileTime;
@@ -969,14 +980,18 @@ pub fn solveComptimeExpression(self: *Self, expression: ast.Expression) !Value {
                 },
             };
         },
-        .@"if" => |expr| switch (try self.solveComptimeExpression(expr.condition.*)) {
-            .bool => |cond| if (cond)
-                try self.solveComptimeExpression(expr.body.*)
-            else if (expr.@"else") |else_branch|
-                try self.solveComptimeExpression(else_branch.*)
-            else
-                return errors.ifExpressionMustContainElseClause(expr.pos),
-            else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
+        .@"if" => |expr| {
+            const cond_val = try self.solveComptimeExpression(expr.condition.*);
+            defer cond_val.deinit(self.alloc);
+            return switch (cond_val) {
+                .bool => |cond| if (cond)
+                    try self.solveComptimeExpression(expr.body.*)
+                else if (expr.@"else") |else_branch|
+                    try self.solveComptimeExpression(else_branch.*)
+                else
+                    return errors.ifExpressionMustContainElseClause(expr.pos),
+                else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
+            };
         },
         else => return error.ExpressionCannotBeEvaluatedAtCompileTime,
     };

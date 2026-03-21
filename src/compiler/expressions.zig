@@ -93,7 +93,9 @@ pub fn compile(
         .array_instantiation => |array| {
             if (!opts.is_variable_declaration) {
                 try self.write("(");
-                try self.compileType(try .fromAst(self, array.type), .{ .binding_mut = opts.binding_mut });
+                const t: Type = try .fromAst(self, array.type);
+                defer t.deinit(self.alloc);
+                try self.compileType(t, .{ .binding_mut = opts.binding_mut });
                 try self.print("[])", .{});
             }
             try self.write("{");
@@ -107,7 +109,11 @@ pub fn compile(
         .@"if" => |i| try @"if"(self, i),
         .generic => |g| try generic(self, g),
         .match => |m| try match(self, m),
-        .type => |t| try self.compileType(try .fromAst(self, t.payload), .{}),
+        .type => |t| {
+            const type_val: Type = try .fromAst(self, t.payload);
+            defer type_val.deinit(self.alloc);
+            try self.compileType(type_val, .{});
+        },
         .slice => |slc| try slice(self, slc, opts.binding_mut),
         .@"try" => |t| {
             const inner_type: Type = try .infer(self, t.payload.*);
