@@ -138,35 +138,46 @@ pub const Type = union(enum) {
 
     pub fn deinit(self: Type, alloc: std.mem.Allocator) void {
         switch (self) {
-            inline else => |s| s.pos.deinit(alloc),
-        }
-
-        switch (self) {
-            .inferred, .variadic => {},
-            .symbol => |s| alloc.free(s.inner),
-            .optional => |opt| opt.inner.deinitPtr(alloc),
-            .slice, .reference => |s| s.inner.deinitPtr(alloc),
-            .array => |a| {
-                a.inner.deinitPtr(alloc);
-                a.size.deinitPtr(alloc);
+            .inferred => |s| s.pos.deinit(alloc),
+            .variadic => |s| s.pos.deinit(alloc),
+            .symbol => |s| {
+                s.pos.deinit(alloc);
+                alloc.free(s.inner);
             },
-            .error_union => |eu| {
-                eu.success.deinitPtr(alloc);
-                if (eu.failure) |f| f.deinitPtr(alloc);
+            .optional => |s| {
+                s.pos.deinit(alloc);
+                s.inner.deinitPtr(alloc);
             },
-            .function => |f| {
-                alloc.free(f.name);
-                utils.deinitSlice(ast.VariableSignature, f.parameters, alloc);
-                utils.deinitSlice(ast.VariableSignature, f.generic_parameters, alloc);
-                f.return_type.deinitPtr(alloc);
+            .slice, .reference => |s| {
+                s.pos.deinit(alloc);
+                s.inner.deinitPtr(alloc);
             },
-            .generic => |g| {
-                g.lhs.deinitPtr(alloc);
-                utils.deinitSlice(ast.Expression, g.arguments, alloc);
+            .array => |s| {
+                s.pos.deinit(alloc);
+                s.inner.deinitPtr(alloc);
+                s.size.deinitPtr(alloc);
             },
-            .member => |m| {
-                m.parent.deinitPtr(alloc);
-                alloc.free(m.member_name);
+            .error_union => |s| {
+                s.pos.deinit(alloc);
+                s.success.deinitPtr(alloc);
+                if (s.failure) |f| f.deinitPtr(alloc);
+            },
+            .function => |s| {
+                s.pos.deinit(alloc);
+                alloc.free(s.name);
+                utils.deinitSlice(ast.VariableSignature, s.parameters, alloc);
+                utils.deinitSlice(ast.VariableSignature, s.generic_parameters, alloc);
+                s.return_type.deinitPtr(alloc);
+            },
+            .generic => |s| {
+                s.pos.deinit(alloc);
+                s.lhs.deinitPtr(alloc);
+                utils.deinitSlice(ast.Expression, s.arguments, alloc);
+            },
+            .member => |s| {
+                s.pos.deinit(alloc);
+                s.parent.deinitPtr(alloc);
+                alloc.free(s.member_name);
             },
         }
     }

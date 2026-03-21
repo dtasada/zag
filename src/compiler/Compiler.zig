@@ -266,7 +266,19 @@ pub fn deinit(self: *Self) void {
         while (it.next()) |scope| {
             switch (scope.value_ptr.*) {
                 .module => {},
-                inline else => |s| if (s.should_free) self.alloc.free(s.inner_name),
+                .symbol => |s| {
+                    if (s.should_free) self.alloc.free(s.inner_name);
+                    s.type.deinit(self.alloc);
+                },
+                .type => |t| {
+                    if (t.should_free) self.alloc.free(t.inner_name);
+                    t.type.deinit(self.alloc);
+                },
+                .constant => |c| {
+                    if (c.should_free) self.alloc.free(c.inner_name);
+                    c.type.deinit(self.alloc);
+                    c.value.deinit(self.alloc);
+                },
             }
         }
         i.items.deinit();
@@ -627,6 +639,7 @@ pub fn processImport(self: *Self, import_stmt: *const ast.Statement.Import) Comp
     const ast_res = try getAST(self.alloc, resolved_path);
 
     var child_compiler = try init(self.alloc, ast_res.root, resolved_path, self.module_registry);
+    defer child_compiler.deinit();
 
     try child_compiler.analyze();
 

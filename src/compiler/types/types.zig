@@ -37,6 +37,10 @@ pub const Function = struct {
         pub fn clone(self: Param, alloc: std.mem.Allocator) !Param {
             return .{ .name = self.name, .type = try self.type.clone(alloc) };
         }
+
+        pub fn deinit(self: Param, alloc: std.mem.Allocator) void {
+            self.type.deinit(alloc);
+        }
     };
 
     name: []const u8,
@@ -74,6 +78,11 @@ pub const GenericInstantiation = struct {
             .args = try utils.cloneSlice(Value, self.args, alloc),
         };
     }
+
+    pub fn deinit(self: GenericInstantiation, alloc: std.mem.Allocator) void {
+        alloc.free(self.base_name);
+        utils.deinitSlice(Value, self.args, alloc);
+    }
 };
 
 pub const Method = struct {
@@ -84,21 +93,31 @@ pub const Method = struct {
     return_type: *const Type,
     definition: ?*const ast.Statement.FunctionDefinition = null,
 
-    pub fn clone(self: Method, alloc: std.mem.Allocator) !Method {
-        return .{
-            .name = self.name,
-            .inner_name = try alloc.dupe(u8, self.inner_name),
-            .params = try utils.cloneSlice(Function.Param, self.params, alloc),
-            .generic_params = try utils.cloneSlice(Function.Param, self.generic_params, alloc),
-            .return_type = try self.return_type.clonePtr(alloc),
-            .definition = if (self.definition) |def| b: {
-                const d = try alloc.create(ast.Statement.FunctionDefinition);
-                d.* = try def.clone(alloc);
-                break :b d;
-            } else null,
-        };
-    }
-};
+            pub fn clone(self: Method, alloc: std.mem.Allocator) !Method {
+                return .{
+                    .name = self.name,
+                    .inner_name = try alloc.dupe(u8, self.inner_name),
+                    .params = try utils.cloneSlice(Function.Param, self.params, alloc),
+                    .generic_params = try utils.cloneSlice(Function.Param, self.generic_params, alloc),
+                    .return_type = try self.return_type.clonePtr(alloc),
+                    .definition = if (self.definition) |def| b: {
+                        const d = try alloc.create(ast.Statement.FunctionDefinition);
+                        d.* = try def.clone(alloc);
+                        break :b d;
+                    } else null,
+                };
+            }
+    
+            pub fn deinit(self: Method, alloc: std.mem.Allocator) void {
+                alloc.free(self.inner_name);
+                utils.deinitSlice(Function.Param, self.params, alloc);
+                utils.deinitSlice(Function.Param, self.generic_params, alloc);
+                self.return_type.deinitPtr(alloc);
+                if (self.definition) |def| {
+                    def.deinit(alloc);
+                    alloc.destroy(def);
+                }
+            }};
 
 pub fn CompoundType(T: utils.CompoundTypeTag) type {
     return struct {
@@ -171,6 +190,50 @@ pub fn CompoundType(T: utils.CompoundTypeTag) type {
             }
 
             return error.NoSuchMember;
+        }
+
+        pub fn deinit(self: CompoundType(T), alloc: std.mem.Allocator) void {
+            // self.name is a slice of an AST node, not owned.
+            alloc.free(self.inner_name);
+
+            var vars_it = self.variables.valueIterator();
+            while (vars_it.next()) |variable| {
+                variable.deinit(alloc);
+            }
+            self.variables.deinit();
+            alloc.destroy(self.variables);
+
+            var subtypes_it = self.subtypes.valueIterator();
+            while (subtypes_it.next()) |st| st.deinit(alloc);
+            self.subtypes.deinit();
+            alloc.destroy(self.subtypes);
+
+            if (T != .@"enum") {
+                var members_it = self.members.iterator();
+                while (members_it.next()) |member| member.value_ptr.deinit(alloc);
+            } else {
+                // enum members are just integers, no deinit
+            }
+            self.members.deinit();
+            alloc.destroy(self.members);
+
+            var methods_it = self.methods.iterator();
+            while (methods_it.next()) |entry| entry.value_ptr.deinit(alloc);
+            self.methods.deinit();
+            alloc.destroy(self.methods);
+
+            for (self.generic_params) |param| param.deinit(alloc);
+            alloc.free(self.generic_params);
+
+            if (self.tag_type) |tt| tt.deinitPtr(alloc);
+
+            if (self.definition) |def| {
+                def.deinit(alloc);
+                alloc.destroy(def);
+            }
+            if (self.generic_instantiation) |gi| {
+                gi.deinit(alloc);
+            }
         }
 
         pub fn init(compiler: *Compiler, name: []const u8, inner_name: []const u8, tag_type: ?Type) !CompoundType(T) {
@@ -347,6 +410,8 @@ pub fn fromCompoundTypeDeclaration(
         inline else => |st, tag| {
             const st_ptr = try compiler.alloc.create(@TypeOf(st));
             st_ptr.* = st;
+            defer compiler.alloc.destroy(st_ptr);
+            defer st_ptr.deinit(compiler.alloc);
             try compound_type.subtypes.put(st.name, .{
                 .is_pub = st.is_pub,
                 .inner_name = try std.fmt.allocPrint(
@@ -499,6 +564,12 @@ pub const Variable = struct {
             .binding = self.binding,
         };
     }
+
+    pub fn deinit(self: Variable, alloc: std.mem.Allocator) void {
+        self.type.deinit(alloc);
+        alloc.free(self.inner_name);
+        self.value.deinit(alloc);
+    }
 };
 
 pub const Subtype = struct {
@@ -529,5 +600,12 @@ pub const Subtype = struct {
             },
             .inner_name = try alloc.dupe(u8, self.inner_name),
         };
+    }
+
+    pub fn deinit(self: Subtype, alloc: std.mem.Allocator) void {
+        alloc.free(self.inner_name);
+        switch (self.type) {
+            inline else => |*ct| ct.deinit(alloc),
+        }
     }
 };

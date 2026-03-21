@@ -171,7 +171,6 @@ pub const Statement = union(enum) {
             }
 
             pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
-                alloc.free(self.name);
                 if (self.value) |v| v.deinit(alloc);
             }
         };
@@ -275,8 +274,8 @@ pub const Statement = union(enum) {
 
     pub fn clone(self: Statement, alloc: std.mem.Allocator) std.mem.Allocator.Error!Statement {
         return switch (self) {
-            .@"break" => |b| .{ .@"break" = .{ .pos = b.pos } },
-            .@"continue" => |c| .{ .@"continue" = .{ .pos = c.pos } },
+            .@"break" => |b| .{ .@"break" = .{ .pos = try b.pos.clone(alloc) } },
+            .@"continue" => |c| .{ .@"continue" = .{ .pos = try c.pos.clone(alloc) } },
             .@"defer" => |@"defer"| .{
                 .@"defer" = .{
                     .pos = try @"defer".pos.clone(alloc),
@@ -359,63 +358,61 @@ pub const Statement = union(enum) {
 
     pub fn deinit(self: Statement, alloc: std.mem.Allocator) void {
         switch (self) {
-            .expression, .block_eval => {},
-            inline else => |s| s.pos.deinit(alloc),
-        }
-
-        switch (self) {
-            .@"break", .@"continue" => {},
-            .@"for" => |@"for"| {
-                @"for".body.deinitPtr(alloc);
-                if (@"for".capture) |c| c.deinit(alloc);
-                @"for".iterator.deinit(alloc);
+            .@"break" => |s| s.pos.deinit(alloc),
+            .@"continue" => |s| s.pos.deinit(alloc),
+            .@"for" => |s| {
+                s.pos.deinit(alloc);
+                s.iterator.deinit(alloc);
+                if (s.capture) |c| c.deinit(alloc);
+                s.body.deinitPtr(alloc);
             },
-            .@"if" => |@"if"| {
-                @"if".condition.deinit(alloc);
-                if (@"if".capture) |c| c.deinit(alloc);
-                @"if".body.deinitPtr(alloc);
-                if (@"if".@"else") |e| e.deinitPtr(alloc);
+            .@"if" => |s| {
+                s.pos.deinit(alloc);
+                s.condition.deinit(alloc);
+                if (s.capture) |c| c.deinit(alloc);
+                s.body.deinitPtr(alloc);
+                if (s.@"else") |e| e.deinitPtr(alloc);
             },
-            .@"return" => |@"return"| if (@"return".@"return") |r| r.deinit(alloc),
-            .@"while" => |@"while"| {
-                @"while".condition.deinit(alloc);
-                if (@"while".capture) |c| c.deinit(alloc);
-                @"while".body.deinitPtr(alloc);
+            .@"return" => |s| {
+                s.pos.deinit(alloc);
+                if (s.@"return") |r| r.deinit(alloc);
             },
-            .binding_function_declaration => |bfd| {
-                alloc.free(bfd.name);
-                utils.deinitSlice(ast.VariableSignature, bfd.parameters, alloc);
-                bfd.return_type.deinit(alloc);
+            .@"while" => |s| {
+                s.pos.deinit(alloc);
+                s.condition.deinit(alloc);
+                if (s.capture) |c| c.deinit(alloc);
+                s.body.deinitPtr(alloc);
             },
-            .binding_type_declaration => |btd| alloc.free(btd.name),
-            .block => |block| utils.deinitSlice(Statement, block.payload, alloc),
-            .expression, .block_eval => |expr| expr.deinit(alloc),
-            .function_definition => |fd| {
-                alloc.free(fd.name);
-                utils.deinitSlice(ast.VariableSignature, fd.generic_parameters, alloc);
-                utils.deinitSlice(ast.VariableSignature, fd.parameters, alloc);
-                fd.return_type.deinit(alloc);
-                utils.deinitSlice(Statement, fd.body, alloc);
+            .binding_function_declaration => |s| {
+                s.pos.deinit(alloc);
+                alloc.free(s.name);
+                utils.deinitSlice(ast.VariableSignature, s.parameters, alloc);
+                s.return_type.deinit(alloc);
             },
-            .import => |import| {
-                for (import.module_name) |s| alloc.free(s);
-                alloc.free(import.module_name);
-                if (import.alias) |alias| alloc.free(alias);
+            .binding_type_declaration => |s| {
+                s.pos.deinit(alloc);
+                alloc.free(s.name);
             },
-            inline .struct_declaration, .union_declaration, .enum_declaration => |sd, t| {
-                alloc.free(sd.name);
-                if (t != .enum_declaration) utils.deinitSlice(ast.VariableSignature, sd.generic_types, alloc);
-                utils.deinitSlice(VariableDefinition, sd.variables, alloc);
-                utils.deinitSlice(ast.Subtype, sd.subtypes, alloc);
-                utils.deinitSlice(@TypeOf(sd).Member, sd.members, alloc);
-                utils.deinitSlice(FunctionDefinition, sd.methods, alloc);
+            .block => |s| {
+                s.pos.deinit(alloc);
+                utils.deinitSlice(Statement, s.payload, alloc);
             },
-            .@"defer" => |d| d.payload.deinitPtr(alloc),
-            .variable_definition => |vd| {
-                alloc.free(vd.variable_name);
-                vd.type.deinit(alloc);
-                vd.assigned_value.deinit(alloc);
+            .expression, .block_eval => |s| s.deinit(alloc),
+            .function_definition => |s| s.deinit(alloc),
+            .import => |s| {
+                s.pos.deinit(alloc);
+                for (s.module_name) |name| alloc.free(name);
+                alloc.free(s.module_name);
+                if (s.alias) |a| alloc.free(a);
             },
+            .struct_declaration => |s| s.deinit(alloc),
+            .union_declaration => |s| s.deinit(alloc),
+            .enum_declaration => |s| s.deinit(alloc),
+            .@"defer" => |s| {
+                s.pos.deinit(alloc);
+                s.payload.deinitPtr(alloc);
+            },
+            .variable_definition => |s| s.deinit(alloc),
         }
     }
 };
