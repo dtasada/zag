@@ -200,6 +200,7 @@ pub const Parser = struct {
         const environment = if (is_generic) "generic argument list" else "argument list";
 
         var args: std.ArrayList(ast.Expression) = .empty;
+        errdefer utils.deinitArrayList(ast.Expression, &args, self.alloc);
 
         try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
 
@@ -225,6 +226,7 @@ pub const Parser = struct {
 
     pub fn parseBlock(self: *Parser) !ast.Block {
         var block: std.ArrayList(ast.Statement) = .empty;
+        errdefer utils.deinitArrayList(ast.Statement, &block, self.alloc);
 
         try self.expect(self.advance(), .@"{", "block", "{");
 
@@ -242,6 +244,7 @@ pub const Parser = struct {
         const closing_token = if (is_generic) .@">" else .@")";
 
         var params: std.ArrayList(ast.VariableSignature) = .empty;
+        errdefer utils.deinitArrayList(ast.VariableSignature, &params, self.alloc);
         try self.expect(self.advance(), opening_token, "parameter list", @tagName(opening_token));
 
         if (self.currentToken() == closing_token) {
@@ -308,6 +311,34 @@ pub const Parser = struct {
         return params.toOwnedSlice(self.alloc);
     }
 
+    pub fn parseTypeList(self: *Parser, comptime is_generic: bool) Error![]const ast.Type {
+        const context = if (is_generic) "generic parameter list" else "parameter list";
+        const opening_token = if (is_generic) .@"<" else .@"(";
+        const closing_token = if (is_generic) .@">" else .@")";
+
+        var params: std.ArrayList(ast.Type) = .empty;
+        errdefer utils.deinitArrayList(ast.Type, &params, self.alloc);
+        try self.expect(self.advance(), opening_token, context, @tagName(opening_token));
+
+        if (self.currentToken() == closing_token) {
+            if (is_generic) return utils.printErr(
+                error.UnexpectedToken,
+                "Parser error: empty generic parameter list at {f}.\n",
+                .{self.source_map[self.pos]},
+            );
+
+            _ = self.advance();
+        } else while (true) {
+            if (self.currentToken() == closing_token) break;
+            try params.append(self.alloc, try self.type_parser.parseType(self.alloc, .default));
+            if (self.currentToken() == .@",") _ = self.advance() else break;
+        }
+
+        try self.expect(self.advance(), closing_token, context, @tagName(closing_token));
+
+        return params.toOwnedSlice(self.alloc);
+    }
+
     pub fn parseCapture(self: *Parser) !?utils.Capture {
         return switch (self.currentToken()) {
             .@"|" => b: {
@@ -316,6 +347,7 @@ pub const Parser = struct {
                     _ = self.advance();
                     break :blk true;
                 } else false;
+
                 const capture_ref_is_mut = if (capture_takes_ref and self.currentToken() == .mut) blk: {
                     _ = self.advance();
                     break :blk true;
@@ -355,7 +387,8 @@ pub fn parse(
 ) !ast.RootNode {
     defer utils.deinitSlice(lexer.Token, input, alloc);
 
-    var self: Parser = .{
+    var self: Parser = undefined;
+    self = .{
         .pos = 0,
         .input = input,
         .source_map = source_map,
@@ -520,13 +553,13 @@ pub fn parse(
             .@"const" = top_level_statements.constDefinition,
             .@"pub" = top_level_statements.@"pub",
         }),
-        .type_parser = undefined,
+        .type_parser = try .init(&self),
         .alloc = alloc,
         .expect_semicolon = true,
     };
-    self.type_parser = try .init(&self);
 
     var output: std.ArrayList(ast.TopLevelStatement) = .empty;
+    errdefer utils.deinitArrayList(ast.TopLevelStatement, &output, alloc);
 
     while (std.meta.activeTag(self.currentToken()) != .eof)
         try output.append(self.alloc, try top_level_statements.parse(&self));

@@ -65,3 +65,12 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
     last_scope.deinit(alloc);
     alloc.destroy(last_scope);
 }
+
+pub fn getSymbol(self: *const Module, name: []const u8) ?Symbol {
+    for (1..self.scopes.items.len + 1) |i| {
+        const scope = self.scopes.items[self.scopes.items.len - i];
+        for (scope.items) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol;
+    }
+
+    return null;
+}

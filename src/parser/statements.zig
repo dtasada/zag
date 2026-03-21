@@ -45,6 +45,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
 
     // optionally parse type
     var @"type": ast.Type = .{ .inferred = .{ .pos = self.pos } };
+    errdefer @"type".deinit(self.alloc);
     if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);
@@ -53,6 +54,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
     try self.expect(self.advance(), .@"=", environment, "=");
 
     const assigned_value = try expressions.parse(self, .assignment, .{});
+    errdefer assigned_value.deinit(self.alloc);
 
     try self.expectSemicolon(environment);
 
@@ -73,6 +75,7 @@ pub fn @"return"(self: *Parser) Error!ast.Statement {
     _ = self.advance(); // consume "return" keyword and parse from there.
 
     var expression: ?ast.Expression = null;
+    errdefer if (expression) |expr| expr.deinit(self.alloc);
     if (self.currentToken() != .@";")
         expression = try expressions.parse(self, .default, .{});
 
@@ -86,11 +89,14 @@ pub fn @"for"(self: *Parser) Error!ast.Statement {
 
     try self.expect(self.advance(), .@"(", "for statement iterator", "(");
     const iterator = try expressions.parse(self, .default, .{});
+    errdefer iterator.deinit(self.alloc);
     try self.expect(self.advance(), .@")", "for statement iterator", ")");
 
     const capture = try self.parseCapture();
+    errdefer if (capture) |c| c.deinit(self.alloc);
 
     const body = try self.alloc.create(ast.Statement);
+    errdefer self.alloc.destroy(body);
     body.* = if (self.currentToken() == .@"{")
         .{ .block = .{ .pos = self.pos, .payload = try self.parseBlock() } }
     else
@@ -126,21 +132,26 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
     try self.expect(self.advance(), .@"(", context, "(");
 
     const condition = try expressions.parse(self, .default, .{});
+    errdefer condition.deinit(self.alloc);
 
     try self.expect(self.advance(), .@")", context, ")");
 
     const capture = try self.parseCapture();
+    errdefer if (capture) |c| c.deinit(self.alloc);
 
     const body = try self.alloc.create(ast.Statement);
+    errdefer self.alloc.destroy(body);
     body.* = if (self.currentToken() == .@"{")
         .{ .block = .{ .pos = self.pos, .payload = try self.parseBlock() } }
     else
         try parse(self);
+    errdefer body.deinit(self.alloc);
 
     const pos = self.pos;
     return switch (@"type") {
         .@"if" => {
             var @"else": ?*ast.Statement = null;
+            errdefer if (@"else") |e| e.deinitPtr(self.alloc);
             if (self.currentToken() == .@"else") {
                 _ = self.advance(); // consume `else`
 
@@ -194,6 +205,7 @@ pub fn @"defer"(self: *Parser) Error!ast.Statement {
     const pos = self.pos;
     _ = self.advance();
     const stmt = try self.alloc.create(ast.Statement);
+    errdefer self.alloc.destroy(stmt);
     stmt.* = try parse(self);
     return .{ .@"defer" = .{ .pos = pos, .payload = stmt } };
 }

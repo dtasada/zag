@@ -87,3 +87,8 @@ pub fn deinitSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) 
     for (list) |i| i.deinit(alloc);
     alloc.free(list);
 }
+
+pub fn deinitArrayList(comptime T: type, list: *std.ArrayList(T), alloc: std.mem.Allocator) void {
+    for (list.items) |i| i.deinit(alloc);
+    list.deinit(alloc);
+}

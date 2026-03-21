@@ -10,6 +10,7 @@ const statements = @import("statements.zig");
 const Type = @import("type.zig").Type;
 
 pub const Module = @import("Module.zig");
+pub const Value = @import("Value.zig").Value;
 
 pub const Symbol = struct {
     name: []const u8,
@@ -95,6 +96,7 @@ pub const Compiler = struct {
     },
 
     module: Module,
+    source_map: []const utils.Position,
 
     fn deinit(self: *Compiler, alloc: std.mem.Allocator) void {
         self.source.deinit(alloc);
@@ -104,16 +106,17 @@ pub const Compiler = struct {
 };
 
 pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
-    const tokens, const tokens_source_map = try lexer.tokenize(alloc, file_path);
-    defer alloc.free(tokens_source_map);
+    const tokens, const source_map = try lexer.tokenize(alloc, file_path);
+    defer alloc.free(source_map);
 
-    const root_node = try parser.parse(alloc, tokens, tokens_source_map);
+    const root_node = try parser.parse(alloc, tokens, source_map);
     defer utils.deinitSlice(ast.TopLevelStatement, root_node, alloc);
 
     var compiler: Compiler = .{
         .header = try .init(alloc),
         .source = try .init(alloc),
         .module = try .init(alloc),
+        .source_map = source_map,
     };
     defer compiler.deinit(alloc);
 

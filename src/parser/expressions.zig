@@ -26,10 +26,13 @@ pub fn primary(self: *Parser) !ast.Expression {
         ),
         else => |other| return self.unexpectedToken("primary expression", "(int | float | ident | string | char)", other),
     };
+    errdefer expr.deinit(self.alloc);
 
     if (expr == .ident and self.currentToken() == .@"<") {
         if (isGenericLookahead(self)) {
             const old_expr = try self.alloc.create(ast.Expression);
+            errdefer self.alloc.destroy(old_expr);
+
             old_expr.* = expr;
             expr = try generic(self, old_expr, .default);
         }
@@ -41,19 +44,21 @@ pub fn primary(self: *Parser) !ast.Expression {
 pub fn binary(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) Error!ast.Expression {
     const pos = self.pos;
     const op: ast.BinaryOperator = .fromLexerToken(self.advance());
-    const rhs = try parse(self, bp, .{});
 
     const new_rhs = try self.alloc.create(ast.Expression);
-    new_rhs.* = rhs;
+    new_rhs.* = try parse(self, bp, .{});
+    errdefer new_rhs.deinitPtr(self.alloc);
 
     switch (op) {
         .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
             if (lhs.* == .comparison) {
-                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) = .fromOwnedSlice(try utils.cloneSlice(
-                    ast.Expression.Comparison.Item,
-                    lhs.comparison.comparisons,
-                    self.alloc,
-                ));
+                var comparisons: std.ArrayList(ast.Expression.Comparison.Item) =
+                    .fromOwnedSlice(try utils.cloneSlice(
+                        ast.Expression.Comparison.Item,
+                        lhs.comparison.comparisons,
+                        self.alloc,
+                    ));
+                errdefer comparisons.deinit(self.alloc);
                 try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
                 return .{
                     .comparison = .{
@@ -102,6 +107,7 @@ pub fn parse(self: *Parser, bp: BindingPower, opts: struct { silent_error: bool 
     // first parse the NUD
     const nud_fn = try self.getHandler(.nud, self.currentToken(), .{ .silent_error = opts.silent_error });
     var lhs = try nud_fn(self);
+    errdefer lhs.deinit(self.alloc);
 
     // while we have a led and (current bp < bp of current token)
     // continue parsing lhs
@@ -112,6 +118,7 @@ pub fn parse(self: *Parser, bp: BindingPower, opts: struct { silent_error: bool 
         const led_fn = try self.getHandler(.led, self.currentToken(), .{ .silent_error = opts.silent_error });
 
         const old_lhs = try self.alloc.create(ast.Expression);
+        errdefer self.alloc.destroy(old_lhs);
         old_lhs.* = lhs;
 
         lhs = try led_fn(self, old_lhs, try self.getHandler(.bp, self.currentToken(), .{ .silent_error = opts.silent_error }));
@@ -125,6 +132,7 @@ pub fn assignment(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) E
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(rhs);
     rhs.* = try parse(self, bp, .{});
 
     return .{
@@ -158,6 +166,7 @@ pub fn prefix(self: *Parser) Error!ast.Expression {
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(rhs);
     rhs.* = try parse(self, .unary, .{});
 
     return .{
@@ -172,6 +181,7 @@ pub fn prefix(self: *Parser) Error!ast.Expression {
 pub fn group(self: *Parser) Error!ast.Expression {
     try self.expect(self.advance(), .@"(", "group expression", "(");
     const expr = try parse(self, .default, .{});
+    errdefer expr.deinit(self.alloc);
     try self.expect(self.advance(), .@")", "group expression", ")");
 
     return expr;
@@ -189,17 +199,25 @@ pub fn structInstantiation(self: *Parser, lhs: *const ast.Expression, _: Binding
             break :b members;
         },
     };
+    errdefer {
+        var members_it = @"struct".members.iterator();
+        while (members_it.next()) |entry| {
+            self.alloc.free(entry.key_ptr.*);
+            entry.value_ptr.deinit(self.alloc);
+        }
+        @"struct".members.deinit();
+        self.alloc.destroy(@"struct".members);
+    }
 
     while (self.currentToken() != .eof and self.currentToken() != .@"}") {
         const member_name = try self.expect(self.advance(), .ident, "struct instantiation", "struct member name");
         try self.expect(self.advance(), .@":", "struct instantiation", ":");
         const member_value = try parse(self, .default, .{});
+        errdefer member_value.deinit(self.alloc);
 
         try @"struct".members.put(try self.alloc.dupe(u8, member_name), member_value);
 
-        if (self.currentToken() != .@"}") {
-            try self.expect(self.advance(), .@",", "struct instantiation", ",");
-        }
+        if (self.currentToken() != .@"}") try self.expect(self.advance(), .@",", "struct instantiation", ",");
     }
 
     try self.expect(self.advance(), .@"}", "struct instantiation", "}");
@@ -224,7 +242,9 @@ pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
     }
 
     const length = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(length);
     length.* = try parse(self, .default, .{});
+    errdefer length.deinit(self.alloc);
     try self.expect(self.advance(), .@"]", "array instantiation", "]");
 
     return .{
@@ -234,6 +254,7 @@ pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
             .length = length,
             .contents = b: {
                 var contents: std.ArrayList(ast.Expression) = .empty;
+                errdefer utils.deinitArrayList(ast.Expression, &contents, self.alloc);
 
                 try self.expect(self.advance(), .@"{", "array instantiation", "{");
                 while (self.currentToken() != .eof and self.currentToken() != .@"}") {
@@ -285,12 +306,11 @@ fn isGenericLookahead(self: *Parser) bool {
 }
 
 pub fn generic(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!ast.Expression {
-    const args = try self.parseGenericArguments();
     return .{
         .generic = .{
             .pos = lhs.getPosition(),
             .lhs = lhs,
-            .arguments = args,
+            .arguments = try self.parseGenericArguments(),
         },
     };
 }
@@ -298,29 +318,36 @@ pub fn generic(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error
 pub fn @"if"(self: *Parser) Error!ast.Expression {
     const pos = self.pos;
     try self.expect(self.advance(), .@"if", "if expression", "if");
-
     try self.expect(self.advance(), .@"(", "if expression", "(");
 
     const condition = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(condition);
     condition.* = try parse(self, .default, .{});
+    errdefer condition.deinit(self.alloc);
 
     try self.expect(self.advance(), .@")", "if expression", ")");
 
     const capture = try self.parseCapture();
+    errdefer if (capture) |c| c.deinit(self.alloc);
 
     const body = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(body);
     body.* = if (self.currentToken() == .@"{")
         try block(self)
     else
         try parse(self, .default, .{});
+    errdefer body.deinit(self.alloc);
 
     var @"else": ?*ast.Expression = null;
+    errdefer if (@"else") |e| e.deinitPtr(self.alloc);
     if (self.currentToken() == .@"{") {
         // block
     } else if (self.currentToken() == .@"else") {
         _ = self.advance(); // consume `else`
 
         @"else" = try self.alloc.create(ast.Expression);
+        errdefer self.alloc.destroy(@"else".?);
+
         @"else".?.* = if (self.currentToken() == .@"{")
             try block(self)
         else
@@ -344,12 +371,15 @@ pub fn match(self: *Parser) Error!ast.Expression {
 
     try self.expect(self.advance(), .@"(", "match statement", "(");
     const condition = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(condition);
     condition.* = try parse(self, .default, .{});
+    errdefer condition.deinit(self.alloc);
     try self.expect(self.advance(), .@")", "match statement", ")");
 
     try self.expect(self.advance(), .@"{", "match statement", "{");
 
     var cases: std.ArrayList(ast.Expression.Match.Case) = .empty;
+    errdefer utils.deinitArrayList(ast.Expression.Match.Case, &cases, self.alloc);
     while (true) {
         const pos = self.pos;
 
@@ -359,6 +389,7 @@ pub fn match(self: *Parser) Error!ast.Expression {
             break :b .@"else";
         } else b: {
             var conds: std.ArrayList(ast.Expression) = .empty;
+            errdefer utils.deinitArrayList(ast.Expression, &conds, self.alloc);
             try conds.append(self.alloc, try parse(self, .default, .{}));
 
             while (self.currentToken() == .@",") {
@@ -381,6 +412,7 @@ pub fn match(self: *Parser) Error!ast.Expression {
 
             break :b .{ .expression = try parse(self, .default, .{}) };
         };
+        errdefer result.deinit(self.alloc);
 
         try cases.append(self.alloc, .{ .condition = cond, .pos = pos, .result = result });
 
@@ -438,6 +470,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
         const inclusive = self.advance() == .@"..=";
 
         const end = try self.alloc.create(ast.Expression);
+        errdefer self.alloc.destroy(end);
         end.* = parse(self, .default, .{}) catch |err| switch (err) {
             error.HandlerDoesNotExist => return utils.printErr(
                 error.SyntaxError,
@@ -446,6 +479,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
             ),
             else => return err,
         };
+        errdefer end.deinit(self.alloc);
 
         try self.expect(self.advance(), .@"]", "index expression", "]");
 
@@ -461,7 +495,9 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
     }
 
     const i = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(i);
     i.* = try parse(self, .default, .{});
+    errdefer i.deinit(self.alloc);
     defer if (i.* == .range) i.deinitPtr(self.alloc);
 
     const expr: ast.Expression = if (i.* == .range) .{
@@ -493,6 +529,7 @@ pub fn reference(self: *Parser) Error!ast.Expression {
     if (is_mut) _ = self.advance(); // consume `mut`
 
     const inner = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(inner);
     inner.* = try parse(self, .default, .{});
 
     return .{
@@ -509,6 +546,7 @@ pub fn @"try"(self: *Parser) Error!ast.Expression {
     _ = self.advance();
 
     const expr = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(expr);
     expr.* = try parse(self, .default, .{});
 
     return .{ .@"try" = .{ .payload = expr, .pos = pos } };
@@ -524,6 +562,7 @@ pub fn @"catch"(self: *Parser, lhs: *const ast.Expression, binding_power: Bindin
     _ = self.advance(); // move past 'catch'
 
     const rhs = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(rhs);
     rhs.* = try parse(self, binding_power, .{});
 
     return .{

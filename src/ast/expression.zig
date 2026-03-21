@@ -12,7 +12,7 @@ pub const Expression = union(enum) {
     ident: struct { pos: usize, payload: []const u8 },
     string: struct { pos: usize, payload: []const u8 },
     char: struct { pos: usize, payload: u8 },
-    int: struct { pos: usize, payload: u64 },
+    int: struct { pos: usize, payload: usize },
     float: struct { pos: usize, payload: f64 },
 
     @"if": If,

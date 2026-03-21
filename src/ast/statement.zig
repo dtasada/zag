@@ -128,7 +128,7 @@ pub const Statement = union(enum) {
         };
     }
 
-    fn deinitPtr(self: *const Statement, alloc: std.mem.Allocator) void {
+    pub fn deinitPtr(self: *const Statement, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
         alloc.destroy(self);
     }

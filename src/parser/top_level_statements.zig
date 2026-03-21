@@ -68,6 +68,11 @@ fn compoundTypeDeclaration(
     var subtypes: std.ArrayList(ast.TopLevelStatement.Subtype) = .empty;
     var members: std.ArrayList(Type.Member) = .empty;
 
+    errdefer utils.deinitArrayList(ast.TopLevelStatement.FunctionDefinition, &methods, self.alloc);
+    errdefer utils.deinitArrayList(ast.Statement.VariableDefinition, &variables, self.alloc);
+    errdefer utils.deinitArrayList(ast.TopLevelStatement.Subtype, &subtypes, self.alloc);
+    errdefer utils.deinitArrayList(Type.Member, &members, self.alloc);
+
     if (self.currentToken() == .@"<") switch (T) {
         inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
         .@"enum" => return utils.printErr(
@@ -183,7 +188,10 @@ pub fn functionDefinition(self: *Parser) Error!ast.TopLevelStatement {
         .@"<" => try self.parseGenericParameters(),
         else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
     };
+    errdefer utils.deinitSlice(ast.VariableSignature, generic_parameters, self.alloc);
+
     const parameters = try self.parseParameters();
+    errdefer utils.deinitSlice(ast.VariableSignature, parameters, self.alloc);
     const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
             error.MissingReturnType,
@@ -192,12 +200,14 @@ pub fn functionDefinition(self: *Parser) Error!ast.TopLevelStatement {
         ),
         else => return err,
     };
+    errdefer return_type.deinit(self.alloc);
 
     const body: ast.Block = switch (self.currentToken()) {
         .@"{" => try self.parseBlock(),
         .@"->" => b: {
             _ = self.advance();
             const block = try self.alloc.alloc(ast.Statement, 1);
+            errdefer self.alloc.free(block);
             block[0] = try statements.parse(self);
             break :b block;
         },
@@ -207,6 +217,7 @@ pub fn functionDefinition(self: *Parser) Error!ast.TopLevelStatement {
             .{self.source_map[self.pos]},
         ),
     };
+    errdefer utils.deinitSlice(ast.Statement, body, self.alloc);
 
     return .{
         .function_definition = .{
@@ -231,6 +242,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.TopLevelStatement {
         .@"fn" => {
             const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
             const parameters = try self.parseParameters();
+            errdefer utils.deinitSlice(ast.VariableSignature, parameters, self.alloc);
             const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
                 error.HandlerDoesNotExist => return utils.printErr(
                     error.MissingReturnType,
@@ -239,6 +251,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.TopLevelStatement {
                 ),
                 else => return err,
             };
+            errdefer return_type.deinit(self.alloc);
             try self.expectSemicolon("binding function definition");
 
             return .{
@@ -260,6 +273,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.TopLevelStatement {
                     .name = try self.alloc.dupe(u8, try self.expect(self.advance(), .ident, "binding type declaration", @tagName(tag) ++ " name")),
                 },
             };
+            errdefer type_decl.deinit(self.alloc);
             try self.expectSemicolon("binding type declaration");
             return type_decl;
         },
@@ -276,6 +290,10 @@ pub fn import(self: *Parser) Error!ast.TopLevelStatement {
     _ = self.advance(); // consume `import` keyword
 
     var module: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (module.items) |name| self.alloc.free(name);
+        module.deinit(self.alloc);
+    }
     var alias: ?[]const u8 = null;
 
     while (true) s: switch (self.currentToken()) {

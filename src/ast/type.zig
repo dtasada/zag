@@ -28,9 +28,8 @@ pub const Type = union(enum) {
 
     const Function = struct {
         pos: usize,
-        name: []const u8,
-        parameters: ast.ParameterList,
-        generic_parameters: ast.ParameterList,
+        parameters: []const Type,
+        generic_parameters: []const Type,
         return_type: *const Type,
     };
 
@@ -107,9 +106,8 @@ pub const Type = union(enum) {
             .function => |n| .{
                 .function = .{
                     .pos = n.pos,
-                    .name = try alloc.dupe(u8, n.name),
-                    .parameters = try utils.cloneSlice(ast.VariableSignature, n.parameters, alloc),
-                    .generic_parameters = try utils.cloneSlice(ast.VariableSignature, n.generic_parameters, alloc),
+                    .parameters = try utils.cloneSlice(Type, n.parameters, alloc),
+                    .generic_parameters = try utils.cloneSlice(Type, n.generic_parameters, alloc),
                     .return_type = try n.return_type.clonePtr(alloc),
                 },
             },
@@ -151,9 +149,8 @@ pub const Type = union(enum) {
                 if (s.failure) |f| f.deinitPtr(alloc);
             },
             .function => |s| {
-                alloc.free(s.name);
-                utils.deinitSlice(ast.VariableSignature, s.parameters, alloc);
-                utils.deinitSlice(ast.VariableSignature, s.generic_parameters, alloc);
+                utils.deinitSlice(Type, s.parameters, alloc);
+                utils.deinitSlice(Type, s.generic_parameters, alloc);
                 s.return_type.deinitPtr(alloc);
             },
             .generic => |s| {

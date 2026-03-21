@@ -14,6 +14,11 @@ pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement) ![]const u8 {
 pub fn compileTopLevel(alloc: std.mem.Allocator, compiler: *Compiler, statement: ast.TopLevelStatement) !void {
     switch (statement) {
         .import => |s| try import(alloc, compiler, s),
+        .binding_function_declaration => |bfd| {
+            _ = bfd;
+            // var out: std.ArrayList(u8) = .empty;
+            // out.print(alloc, "", .{bfd.return_type});
+        },
         else => {},
     }
 }

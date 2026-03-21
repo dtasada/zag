@@ -47,6 +47,7 @@ pub fn init(parent_parser: *parser.Parser) !Self {
             .@"!" = parseInferredErrorType,
             .@"fn" = parseFunctionType,
             .@"(" = parseGroupType,
+            .@"..." = parseVariadic,
         }),
         .led_lookup = .init(.{ .@"!" = parseErrorType, .@"<" = parseGenericType, .@"." = parseMemberType }),
     };
@@ -205,12 +206,12 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) Error!ast.T
 pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume "fn" keyword
-    const generic_parameters: ast.ParameterList = switch (self.parent_parser.currentToken()) {
+    const generic_parameters: []const ast.Type = switch (self.parent_parser.currentToken()) {
         .@"(" => &.{},
-        .@"<" => try self.parent_parser.parseGenericParameters(),
+        .@"<" => try self.parent_parser.parseTypeList(true),
         else => |other| return self.parent_parser.unexpectedToken("function type", "(' or '<", other),
     };
-    const parameters = try self.parent_parser.parseParameters();
+    const parameters = try self.parent_parser.parseTypeList(false);
     const return_type = try alloc.create(ast.Type);
     return_type.* = parseType(self, alloc, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
@@ -224,7 +225,6 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     return .{
         .function = .{
             .pos = pos,
-            .name = try alloc.dupe(u8, "function_type"),
             .parameters = parameters,
             .generic_parameters = generic_parameters,
             .return_type = return_type,
@@ -295,6 +295,12 @@ pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     try self.parent_parser.expect(self.parent_parser.advance(), .@")", "group expression", ")");
 
     return @"type";
+}
+
+pub fn parseVariadic(self: *Self, _: std.mem.Allocator) Error!ast.Type {
+    const pos = self.parent_parser.pos;
+    _ = self.parent_parser.advance();
+    return .{ .variadic = .{ .pos = pos } };
 }
 
 pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {

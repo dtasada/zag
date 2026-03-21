@@ -1763,12 +1763,12 @@ pub enum NPatchLayout {
     THREE_PATCH_HORIZONTAL,
 }
 
-pub const TraceLogCallback = fn (logLevel: i32, text: &c_char, args...) void;
-pub const LoadFileDataCallback = fn (fileName: &c_char, bytesRead: &mut u32) &c_char;
-pub const SaveFileDataCallback = fn (fileName: &c_char, data: &mut void, bytesToWrite: u32) bool;
-pub const LoadFileTextCallback = fn (fileName: &c_char) &c_char;
-pub const SaveFileTextCallback = fn (fileName: &c_char, text: &mut u8) bool;
-pub const AudioCallback = fn (bufferData: &mut void, frames: u32) void;
+pub const TraceLogCallback = fn (i32, &c_char, ...) void;
+pub const LoadFileDataCallback = fn (&c_char, &mut u32) &c_char;
+pub const SaveFileDataCallback = fn (&c_char, &mut void,  u32) bool;
+pub const LoadFileTextCallback = fn (&c_char) &c_char;
+pub const SaveFileTextCallback = fn (&c_char, &mut u8) bool;
+pub const AudioCallback = fn (&mut void, u32) void;
 
 pub fn init_window(width, height: i32, title: []u8) void {
     let title_cstr = std.to_cstr(title);
@@ -3382,7 +3382,7 @@ bind fn GetRayCollisionQuad(ray: Ray, p1, p2, p3, p4: Vector3) RayCollision;
 //------------------------------------------------------------------------------------
 // Module: audio
 //------------------------------------------------------------------------------------
-const AudioCallback = fn (bufferData: &mut void, frames: c_uint) void;
+const AudioCallback = fn (&mut void, c_uint) void;
 bind fn InitAudioDevice() void;
 bind fn CloseAudioDevice() void;
 bind fn IsAudioDeviceReady() bool;

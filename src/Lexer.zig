@@ -293,7 +293,7 @@ pub const Token = union(enum) {
     ident: []const u8,
     string: []const u8,
     char: u8,
-    int: u64,
+    int: usize,
     float: f64,
 
     // special characters
