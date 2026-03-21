@@ -3,13 +3,12 @@ const utils = @import("utils");
 const ast = @import("ast");
 const expressions = @import("expressions.zig");
 
-const Lexer = @import("Lexer");
 const TypeParser = @import("TypeParser.zig");
 
-const Self = @import("Parser.zig");
-const ParserError = Self.ParserError;
+const Parser = @import("parser.zig").Parser;
+const Error = @import("parser.zig").Error;
 
-pub fn parse(self: *Self) ParserError!ast.Statement {
+pub fn parse(self: *Parser) Error!ast.Statement {
     if (self.statement_lookup.get(self.currentToken())) |statement_fn| {
         return statement_fn(self);
     }
@@ -22,15 +21,15 @@ pub fn parse(self: *Self) ParserError!ast.Statement {
     } else return .{ .block_eval = expression };
 }
 
-pub fn variableDefinition(self: *Self) ParserError!ast.Statement {
+pub fn variableDefinition(self: *Parser) Error!ast.Statement {
     return try variableDeclarationGeneric(self, false);
 }
 
-pub fn constDefinition(self: *Self) ParserError!ast.Statement {
+pub fn constDefinition(self: *Parser) Error!ast.Statement {
     return try variableDeclarationGeneric(self, true);
 }
 
-fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!ast.Statement {
+fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.Statement {
     const env_small = if (is_const) "constant" else "variable";
     const environment = env_small ++ " declaration statement";
 
@@ -71,9 +70,9 @@ fn variableDeclarationGeneric(self: *Self, comptime is_const: bool) ParserError!
 
 /// parses either a struct, enum, or union declaration statement
 pub fn compoundTypeDeclaration(
-    self: *Self,
+    self: *Parser,
     comptime T: utils.CompoundTypeTag,
-) ParserError!ast.Statement {
+) Error!ast.Statement {
     const context = @tagName(T) ++ " declaration statement";
     const tag_name = @tagName(T) ++ "_declaration";
 
@@ -121,7 +120,7 @@ pub fn compoundTypeDeclaration(
         .@"enum" => return utils.printErr(
             error.UnexpectedToken,
             "Parser error: enum declaration can't have generic parameters ({f}).\n",
-            .{self.lexer.source_map.items[self.pos]},
+            .{self.currentPosition()},
             .red,
         ),
     };
@@ -203,19 +202,19 @@ pub fn compoundTypeDeclaration(
     return @unionInit(ast.Statement, @tagName(T) ++ "_declaration", compound);
 }
 
-pub fn structDeclaration(self: *Self) ParserError!ast.Statement {
+pub fn structDeclaration(self: *Parser) Error!ast.Statement {
     return try compoundTypeDeclaration(self, .@"struct");
 }
 
-pub fn enumDeclaration(self: *Self) ParserError!ast.Statement {
+pub fn enumDeclaration(self: *Parser) Error!ast.Statement {
     return try compoundTypeDeclaration(self, .@"enum");
 }
 
-pub fn unionDeclaration(self: *Self) ParserError!ast.Statement {
+pub fn unionDeclaration(self: *Parser) Error!ast.Statement {
     return try compoundTypeDeclaration(self, .@"union");
 }
 
-pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
+pub fn functionDefinition(self: *Parser) Error!ast.Statement {
     const is_pub = isPub(self);
 
     const pos = self.currentPosition();
@@ -266,7 +265,7 @@ pub fn functionDefinition(self: *Self) ParserError!ast.Statement {
     };
 }
 
-pub fn bindingDeclaration(self: *Self) ParserError!ast.Statement {
+pub fn bindingDeclaration(self: *Parser) Error!ast.Statement {
     const is_pub = isPub(self);
 
     const pos = self.currentPosition();
@@ -318,7 +317,7 @@ pub fn bindingDeclaration(self: *Self) ParserError!ast.Statement {
     }
 }
 
-pub fn @"return"(self: *Self) ParserError!ast.Statement {
+pub fn @"return"(self: *Parser) Error!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume "return" keyword and parse from there.
 
@@ -330,7 +329,7 @@ pub fn @"return"(self: *Self) ParserError!ast.Statement {
     return .{ .@"return" = .{ .pos = try pos.clone(self.alloc), .@"return" = expression } };
 }
 
-pub fn @"for"(self: *Self) ParserError!ast.Statement {
+pub fn @"for"(self: *Parser) Error!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume "for" keyeword and parse from there.
 
@@ -356,16 +355,16 @@ pub fn @"for"(self: *Self) ParserError!ast.Statement {
     };
 }
 
-pub fn @"while"(self: *Self) ParserError!ast.Statement {
+pub fn @"while"(self: *Parser) Error!ast.Statement {
     return try conditional(self, .@"while");
 }
 
-pub fn @"if"(self: *Self) ParserError!ast.Statement {
+pub fn @"if"(self: *Parser) Error!ast.Statement {
     return try conditional(self, .@"if");
 }
 
 /// parses either `if` statement or `while` statement
-pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) ParserError!ast.Statement {
+pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Error!ast.Statement {
     const context = switch (@"type") {
         .@"while" => "while statement",
         .@"if" => "if statement",
@@ -422,7 +421,7 @@ pub fn conditional(self: *Self, comptime @"type": enum { @"if", @"while" }) Pars
     };
 }
 
-pub fn import(self: *Self) ParserError!ast.Statement {
+pub fn import(self: *Parser) Error!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance(); // consume `import` keyword
 
@@ -472,25 +471,25 @@ pub fn import(self: *Self) ParserError!ast.Statement {
     };
 }
 
-pub fn match(self: *Self) ParserError!ast.Statement {
+pub fn match(self: *Parser) Error!ast.Statement {
     return .{ .expression = try expressions.parse(self, .primary, .{}) };
 }
 
-pub fn @"break"(self: *Self) ParserError!ast.Statement {
+pub fn @"break"(self: *Parser) Error!ast.Statement {
     const pos = try self.currentPosition().clone(self.alloc);
     _ = self.advance();
     try self.expectSemicolon("break statement");
     return .{ .@"break" = .{ .pos = pos } };
 }
 
-pub fn @"continue"(self: *Self) ParserError!ast.Statement {
+pub fn @"continue"(self: *Parser) Error!ast.Statement {
     const pos = try self.currentPosition().clone(self.alloc);
     _ = self.advance();
     try self.expectSemicolon("continue statement");
     return .{ .@"continue" = .{ .pos = pos } };
 }
 
-pub fn @"defer"(self: *Self) ParserError!ast.Statement {
+pub fn @"defer"(self: *Parser) Error!ast.Statement {
     const pos = self.currentPosition();
     _ = self.advance();
     const stmt = try self.alloc.create(ast.Statement);
@@ -498,11 +497,11 @@ pub fn @"defer"(self: *Self) ParserError!ast.Statement {
     return .{ .@"defer" = .{ .pos = try pos.clone(self.alloc), .payload = stmt } };
 }
 
-pub fn @"pub"(self: *Self) ParserError!ast.Statement {
+pub fn @"pub"(self: *Parser) Error!ast.Statement {
     _ = self.advance(); // consume `pub` keyword
     return parse(self);
 }
 
-fn isPub(self: *Self) bool {
+fn isPub(self: *Parser) bool {
     return if (self.pos <= 0) false else self.previousToken() == .@"pub";
 }

@@ -2,27 +2,27 @@ const std = @import("std");
 const utils = @import("utils");
 const expressions = @import("expressions.zig");
 
-const Lexer = @import("Lexer");
-const Parser = @import("Parser.zig");
+const lexer = @import("lexer");
+const parser = @import("parser.zig");
 
-const BindingPower = Parser.BindingPower;
-const ParserError = Parser.ParserError;
+const BindingPower = parser.BindingPower;
+const Error = parser.Error;
 
 const ast = @import("ast");
 
 const Self = @This();
 
-const NudHandler = *const fn (*Self, std.mem.Allocator) ParserError!ast.Type;
-const LedHandler = *const fn (*Self, std.mem.Allocator, ast.Type, BindingPower) ParserError!ast.Type;
+const NudHandler = *const fn (*Self, std.mem.Allocator) Error!ast.Type;
+const LedHandler = *const fn (*Self, std.mem.Allocator, ast.Type, BindingPower) Error!ast.Type;
 
-parent_parser: *Parser,
-bp_lookup: std.AutoHashMap(Lexer.TokenKind, BindingPower),
-nud_lookup: std.AutoHashMap(Lexer.TokenKind, NudHandler),
-led_lookup: std.AutoHashMap(Lexer.TokenKind, LedHandler),
+parent_parser: *parser.Parser,
+bp_lookup: std.AutoHashMap(lexer.TokenKind, BindingPower),
+nud_lookup: std.AutoHashMap(lexer.TokenKind, NudHandler),
+led_lookup: std.AutoHashMap(lexer.TokenKind, LedHandler),
 
 /// A token which has a NUD handler means it expects nothing to its left
 /// Common examples of this type of token are prefix & unary expressions.
-fn nud(self: *Self, kind: Lexer.TokenKind, nud_fn: NudHandler) !void {
+fn nud(self: *Self, kind: lexer.TokenKind, nud_fn: NudHandler) !void {
     try self.bp_lookup.put(kind, .primary);
     try self.nud_lookup.put(kind, nud_fn);
 }
@@ -30,17 +30,17 @@ fn nud(self: *Self, kind: Lexer.TokenKind, nud_fn: NudHandler) !void {
 /// Tokens which have an LED expect to be between or after some other expression
 /// to their left. Examples of this type of handler include binary expressions and
 /// all infix expressions. Postfix expressions also fall under the LED handler.
-fn led(self: *Self, kind: Lexer.TokenKind, bp: BindingPower, led_fn: LedHandler) !void {
+fn led(self: *Self, kind: lexer.TokenKind, bp: BindingPower, led_fn: LedHandler) !void {
     try self.bp_lookup.put(kind, bp);
     try self.led_lookup.put(kind, led_fn);
 }
 
-pub fn init(alloc: std.mem.Allocator, parent_parser: *Parser) !Self {
+pub fn init(parent_parser: *parser.Parser) !Self {
     var self: Self = .{
         .parent_parser = parent_parser,
-        .bp_lookup = .init(alloc),
-        .nud_lookup = .init(alloc),
-        .led_lookup = .init(alloc),
+        .bp_lookup = .init(parent_parser.alloc),
+        .nud_lookup = .init(parent_parser.alloc),
+        .led_lookup = .init(parent_parser.alloc),
     };
 
     try self.nud(.ident, parseSymbolType);
@@ -62,11 +62,11 @@ pub fn deinit(self: *Self) void {
     self.led_lookup.deinit();
 }
 
-fn getBindingPower(self: *Self, token: Lexer.TokenKind) BindingPower {
+fn getBindingPower(self: *Self, token: lexer.TokenKind) BindingPower {
     return self.bp_lookup.get(token) orelse .default;
 }
 
-pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower) ParserError!ast.Type {
+pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower) Error!ast.Type {
     var token = self.parent_parser.currentToken();
     var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
         try nud_handler(self, alloc)
@@ -85,9 +85,9 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower
     return left;
 }
 
-pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
     var depth: usize = 1;
-    for (self.parent_parser.lexer.tokens.items[self.parent_parser.pos..], self.parent_parser.pos..) |*token, idx| {
+    for (self.parent_parser.input[self.parent_parser.pos..], self.parent_parser.pos..) |*token, idx| {
         switch (token.*) {
             .@"<" => depth += 1,
             .@">" => {
@@ -97,9 +97,15 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
             .@">>" => {
                 if (depth <= 2) {
                     token.* = .@">";
-                    const pos_entry = self.parent_parser.lexer.source_map.items[idx];
-                    try self.parent_parser.lexer.tokens.insert(self.parent_parser.alloc, idx + 1, .@">");
-                    try self.parent_parser.lexer.source_map.insert(self.parent_parser.alloc, idx + 1, pos_entry);
+                    const pos_entry = self.parent_parser.source_map[idx];
+                    var tokens: std.ArrayList(lexer.Token) = .fromOwnedSlice(self.parent_parser.input);
+                    var source_map: std.ArrayList(utils.Position) = .fromOwnedSlice(self.parent_parser.source_map);
+
+                    try tokens.insert(self.parent_parser.alloc, idx + 1, .@">");
+                    try source_map.insert(self.parent_parser.alloc, idx + 1, pos_entry);
+
+                    self.parent_parser.input = try tokens.toOwnedSlice(alloc);
+                    self.parent_parser.source_map = try source_map.toOwnedSlice(alloc);
                     break;
                 }
                 depth -= 2;
@@ -145,7 +151,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
     };
 }
 
-pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) Error!ast.Type {
     const position = self.parent_parser.currentPosition();
     const ident = try self.parent_parser.expect(
         self.parent_parser.advance(),
@@ -162,7 +168,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) ParserError!ast.Type {
     };
 }
 
-pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '&'
 
@@ -181,7 +187,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) ParserError!ast
     };
 }
 
-pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '?'
 
@@ -196,7 +202,7 @@ pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
     };
 }
 
-pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '!'
 
@@ -211,7 +217,7 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) ParserError
     };
 }
 
-pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     const pos = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume "fn" keyword
     const generic_parameters: ast.ParameterList = switch (self.parent_parser.currentToken()) {
@@ -242,7 +248,7 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.
     };
 }
 
-pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
     const position = self.parent_parser.currentPosition();
 
     const failure = try alloc.create(ast.Type);
@@ -260,7 +266,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
     };
 }
 
-pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     const position = self.parent_parser.currentPosition();
     _ = self.parent_parser.advance(); // consume '['
 
@@ -299,7 +305,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
     };
 }
 
-pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Type {
+pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     try self.parent_parser.expect(self.parent_parser.advance(), .@"(", "group expression", "(");
     const @"type" = try parseType(self, alloc, .default);
     try self.parent_parser.expect(self.parent_parser.advance(), .@")", "group expression", ")");
@@ -307,7 +313,7 @@ pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) ParserError!ast.Typ
     return @"type";
 }
 
-pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) ParserError!ast.Type {
+pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
     const pos = self.parent_parser.currentPosition();
     const member_name = try self.parent_parser.expect(
         self.parent_parser.advance(),
@@ -331,8 +337,8 @@ pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: 
 inline fn getHandler(
     self: *const Self,
     comptime handler_type: enum { nud, led, bp },
-    token: Lexer.TokenKind,
-) ParserError!switch (handler_type) {
+    token: lexer.TokenKind,
+) Error!switch (handler_type) {
     .nud => NudHandler,
     .led => LedHandler,
     .bp => BindingPower,

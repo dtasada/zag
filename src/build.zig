@@ -2,14 +2,14 @@ const std = @import("std");
 const build_options = @import("build_options");
 
 const utils = @import("utils");
-const Compiler = @import("Compiler");
+const compiler = @import("compiler");
 
 pub fn build() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var registry: std.StringHashMap(Compiler.Module) = .init(alloc);
+    var registry: std.StringHashMap(compiler.Module) = .init(alloc);
     defer registry.deinit();
 
     var zag_header_types: std.ArrayList(u8) = .empty;
@@ -23,15 +23,15 @@ pub fn build() !void {
 
     try transpileModuleWithHeaders(alloc, "src", &registry, &zag_header_types, &zag_header_macros);
 
-    try writeZagHeader(zag_header_types.items, zag_header_macros.items);
-
-    try compile(alloc);
+    // try writeZagHeader(zag_header_types.items, zag_header_macros.items);
+    //
+    // try compile(alloc);
 }
 
 fn transpileModuleWithHeaders(
     alloc: std.mem.Allocator,
     dir_path: []const u8,
-    registry: *std.StringHashMap(Compiler.Module),
+    registry: *std.StringHashMap(compiler.Module),
     zag_header_types: *std.ArrayList(u8),
     zag_header_macros: *std.ArrayList(u8),
 ) !void {
@@ -55,35 +55,22 @@ fn transpileModuleWithHeaders(
 fn transpileWithHeaders(
     alloc: std.mem.Allocator,
     file_path: []const u8,
-    registry: *std.StringHashMap(Compiler.Module),
+    registry: *std.StringHashMap(compiler.Module),
     zag_header_types: *std.ArrayList(u8),
     zag_header_macros: *std.ArrayList(u8),
 ) !void {
     // Skip if already compiled (e.g. pulled in as a dependency of another module)
     if (registry.contains(file_path)) return;
 
-    const ast = try Compiler.getAST(alloc, file_path);
-    defer alloc.free(ast.source);
+    compiler.emit(alloc, file_path, registry) catch |err|
+        return utils.printErr(error.CompilationError, "Compilation error: {}\n", .{err}, .red);
 
-    var compiler = Compiler.init(alloc, ast.root, file_path, registry) catch |err|
-        return utils.printErr(
-            error.FailedToCreateCompiler,
-            "Failed to create compiler: {}\n",
-            .{err},
-            .red,
-        );
-    defer compiler.deinit();
-
-    compiler.emit() catch |err| return utils.printErr(
-        error.CompilationError,
-        "Compilation error: {}\n",
-        .{err},
-        .red,
-    );
+    _ = zag_header_types;
+    _ = zag_header_macros;
 
     // Accumulate zag header content from this module
-    try zag_header_types.appendSlice(alloc, compiler.sections.get(.zag_header_types).buffer.items);
-    try zag_header_macros.appendSlice(alloc, compiler.sections.get(.zag_header_macros).buffer.items);
+    // try zag_header_types.appendSlice(alloc, compiler.sections.get(.zag_header_types).buffer.items);
+    // try zag_header_macros.appendSlice(alloc, compiler.sections.get(.zag_header_macros).buffer.items);
 }
 
 fn writeZagHeader(types: []const u8, macros: []const u8) !void {

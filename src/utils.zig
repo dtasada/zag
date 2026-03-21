@@ -47,10 +47,6 @@ pub const Position = struct {
             .path = try alloc.dupe(u8, self.path),
         };
     }
-
-    pub fn deinit(self: Position, alloc: std.mem.Allocator) void {
-        alloc.free(self.path);
-    }
 };
 
 const Color = enum { white, red, green, blue, yellow };

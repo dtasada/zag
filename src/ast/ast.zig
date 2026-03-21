@@ -3,7 +3,7 @@
 const std = @import("std");
 const utils = @import("utils");
 
-const LexerToken = @import("Lexer").Token;
+const Token = @import("lexer").Token;
 
 pub const Statement = @import("statement.zig").Statement;
 pub const Expression = @import("expression.zig").Expression;
@@ -37,7 +37,7 @@ pub const BinaryOperator = enum {
     @">>",
     @"<<",
 
-    pub fn fromLexerToken(t: LexerToken) BinaryOperator {
+    pub fn fromLexerToken(t: Token) BinaryOperator {
         return std.meta.stringToEnum(BinaryOperator, @tagName(std.meta.activeTag(t))) orelse
             @panic("called BinaryOperator.fromLexerToken on Lexer.Token that is not a binary operator");
     }
@@ -56,7 +56,7 @@ pub const AssignmentOperator = enum {
     @">>=",
     @"<<=",
 
-    pub fn fromLexerToken(t: LexerToken) AssignmentOperator {
+    pub fn fromLexerToken(t: Token) AssignmentOperator {
         return std.meta.stringToEnum(AssignmentOperator, @tagName(std.meta.activeTag(t))) orelse
             @panic("called AssignmentOperator.fromLexerToken on Lexer.Token that is not an assignment operator");
     }
@@ -66,7 +66,7 @@ pub const PrefixOperator = enum {
     @"-",
     @"!",
 
-    pub fn fromLexerToken(t: LexerToken) PrefixOperator {
+    pub fn fromLexerToken(t: Token) PrefixOperator {
         return std.meta.stringToEnum(PrefixOperator, @tagName(std.meta.activeTag(t))) orelse
             @panic("called PrefixOperator.fromLexerToken on Lexer.Token that is not a prefix operator");
     }

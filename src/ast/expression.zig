@@ -63,7 +63,6 @@ pub const Expression = union(enum) {
             }
 
             pub fn deinit(self: Case, alloc: std.mem.Allocator) void {
-                self.pos.deinit(alloc);
                 if (self.condition == .opts) utils.deinitSlice(Expression, self.condition.opts, alloc);
                 self.result.deinit(alloc);
             }
@@ -366,100 +365,68 @@ pub const Expression = union(enum) {
 
     pub fn deinit(self: Expression, alloc: std.mem.Allocator) void {
         switch (self) {
-            .bad_node => |s| s.pos.deinit(alloc),
-            .char => |s| s.pos.deinit(alloc),
-            .int => |s| s.pos.deinit(alloc),
-            .float => |s| s.pos.deinit(alloc),
-            .ident => |s| {
-                s.pos.deinit(alloc);
-                alloc.free(s.payload);
-            },
-            .string => |s| {
-                s.pos.deinit(alloc);
-                alloc.free(s.payload);
-            },
+            else => {},
+            .ident => |s| alloc.free(s.payload),
+            .string => |s| alloc.free(s.payload),
             .@"if" => |s| {
-                s.pos.deinit(alloc);
                 s.condition.deinitPtr(alloc);
                 if (s.capture) |c| c.deinit(alloc);
                 s.body.deinitPtr(alloc);
                 if (s.@"else") |e| e.deinitPtr(alloc);
             },
             .array_instantiation => |s| {
-                s.pos.deinit(alloc);
                 s.length.deinitPtr(alloc);
                 s.type.deinit(alloc);
                 utils.deinitSlice(Expression, s.contents, alloc);
             },
             .assignment => |s| {
-                s.pos.deinit(alloc);
                 s.assignee.deinitPtr(alloc);
                 s.value.deinitPtr(alloc);
             },
             .binary => |s| {
-                s.pos.deinit(alloc);
                 s.lhs.deinitPtr(alloc);
                 s.rhs.deinitPtr(alloc);
             },
-            .block => |s| {
-                s.pos.deinit(alloc);
-                utils.deinitSlice(Statement, s.payload, alloc);
-            },
+            .block => |s| utils.deinitSlice(Statement, s.payload, alloc),
             .call => |s| {
-                s.pos.deinit(alloc);
                 s.callee.deinitPtr(alloc);
                 utils.deinitSlice(Expression, s.args, alloc);
             },
             .comparison => |s| {
-                s.pos.deinit(alloc);
                 s.left.deinitPtr(alloc);
                 utils.deinitSlice(Comparison.Item, s.comparisons, alloc);
             },
-            .dereference => |s| {
-                s.pos.deinit(alloc);
-                s.parent.deinitPtr(alloc);
-            },
+            .dereference => |s| s.parent.deinitPtr(alloc),
             .generic => |s| {
-                s.pos.deinit(alloc);
                 s.lhs.deinitPtr(alloc);
                 utils.deinitSlice(Expression, s.arguments, alloc);
             },
             .index => |s| {
-                s.pos.deinit(alloc);
                 s.lhs.deinitPtr(alloc);
                 s.index.deinitPtr(alloc);
             },
             .slice => |s| {
-                s.pos.deinit(alloc);
                 s.lhs.deinitPtr(alloc);
                 if (s.start) |start| start.deinitPtr(alloc);
                 if (s.end) |end| end.deinitPtr(alloc);
             },
             .match => |s| {
-                s.pos.deinit(alloc);
                 s.condition.deinitPtr(alloc);
                 utils.deinitSlice(Match.Case, s.cases, alloc);
             },
             .member => |s| {
-                s.pos.deinit(alloc);
                 s.parent.deinitPtr(alloc);
                 alloc.free(s.member_name);
             },
             .prefix => |s| {
-                s.pos.deinit(alloc);
                 s.rhs.deinitPtr(alloc);
             },
             .range => |s| {
-                s.pos.deinit(alloc);
                 s.start.deinitPtr(alloc);
                 if (s.end) |end| end.deinitPtr(alloc);
             },
-            .reference => |s| {
-                s.pos.deinit(alloc);
-                s.inner.deinitPtr(alloc);
-            },
+            .reference => |s| s.inner.deinitPtr(alloc),
             .struct_instantiation => |s| {
-                s.pos.deinit(alloc);
                 s.type_expr.deinitPtr(alloc);
                 var it = s.members.iterator();
                 while (it.next()) |entry| {
@@ -469,16 +436,9 @@ pub const Expression = union(enum) {
                 s.members.deinit();
                 alloc.destroy(s.members);
             },
-            .type => |s| {
-                s.pos.deinit(alloc);
-                s.payload.deinit(alloc);
-            },
-            .@"try" => |s| {
-                s.pos.deinit(alloc);
-                s.payload.deinitPtr(alloc);
-            },
+            .type => |s| s.payload.deinit(alloc),
+            .@"try" => |s| s.payload.deinitPtr(alloc),
             .@"catch" => |s| {
-                s.pos.deinit(alloc);
                 s.lhs.deinitPtr(alloc);
                 s.rhs.deinitPtr(alloc);
             },

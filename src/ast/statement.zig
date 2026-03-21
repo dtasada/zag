@@ -66,7 +66,6 @@ pub const Statement = union(enum) {
         }
 
         pub fn deinit(self: FunctionDefinition, alloc: std.mem.Allocator) void {
-            self.pos.deinit(alloc);
             alloc.free(self.name);
             utils.deinitSlice(ast.VariableSignature, self.generic_parameters, alloc);
             utils.deinitSlice(ast.VariableSignature, self.parameters, alloc);
@@ -144,7 +143,6 @@ pub const Statement = union(enum) {
             }
 
             pub fn deinit(self: CompoundTypeDeclaration(T), alloc: std.mem.Allocator) void {
-                self.pos.deinit(alloc);
                 alloc.free(self.name);
                 utils.deinitSlice(ast.VariableSignature, self.generic_types, alloc);
                 utils.deinitSlice(VariableDefinition, self.variables, alloc);
@@ -197,7 +195,6 @@ pub const Statement = union(enum) {
         }
 
         pub fn deinit(self: EnumDeclaration, alloc: std.mem.Allocator) void {
-            self.pos.deinit(alloc);
             alloc.free(self.name);
             utils.deinitSlice(VariableDefinition, self.variables, alloc);
             utils.deinitSlice(ast.Subtype, self.subtypes, alloc);
@@ -260,7 +257,6 @@ pub const Statement = union(enum) {
         }
 
         pub fn deinit(self: VariableDefinition, alloc: std.mem.Allocator) void {
-            self.pos.deinit(alloc);
             alloc.free(self.variable_name);
             self.type.deinit(alloc);
             self.assigned_value.deinit(alloc);
@@ -359,49 +355,34 @@ pub const Statement = union(enum) {
 
     pub fn deinit(self: Statement, alloc: std.mem.Allocator) void {
         switch (self) {
-            .@"break" => |s| s.pos.deinit(alloc),
-            .@"continue" => |s| s.pos.deinit(alloc),
+            else => {},
             .@"for" => |s| {
-                s.pos.deinit(alloc);
                 s.iterator.deinit(alloc);
                 if (s.capture) |c| c.deinit(alloc);
                 s.body.deinitPtr(alloc);
             },
             .@"if" => |s| {
-                s.pos.deinit(alloc);
                 s.condition.deinit(alloc);
                 if (s.capture) |c| c.deinit(alloc);
                 s.body.deinitPtr(alloc);
                 if (s.@"else") |e| e.deinitPtr(alloc);
             },
-            .@"return" => |s| {
-                s.pos.deinit(alloc);
-                if (s.@"return") |r| r.deinit(alloc);
-            },
+            .@"return" => |s| if (s.@"return") |r| r.deinit(alloc),
             .@"while" => |s| {
-                s.pos.deinit(alloc);
                 s.condition.deinit(alloc);
                 if (s.capture) |c| c.deinit(alloc);
                 s.body.deinitPtr(alloc);
             },
             .binding_function_declaration => |s| {
-                s.pos.deinit(alloc);
                 alloc.free(s.name);
                 utils.deinitSlice(ast.VariableSignature, s.parameters, alloc);
                 s.return_type.deinit(alloc);
             },
-            .binding_type_declaration => |s| {
-                s.pos.deinit(alloc);
-                alloc.free(s.name);
-            },
-            .block => |s| {
-                s.pos.deinit(alloc);
-                utils.deinitSlice(Statement, s.payload, alloc);
-            },
+            .binding_type_declaration => |s| alloc.free(s.name),
+            .block => |s| utils.deinitSlice(Statement, s.payload, alloc),
             .expression, .block_eval => |s| s.deinit(alloc),
             .function_definition => |s| s.deinit(alloc),
             .import => |s| {
-                s.pos.deinit(alloc);
                 for (s.module_name) |name| alloc.free(name);
                 alloc.free(s.module_name);
                 if (s.alias) |a| alloc.free(a);
@@ -409,10 +390,7 @@ pub const Statement = union(enum) {
             .struct_declaration => |s| s.deinit(alloc),
             .union_declaration => |s| s.deinit(alloc),
             .enum_declaration => |s| s.deinit(alloc),
-            .@"defer" => |s| {
-                s.pos.deinit(alloc);
-                s.payload.deinitPtr(alloc);
-            },
+            .@"defer" => |s| s.payload.deinitPtr(alloc),
             .variable_definition => |s| s.deinit(alloc),
         }
     }

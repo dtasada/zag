@@ -5,19 +5,17 @@ const ast = @import("ast");
 const statements = @import("statements.zig");
 const expressions = @import("expressions.zig");
 
-const Lexer = @import("Lexer");
+const lexer = @import("lexer");
 const TypeParser = @import("TypeParser.zig");
 
-const Self = @This();
-
 /// Function signature for a statement handler.
-const StatementHandler = *const fn (*Self) ParserError!ast.Statement;
+const StatementHandler = *const fn (*Parser) Error!ast.Statement;
 
 /// Function signature for a nud handler.
-const NudHandler = *const fn (*Self) ParserError!ast.Expression;
+const NudHandler = *const fn (*Parser) Error!ast.Expression;
 
 /// Function signature for a led handler.
-const LedHandler = *const fn (*Self, *const ast.Expression, BindingPower) ParserError!ast.Expression;
+const LedHandler = *const fn (*Parser, *const ast.Expression, BindingPower) Error!ast.Expression;
 
 /// Binding power. Order of this enum is functional, so don't change it.
 pub const BindingPower = enum {
@@ -35,7 +33,7 @@ pub const BindingPower = enum {
     primary,
 };
 
-pub const ParserError = error{
+pub const Error = error{
     UnexpectedToken,
     UnexpectedExpression,
     NoSpaceLeft,
@@ -47,50 +45,358 @@ pub const ParserError = error{
     SyntaxError,
 };
 
-/// Parser state: the current reading position in the lexer token list.
-pos: usize,
+pub const Parser = struct {
+    /// Parser state: the current reading position in the lexer token list.
+    pos: usize,
 
-/// Input tokens, and maps the tokens to the source code.
-lexer: *Lexer,
+    input: []lexer.Token,
+    source_map: []utils.Position,
 
-alloc: std.mem.Allocator,
+    alloc: std.mem.Allocator,
 
-/// Parser output: the root AST object.
-output: ast.RootNode = &.{},
+    /// Parser output: the root AST object.
+    output: ast.RootNode = &.{},
 
-/// pratt parsing helpers
-type_parser: TypeParser,
+    /// pratt parsing helpers
+    type_parser: TypeParser,
 
-/// Maps a `Token` to its corresponding binding power.
-bp_lookup: std.AutoHashMap(Lexer.TokenKind, BindingPower),
+    /// Maps a `Token` to its corresponding binding power.
+    bp_lookup: std.AutoHashMap(lexer.TokenKind, BindingPower),
 
-/// Maps a `Token` to a corresponding nud handler.
-nud_lookup: std.AutoHashMap(Lexer.TokenKind, NudHandler),
+    /// Maps a `Token` to a corresponding nud handler.
+    nud_lookup: std.AutoHashMap(lexer.TokenKind, NudHandler),
 
-/// Maps a `Token` to a corresponding led handler.
-led_lookup: std.AutoHashMap(Lexer.TokenKind, LedHandler),
+    /// Maps a `Token` to a corresponding led handler.
+    led_lookup: std.AutoHashMap(lexer.TokenKind, LedHandler),
 
-/// Maps a `Token` to a corresponding statement handler.
-statement_lookup: std.AutoHashMap(Lexer.TokenKind, StatementHandler),
+    /// Maps a `Token` to a corresponding statement handler.
+    statement_lookup: std.AutoHashMap(lexer.TokenKind, StatementHandler),
 
-expect_semicolon: bool,
+    expect_semicolon: bool,
 
-// errors: std.ArrayList(ParserError) = .empty,
+    // errors: std.ArrayList(Error) = .empty,
+
+    /// Returns the line and column in the source file corresponding to what is being parsed.
+    pub inline fn currentPosition(self: *const Parser) utils.Position {
+        return self.source_map[std.math.clamp(self.pos, 0, self.source_map.len - 1)];
+    }
+
+    /// Consumes current token and then increases position.
+    pub inline fn advance(self: *Parser) lexer.Token {
+        const current_token = self.currentToken();
+        self.pos += 1;
+        return current_token;
+    }
+
+    /// Returns token at the current position.
+    pub inline fn currentToken(self: *const Parser) lexer.Token {
+        return self.input[self.pos];
+    }
+
+    /// Returns token at the current position.
+    pub inline fn previousToken(self: *const Parser) lexer.Token {
+        return self.input[self.pos - 1];
+    }
+
+    /// A token which has a NUD handler means it expects nothing to its left
+    /// Common examples of this type of token are prefix & unary expressions.
+    fn nud(self: *Parser, kind: lexer.TokenKind, nud_fn: NudHandler) !void {
+        try self.nud_lookup.put(kind, nud_fn);
+    }
+
+    /// Tokens which have an LED expect to be between or after some other expression
+    /// to their left. Examples of this type of handler include binary expressions and
+    /// all infix expressions. Postfix expressions also fall under the LED handler.
+    fn led(self: *Parser, kind: lexer.TokenKind, bp: BindingPower, led_fn: LedHandler) !void {
+        try self.bp_lookup.put(kind, bp);
+        try self.led_lookup.put(kind, led_fn);
+    }
+
+    /// Statements are standalone objects that begin with a token and don't rely on any other state.
+    fn statement(self: *Parser, kind: lexer.TokenKind, statment_fn: StatementHandler) !void {
+        try self.bp_lookup.put(kind, .default);
+        try self.statement_lookup.put(kind, statment_fn);
+    }
+
+    /// Prints error message and always returns an error.
+    /// `environment` and `expected_token` are strings for the error message.
+    /// example: "function definition" and "function name" respectively yields:
+    /// "Unexpected token in function definition '<actual>' at <line>:<col>. Expected 'function_name'",
+    pub fn unexpectedToken(
+        self: *const Parser,
+        environment: []const u8,
+        expected_token: []const u8,
+        actual: lexer.Token,
+    ) error{UnexpectedToken} {
+        const pos = std.math.clamp(self.pos - 1, 0, self.source_map.len - 1);
+
+        return utils.printErr(
+            error.UnexpectedToken,
+            "Unexpected token '{f}' in {s} at {f}. Expected '{s}'\n",
+            .{ actual, environment, self.source_map[pos], expected_token },
+            .red,
+        );
+    }
+
+    /// Returns active tag if active type of `actual` is the same as `expected`. Errors otherwise.
+    /// `environment` and `expected_token` are strings for the error message.
+    /// example: "function definition" and "function name" respectively yields
+    /// "Unexpected token in function definition '<bad_token>' at <source_file>:<line>:<col>. Expected 'function_name'",
+    pub fn expect(
+        self: *const Parser,
+        actual: lexer.Token,
+        comptime expected: lexer.TokenKind,
+        comptime context: []const u8,
+        comptime expected_token: []const u8,
+    ) !@FieldType(lexer.Token, @tagName(expected)) {
+        return if (std.meta.activeTag(actual) == expected)
+            @field(actual, @tagName(expected))
+        else if (expected == .@";") utils.printErr(
+            error.SyntaxError,
+            "Parser error: expected semicolon after {s}, received '{f}' ({f}).\n",
+            .{ context, actual, self.currentPosition() },
+            .red,
+        ) else self.unexpectedToken(context, expected_token, actual);
+    }
+
+    /// Identical to `expect` but doesn't print error message.
+    pub fn expectSilent(
+        _: *const Parser,
+        actual: lexer.Token,
+        comptime expected: lexer.TokenKind,
+    ) !@FieldType(lexer.Token, @tagName(expected)) {
+        return if (std.meta.activeTag(actual) == expected)
+            @field(actual, @tagName(expected))
+        else
+            error.UnexpectedToken;
+    }
+
+    /// Returns the appropriate handler and errors if a handler isn't found.
+    pub inline fn getHandler(
+        self: *const Parser,
+        comptime handler_type: enum { statement, nud, led, bp },
+        token: lexer.TokenKind,
+        opts: struct { silent_error: bool = false },
+    ) Error!switch (handler_type) {
+        .statement => StatementHandler,
+        .nud => NudHandler,
+        .led => LedHandler,
+        .bp => BindingPower,
+    } {
+        return if (switch (handler_type) {
+            .statement => self.statement_lookup,
+            .nud => self.nud_lookup,
+            .led => self.led_lookup,
+            .bp => self.bp_lookup,
+        }.get(token)) |handler| handler else return if (opts.silent_error)
+            error.HandlerDoesNotExist
+        else {
+            return utils.printErr(
+                error.HandlerDoesNotExist,
+                "Parser error: Syntax error at {f}.\n",
+                .{self.currentPosition()},
+                .red,
+            );
+        };
+    }
+
+    /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
+    pub fn parseParameters(self: *Parser) !ast.ParameterList {
+        return try self.parseParametersGeneric(false);
+    }
+
+    /// Parses generic parameter list.
+    /// Equivalent to a normal parameter list but the explicit type is optional.
+    pub fn parseGenericParameters(self: *Parser) Error!ast.ParameterList {
+        return try self.parseParametersGeneric(true);
+    }
+
+    pub fn parseArguments(self: *Parser) Error!ast.ArgumentList {
+        return try self.parseArgumentsGeneric(false);
+    }
+    pub fn parseGenericArguments(self: *Parser) Error!ast.ArgumentList {
+        return try self.parseArgumentsGeneric(true);
+    }
+
+    fn parseArgumentsGeneric(self: *Parser, comptime is_generic: bool) Error!ast.ArgumentList {
+        const opening_token: lexer.Token = if (is_generic) .@"<" else .@"(";
+        const closing_token: lexer.Token = if (is_generic) .@">" else .@")";
+        const environment = if (is_generic) "generic argument list" else "argument list";
+
+        var args: std.ArrayList(ast.Expression) = .empty;
+
+        try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
+
+        while (std.meta.activeTag(self.currentToken()) != closing_token) {
+            try args.append(self.alloc, if (is_generic) b: {
+                const backup_pos = self.pos;
+                const current_pos = try self.currentPosition().clone(self.alloc);
+                if (self.type_parser.parseType(self.alloc, .default)) |t| {
+                    break :b .{ .type = .{ .pos = current_pos, .payload = t } };
+                } else |_| {
+                    self.pos = backup_pos;
+                    break :b try expressions.parse(self, .relational, .{});
+                }
+            } else try expressions.parse(self, .default, .{}));
+
+            if (self.currentToken() == .@",") _ = self.advance() else break;
+        }
+
+        try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
+
+        return args.toOwnedSlice(self.alloc);
+    }
+
+    pub fn parseBlock(self: *Parser) !ast.Block {
+        var block: std.ArrayList(ast.Statement) = .empty;
+
+        try self.expect(self.advance(), .@"{", "block", "{");
+
+        while (self.currentToken() != .eof and self.currentToken() != .@"}")
+            try block.append(self.alloc, try statements.parse(self));
+
+        try self.expect(self.advance(), .@"}", "block", "}");
+
+        return block.toOwnedSlice(self.alloc);
+    }
+
+    pub fn parseParametersGeneric(self: *Parser, comptime is_generic: bool) Error!ast.ParameterList {
+        const context = if (is_generic) "generic parameter list" else "parameter list";
+        const opening_token = if (is_generic) .@"<" else .@"(";
+        const closing_token = if (is_generic) .@">" else .@")";
+
+        var params: std.ArrayList(ast.VariableSignature) = .empty;
+        try self.expect(
+            self.advance(),
+            opening_token,
+            "parameter list",
+            @tagName(opening_token),
+        );
+
+        if (self.currentToken() == closing_token) {
+            if (is_generic) return utils.printErr(
+                error.UnexpectedToken,
+                "Parser error: empty generic parameter list at {f}.\n",
+                .{self.currentPosition()},
+                .red,
+            );
+
+            _ = self.advance();
+        } else {
+            var last_arg = false;
+            while (!last_arg) {
+                var param_names: std.ArrayList([]const u8) = .empty;
+                defer param_names.deinit(self.alloc);
+
+                const first_pos = try self.currentPosition().clone(self.alloc);
+
+                const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
+                    _ = self.advance();
+                    break :b true;
+                } else false;
+
+                const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
+                try param_names.append(self.alloc, first_name);
+
+                while (self.currentToken() == .@",") {
+                    _ = self.advance();
+                    const name = try self.expect(self.advance(), .ident, context, "parameter name");
+                    try param_names.append(self.alloc, name);
+                }
+
+                const param_type: ast.Type = if (is_generic and self.currentToken() == .@":") b: {
+                    _ = self.advance();
+                    break :b try self.type_parser.parseType(self.alloc, .default);
+                } else if (is_generic)
+                    .{ .inferred = .{ .pos = first_pos } }
+                else switch (self.advance()) {
+                    .@":" => try self.type_parser.parseType(self.alloc, .default),
+                    .@"..." => b: {
+                        last_arg = true;
+                        break :b .{ .variadic = .{ .pos = first_pos } };
+                    },
+                    else => |actual| return utils.printErr(
+                        error.UnexpectedToken,
+                        "Unexpected token '{f}' in " ++ context ++ " at {f}. Expected a type.\n",
+                        .{ actual, self.source_map[std.math.clamp(self.pos - 1, 0, self.source_map.len - 1)] },
+                        .red,
+                    ),
+                };
+
+                for (param_names.items, 0..) |p, i| try params.append(self.alloc, .{
+                    .is_mut = is_mut,
+                    .name = try self.alloc.dupe(u8, p),
+                    .type = if (i == 0) param_type else try param_type.clone(self.alloc),
+                });
+
+                if (self.currentToken() == .@",") _ = self.advance() else {
+                    try self.expect(self.advance(), closing_token, context, @tagName(closing_token));
+                    break;
+                }
+            }
+        }
+
+        return params.toOwnedSlice(self.alloc);
+    }
+
+    pub fn parseCapture(self: *Parser) !?utils.Capture {
+        return switch (self.currentToken()) {
+            .@"|" => b: {
+                _ = self.advance(); // consume opening pipe
+                const capture_takes_ref = if (self.currentToken() == .@"&") blk: {
+                    _ = self.advance();
+                    break :blk true;
+                } else false;
+                const capture_ref_is_mut = if (capture_takes_ref and self.currentToken() == .mut) blk: {
+                    _ = self.advance();
+                    break :blk true;
+                } else false;
+                const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
+
+                const index: ?[]const u8 = if (self.currentToken() == .@",") b2: {
+                    _ = self.advance();
+                    break :b2 try self.expect(self.advance(), .ident, "capture", "index name");
+                } else null;
+
+                try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
+                break :b if (std.mem.eql(u8, capture_name, "_")) null else .{
+                    .name = try self.alloc.dupe(u8, capture_name),
+                    .takes_ref = if (capture_takes_ref) .{ .some = capture_ref_is_mut } else .none,
+                    .index = if (index) |i| try self.alloc.dupe(u8, i) else null,
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub inline fn expectSemicolon(self: *Parser, context: []const u8) !void {
+        if (self.expect_semicolon) try self.expect(self.advance(), .@";", context, ";");
+    }
+};
 
 /// Initializes and runs parser. Populates `output`.
-pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
-    const self = try alloc.create(Self);
-    self.* = .{
+/// Takes ownership of `input` and `source_map`.
+pub fn parse(
+    alloc: std.mem.Allocator,
+    input: []lexer.Token,
+    source_map: []utils.Position,
+) !ast.RootNode {
+    defer utils.deinitSlice(lexer.Token, input, alloc);
+    // defer utils.deinitSlice(utils.Position, source_map, alloc);
+
+    var self: Parser = .{
         .pos = 0,
-        .lexer = input,
+        .input = input,
+        .source_map = source_map,
         .bp_lookup = .init(alloc),
         .nud_lookup = .init(alloc),
         .led_lookup = .init(alloc),
         .statement_lookup = .init(alloc),
-        .type_parser = try .init(alloc, self),
+        .type_parser = undefined,
         .alloc = alloc,
         .expect_semicolon = true,
     };
+    self.type_parser = try .init(&self);
 
     try self.led(.@"=", .assignment, expressions.assignment);
     try self.led(.@"+=", .assignment, expressions.assignment);
@@ -183,334 +489,7 @@ pub fn init(input: *Lexer, alloc: std.mem.Allocator) !*Self {
     var output: std.ArrayList(ast.Statement) = .empty;
 
     while (std.meta.activeTag(self.currentToken()) != .eof)
-        try output.append(self.alloc, try statements.parse(self));
+        try output.append(self.alloc, try statements.parse(&self));
 
-    self.output = try output.toOwnedSlice(self.alloc);
-
-    return self;
-}
-
-/// Cleans up resources
-pub fn deinit(self: *Self) void {
-    utils.deinitSlice(ast.Statement, self.output, self.alloc);
-
-    self.bp_lookup.deinit();
-    self.led_lookup.deinit();
-    self.nud_lookup.deinit();
-    self.type_parser.deinit();
-    self.alloc.destroy(self);
-}
-
-/// Returns the line and column in the source file corresponding to what is being parsed.
-pub inline fn currentPosition(self: *const Self) utils.Position {
-    return self.lexer.source_map.items[
-        std.math.clamp(
-            self.pos,
-            0,
-            self.lexer.source_map.items.len - 1,
-        )
-    ];
-}
-
-/// Consumes current token and then increases position.
-pub inline fn advance(self: *Self) Lexer.Token {
-    const current_token = self.currentToken();
-    self.pos += 1;
-    return current_token;
-}
-
-/// Returns token at the current position.
-pub inline fn currentToken(self: *const Self) Lexer.Token {
-    return self.lexer.tokens.items[self.pos];
-}
-
-/// Returns token at the current position.
-pub inline fn previousToken(self: *const Self) Lexer.Token {
-    return self.lexer.tokens.items[self.pos - 1];
-}
-
-/// A token which has a NUD handler means it expects nothing to its left
-/// Common examples of this type of token are prefix & unary expressions.
-fn nud(self: *Self, kind: Lexer.TokenKind, nud_fn: NudHandler) !void {
-    try self.nud_lookup.put(kind, nud_fn);
-}
-
-/// Tokens which have an LED expect to be between or after some other expression
-/// to their left. Examples of this type of handler include binary expressions and
-/// all infix expressions. Postfix expressions also fall under the LED handler.
-fn led(self: *Self, kind: Lexer.TokenKind, bp: BindingPower, led_fn: LedHandler) !void {
-    try self.bp_lookup.put(kind, bp);
-    try self.led_lookup.put(kind, led_fn);
-}
-
-/// Statements are standalone objects that begin with a token and don't rely on any other state.
-fn statement(self: *Self, kind: Lexer.TokenKind, statment_fn: StatementHandler) !void {
-    try self.bp_lookup.put(kind, .default);
-    try self.statement_lookup.put(kind, statment_fn);
-}
-
-/// Prints error message and always returns an error.
-/// `environment` and `expected_token` are strings for the error message.
-/// example: "function definition" and "function name" respectively yields:
-/// "Unexpected token in function definition '<actual>' at <line>:<col>. Expected 'function_name'",
-pub fn unexpectedToken(
-    self: *const Self,
-    environment: []const u8,
-    expected_token: []const u8,
-    actual: Lexer.Token,
-) error{UnexpectedToken} {
-    const pos = std.math.clamp(self.pos - 1, 0, self.lexer.source_map.items.len - 1);
-
-    return utils.printErr(
-        error.UnexpectedToken,
-        "Unexpected token '{f}' in {s} at {f}. Expected '{s}'\n",
-        .{
-            actual,
-            environment,
-            self.lexer.source_map.items[pos],
-            expected_token,
-        },
-        .red,
-    );
-}
-
-/// Returns active tag if active type of `actual` is the same as `expected`. Errors otherwise.
-/// `environment` and `expected_token` are strings for the error message.
-/// example: "function definition" and "function name" respectively yields
-/// "Unexpected token in function definition '<bad_token>' at <source_file>:<line>:<col>. Expected 'function_name'",
-pub fn expect(
-    self: *const Self,
-    actual: Lexer.Token,
-    comptime expected: Lexer.TokenKind,
-    comptime context: []const u8,
-    comptime expected_token: []const u8,
-) !@FieldType(Lexer.Token, @tagName(expected)) {
-    return if (std.meta.activeTag(actual) == expected)
-        @field(actual, @tagName(expected))
-    else if (expected == .@";") utils.printErr(
-        error.SyntaxError,
-        "Parser error: expected semicolon after {s}, received '{f}' ({f}).\n",
-        .{ context, actual, self.currentPosition() },
-        .red,
-    ) else self.unexpectedToken(context, expected_token, actual);
-}
-
-/// Identical to `expect` but doesn't print error message.
-pub fn expectSilent(
-    _: *const Self,
-    actual: Lexer.Token,
-    comptime expected: Lexer.TokenKind,
-) !@FieldType(Lexer.Token, @tagName(expected)) {
-    return if (std.meta.activeTag(actual) == expected)
-        @field(actual, @tagName(expected))
-    else
-        error.UnexpectedToken;
-}
-
-/// Returns the appropriate handler and errors if a handler isn't found.
-pub inline fn getHandler(
-    self: *const Self,
-    comptime handler_type: enum { statement, nud, led, bp },
-    token: Lexer.TokenKind,
-    opts: struct { silent_error: bool = false },
-) ParserError!switch (handler_type) {
-    .statement => StatementHandler,
-    .nud => NudHandler,
-    .led => LedHandler,
-    .bp => BindingPower,
-} {
-    return if (switch (handler_type) {
-        .statement => self.statement_lookup,
-        .nud => self.nud_lookup,
-        .led => self.led_lookup,
-        .bp => self.bp_lookup,
-    }.get(token)) |handler| handler else return if (opts.silent_error)
-        error.HandlerDoesNotExist
-    else {
-        return utils.printErr(
-            error.HandlerDoesNotExist,
-            "Parser error: Syntax error at {f}.\n",
-            .{self.currentPosition()},
-            .red,
-        );
-    };
-}
-
-/// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
-pub fn parseParameters(self: *Self) !ast.ParameterList {
-    return try self.parseParametersGeneric(false);
-}
-
-/// Parses generic parameter list.
-/// Equivalent to a normal parameter list but the explicit type is optional.
-pub fn parseGenericParameters(self: *Self) ParserError!ast.ParameterList {
-    return try self.parseParametersGeneric(true);
-}
-
-pub fn parseArguments(self: *Self) ParserError!ast.ArgumentList {
-    return try self.parseArgumentsGeneric(false);
-}
-pub fn parseGenericArguments(self: *Self) ParserError!ast.ArgumentList {
-    return try self.parseArgumentsGeneric(true);
-}
-
-fn parseArgumentsGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ArgumentList {
-    const opening_token: Lexer.Token = if (is_generic) .@"<" else .@"(";
-    const closing_token: Lexer.Token = if (is_generic) .@">" else .@")";
-    const environment = if (is_generic) "generic argument list" else "argument list";
-
-    var args: std.ArrayList(ast.Expression) = .empty;
-
-    try self.expect(self.advance(), opening_token, environment, @tagName(opening_token));
-
-    while (std.meta.activeTag(self.currentToken()) != closing_token) {
-        try args.append(self.alloc, if (is_generic) b: {
-            const backup_pos = self.pos;
-            const current_pos = try self.currentPosition().clone(self.alloc);
-            if (self.type_parser.parseType(self.alloc, .default)) |t|
-                break :b .{ .type = .{ .pos = current_pos, .payload = t } }
-            else |_| {
-                self.pos = backup_pos;
-                break :b try expressions.parse(self, .relational, .{});
-            }
-        } else try expressions.parse(self, .default, .{}));
-
-        if (self.currentToken() == .@",") _ = self.advance() else break;
-    }
-
-    try self.expect(self.advance(), closing_token, environment, @tagName(closing_token));
-
-    return args.toOwnedSlice(self.alloc);
-}
-
-pub fn parseBlock(self: *Self) !ast.Block {
-    var block: std.ArrayList(ast.Statement) = .empty;
-
-    try self.expect(self.advance(), .@"{", "block", "{");
-
-    while (self.currentToken() != .eof and self.currentToken() != .@"}")
-        try block.append(self.alloc, try statements.parse(self));
-
-    try self.expect(self.advance(), .@"}", "block", "}");
-
-    return block.toOwnedSlice(self.alloc);
-}
-
-pub fn parseParametersGeneric(self: *Self, comptime is_generic: bool) ParserError!ast.ParameterList {
-    const context = if (is_generic) "generic parameter list" else "parameter list";
-    const opening_token = if (is_generic) .@"<" else .@"(";
-    const closing_token = if (is_generic) .@">" else .@")";
-
-    var params: std.ArrayList(ast.VariableSignature) = .empty;
-    try self.expect(
-        self.advance(),
-        opening_token,
-        "parameter list",
-        @tagName(opening_token),
-    );
-
-    if (self.currentToken() == closing_token) {
-        if (is_generic) return utils.printErr(
-            error.UnexpectedToken,
-            "Parser error: empty generic parameter list at {f}.\n",
-            .{self.currentPosition()},
-            .red,
-        );
-
-        _ = self.advance();
-    } else {
-        var last_arg = false;
-        while (!last_arg) {
-            var param_names: std.ArrayList([]const u8) = .empty;
-            defer param_names.deinit(self.alloc);
-
-            const first_pos = try self.currentPosition().clone(self.alloc);
-
-            const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
-                _ = self.advance();
-                break :b true;
-            } else false;
-
-            const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
-            try param_names.append(self.alloc, first_name);
-
-            while (self.currentToken() == .@",") {
-                _ = self.advance();
-                const name = try self.expect(self.advance(), .ident, context, "parameter name");
-                try param_names.append(self.alloc, name);
-            }
-
-            const param_type: ast.Type = if (is_generic and self.currentToken() == .@":") b: {
-                _ = self.advance();
-                break :b try self.type_parser.parseType(self.alloc, .default);
-            } else if (is_generic)
-                .{ .inferred = .{ .pos = first_pos } }
-            else switch (self.advance()) {
-                .@":" => try self.type_parser.parseType(self.alloc, .default),
-                .@"..." => b: {
-                    last_arg = true;
-                    break :b .{ .variadic = .{ .pos = first_pos } };
-                },
-                else => |actual| return utils.printErr(
-                    error.UnexpectedToken,
-                    "Unexpected token '{f}' in " ++ context ++ " at {f}. Expected a type.\n",
-                    .{ actual, self.lexer.source_map.items[
-                        std.math.clamp(
-                            self.pos - 1,
-                            0,
-                            self.lexer.source_map.items.len - 1,
-                        )
-                    ] },
-                    .red,
-                ),
-            };
-
-            for (param_names.items, 0..) |p, i| try params.append(self.alloc, .{
-                .is_mut = is_mut,
-                .name = try self.alloc.dupe(u8, p),
-                .type = if (i == 0) param_type else try param_type.clone(self.alloc),
-            });
-
-            if (self.currentToken() == .@",") _ = self.advance() else {
-                try self.expect(self.advance(), closing_token, context, @tagName(closing_token));
-                break;
-            }
-        }
-    }
-
-    return params.toOwnedSlice(self.alloc);
-}
-
-pub fn parseCapture(self: *Self) !?utils.Capture {
-    return switch (self.currentToken()) {
-        .@"|" => b: {
-            _ = self.advance(); // consume opening pipe
-            const capture_takes_ref = if (self.currentToken() == .@"&") blk: {
-                _ = self.advance();
-                break :blk true;
-            } else false;
-            const capture_ref_is_mut = if (capture_takes_ref and self.currentToken() == .mut) blk: {
-                _ = self.advance();
-                break :blk true;
-            } else false;
-            const capture_name = try self.expect(self.advance(), .ident, "capture", "capture name");
-
-            const index: ?[]const u8 = if (self.currentToken() == .@",") b2: {
-                _ = self.advance();
-                break :b2 try self.expect(self.advance(), .ident, "capture", "index name");
-            } else null;
-
-            try self.expect(self.advance(), .@"|", "capture", "|"); // consume closing pipe
-            break :b if (std.mem.eql(u8, capture_name, "_")) null else .{
-                .name = try self.alloc.dupe(u8, capture_name),
-                .takes_ref = if (capture_takes_ref) .{ .some = capture_ref_is_mut } else .none,
-                .index = if (index) |i| try self.alloc.dupe(u8, i) else null,
-            };
-        },
-        else => null,
-    };
-}
-
-pub inline fn expectSemicolon(self: *Self, context: []const u8) !void {
-    if (self.expect_semicolon) try self.expect(self.advance(), .@";", context, ";");
+    return output.toOwnedSlice(alloc);
 }
