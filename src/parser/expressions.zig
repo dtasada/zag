@@ -11,7 +11,7 @@ const Error = parser.Error;
 const BindingPower = parser.BindingPower;
 
 pub fn primary(self: *Parser) !ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
 
     var expr: ast.Expression = switch (self.advance()) {
         inline .int, .float, .char => |n, t| @unionInit(
@@ -39,7 +39,7 @@ pub fn primary(self: *Parser) !ast.Expression {
 }
 
 pub fn binary(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     const op: ast.BinaryOperator = .fromLexerToken(self.advance());
     const rhs = try parse(self, bp, .{});
 
@@ -121,7 +121,7 @@ pub fn parse(self: *Parser, bp: BindingPower, opts: struct { silent_error: bool 
 }
 
 pub fn assignment(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
@@ -138,7 +138,7 @@ pub fn assignment(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) E
 }
 
 pub fn member(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume dot
     switch (self.currentToken()) {
         .ident => |ident| {
@@ -154,7 +154,7 @@ pub fn member(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!
 }
 
 pub fn prefix(self: *Parser) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     const op = self.advance();
 
     const rhs = try self.alloc.create(ast.Expression);
@@ -208,7 +208,7 @@ pub fn structInstantiation(self: *Parser, lhs: *const ast.Expression, _: Binding
 }
 
 pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     const backup_pos = self.pos;
 
     try self.expect(self.advance(), .@"[", "array instantiation", "[");
@@ -296,7 +296,7 @@ pub fn generic(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error
 }
 
 pub fn @"if"(self: *Parser) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     try self.expect(self.advance(), .@"if", "if expression", "if");
 
     try self.expect(self.advance(), .@"(", "if expression", "(");
@@ -339,7 +339,7 @@ pub fn @"if"(self: *Parser) Error!ast.Expression {
 }
 
 pub fn match(self: *Parser) Error!ast.Expression {
-    const position = self.currentPosition();
+    const position = self.pos;
     _ = self.advance(); // consume `match` keyword
 
     try self.expect(self.advance(), .@"(", "match statement", "(");
@@ -351,7 +351,7 @@ pub fn match(self: *Parser) Error!ast.Expression {
 
     var cases: std.ArrayList(ast.Expression.Match.Case) = .empty;
     while (true) {
-        const pos = self.currentPosition();
+        const pos = self.pos;
 
         // var cond: std.ArrayList(ast.Expression) = .empty;
         const cond: ast.Expression.Match.Case.Condition = if (self.currentToken() == .@"else") b: {
@@ -403,7 +403,7 @@ pub fn match(self: *Parser) Error!ast.Expression {
 pub fn block(self: *Parser) Error!ast.Expression {
     return .{
         .block = .{
-            .pos = self.currentPosition(),
+            .pos = self.pos,
             .payload = try self.parseBlock(),
         },
     };
@@ -442,8 +442,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
             error.HandlerDoesNotExist => return utils.printErr(
                 error.SyntaxError,
                 "Parser error: slice expression with no start index must contain an end index ({f}).\n",
-                .{self.currentPosition()},
-                .red,
+                .{self.source_map[self.pos]},
             ),
             else => return err,
         };
@@ -487,7 +486,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
 }
 
 pub fn reference(self: *Parser) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume `&`
 
     const is_mut = self.currentToken() == .mut;
@@ -506,7 +505,7 @@ pub fn reference(self: *Parser) Error!ast.Expression {
 }
 
 pub fn @"try"(self: *Parser) Error!ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance();
 
     const expr = try self.alloc.create(ast.Expression);
@@ -516,7 +515,7 @@ pub fn @"try"(self: *Parser) Error!ast.Expression {
 }
 
 pub fn functionType(self: *Parser) !ast.Expression {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     const type_node = try self.type_parser.parseType(self.alloc, .primary);
     return .{ .type = .{ .pos = pos, .payload = type_node } };
 }

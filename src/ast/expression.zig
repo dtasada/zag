@@ -6,14 +6,14 @@ const Statement = ast.Statement;
 const Type = ast.Type;
 
 pub const Expression = union(enum) {
-    bad_node: struct { pos: utils.Position },
+    bad_node: struct { pos: usize },
 
     // literals
-    ident: struct { pos: utils.Position, payload: []const u8 },
-    string: struct { pos: utils.Position, payload: []const u8 },
-    char: struct { pos: utils.Position, payload: u8 },
-    int: struct { pos: utils.Position, payload: u64 },
-    float: struct { pos: utils.Position, payload: f64 },
+    ident: struct { pos: usize, payload: []const u8 },
+    string: struct { pos: usize, payload: []const u8 },
+    char: struct { pos: usize, payload: u8 },
+    int: struct { pos: usize, payload: u64 },
+    float: struct { pos: usize, payload: f64 },
 
     @"if": If,
     array_instantiation: ArrayInstantiation,
@@ -32,10 +32,10 @@ pub const Expression = union(enum) {
     range: Range,
     reference: Reference,
     struct_instantiation: StructInstantiation,
-    type: struct { pos: utils.Position, payload: Type },
-    @"try": struct { pos: utils.Position, payload: *const Expression },
+    type: struct { pos: usize, payload: Type },
+    @"try": struct { pos: usize, payload: *const Expression },
     @"catch": struct {
-        pos: utils.Position,
+        pos: usize,
         lhs: *const Expression,
         rhs: *const Expression,
     },
@@ -47,7 +47,7 @@ pub const Expression = union(enum) {
                 @"else",
             };
 
-            pos: utils.Position,
+            pos: usize,
             condition: Condition,
             result: Statement,
 
@@ -68,20 +68,20 @@ pub const Expression = union(enum) {
             }
         };
 
-        pos: utils.Position,
+        pos: usize,
         condition: *const Expression,
         cases: []const Case,
     };
 
-    pub const Block = struct { pos: utils.Position, payload: ast.Block };
+    pub const Block = struct { pos: usize, payload: ast.Block };
     pub const Generic = struct {
-        pos: utils.Position,
+        pos: usize,
         lhs: *const Expression,
         arguments: ast.ArgumentList,
     };
 
     pub const Binary = struct {
-        pos: utils.Position,
+        pos: usize,
         lhs: *const Expression,
         op: ast.BinaryOperator,
         rhs: *const Expression,
@@ -101,69 +101,69 @@ pub const Expression = union(enum) {
             }
         };
 
-        pos: utils.Position,
+        pos: usize,
         left: *const Expression,
         comparisons: []const Item,
     };
 
     pub const Member = struct {
-        pos: utils.Position,
+        pos: usize,
         parent: *const Expression,
         member_name: []const u8,
     };
 
     pub const Dereference = struct {
-        pos: utils.Position,
+        pos: usize,
         parent: *const Expression,
     };
 
     pub const Call = struct {
-        pos: utils.Position,
+        pos: usize,
         callee: *const Expression,
         args: ast.ArgumentList,
     };
 
     pub const Prefix = struct {
-        pos: utils.Position,
+        pos: usize,
         op: ast.PrefixOperator,
         rhs: *const Expression,
     };
 
     pub const Assignment = struct {
-        pos: utils.Position,
+        pos: usize,
         assignee: *const Expression,
         op: ast.AssignmentOperator,
         value: *const Expression,
     };
 
     pub const StructInstantiation = struct {
-        pos: utils.Position,
+        pos: usize,
         type_expr: *const Expression,
         members: *std.StringHashMap(Expression),
     };
 
     pub const ArrayInstantiation = struct {
-        pos: utils.Position,
+        pos: usize,
         length: *const Expression,
         type: Type,
         contents: []const Expression,
     };
 
     const Range = struct {
-        pos: utils.Position,
+        pos: usize,
         start: *const Expression,
         end: ?*const Expression,
         inclusive: bool,
     };
 
     const Reference = struct {
-        pos: utils.Position,
+        pos: usize,
         inner: *const Expression,
         is_mut: bool,
     };
 
     pub const If = struct {
-        pos: utils.Position,
+        pos: usize,
         condition: *const Expression,
         capture: ?utils.Capture,
         body: *const Expression,
@@ -171,20 +171,20 @@ pub const Expression = union(enum) {
     };
 
     pub const Index = struct {
-        pos: utils.Position,
+        pos: usize,
         lhs: *const Expression,
         index: *const Expression,
     };
 
     pub const Slice = struct {
-        pos: utils.Position,
+        pos: usize,
         lhs: *const Expression,
         start: ?*const Expression,
         end: ?*const Expression,
         inclusive: bool,
     };
 
-    pub inline fn getPosition(self: *const Expression) utils.Position {
+    pub inline fn getPosition(self: *const Expression) usize {
         return switch (self.*) {
             inline else => |some| some.pos,
         };

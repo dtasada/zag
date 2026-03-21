@@ -11,8 +11,25 @@ pub const Type = @import("type.zig").Type;
 
 pub const ParameterList = []const VariableSignature;
 pub const ArgumentList = []const Expression;
-pub const RootNode = []const Statement;
+pub const RootNode = []const TopLevelStatement;
 pub const Block = []const Statement;
+
+pub const TopLevelStatement = union(enum) {
+    binding_function_declaration: Statement.BindingFunctionDeclaration,
+    binding_type_declaration: Statement.BindingTypeDeclaration,
+    function_definition: Statement.FunctionDefinition,
+    import: Statement.Import,
+    enum_declaration: Statement.EnumDeclaration,
+    struct_declaration: Statement.StructDeclaration,
+    union_declaration: Statement.UnionDeclaration,
+    variable_definition: Statement.VariableDefinition,
+
+    pub fn deinit(self: TopLevelStatement, alloc: std.mem.Allocator) void {
+        switch (self) {
+            inline else => |s| s.deinit(alloc),
+        }
+    }
+};
 
 pub const BinaryOperator = enum {
     @"+",

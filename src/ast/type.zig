@@ -5,7 +5,7 @@ const ast = @import("ast.zig");
 
 pub const Type = union(enum) {
     const Reference = struct {
-        pos: utils.Position,
+        pos: usize,
         inner: *const Type,
         is_mut: bool,
     };
@@ -13,7 +13,7 @@ pub const Type = union(enum) {
     const Slice = Reference;
 
     const Array = struct {
-        pos: utils.Position,
+        pos: usize,
         inner: *const Type,
         /// if size is `_`, type is an array of inferred size.
         /// if size is a valid expression, type is an array of specified size.
@@ -21,13 +21,13 @@ pub const Type = union(enum) {
     };
 
     const ErrorUnion = struct {
-        pos: utils.Position,
+        pos: usize,
         success: *const Type,
         failure: ?*const Type = null,
     };
 
     const Function = struct {
-        pos: utils.Position,
+        pos: usize,
         name: []const u8,
         parameters: ast.ParameterList,
         generic_parameters: ast.ParameterList,
@@ -35,30 +35,30 @@ pub const Type = union(enum) {
     };
 
     const Generic = struct {
-        pos: utils.Position,
+        pos: usize,
         lhs: *const Type,
         arguments: ast.ArgumentList,
     };
 
     const Member = struct {
-        pos: utils.Position,
+        pos: usize,
         parent: *const Type,
         member_name: []const u8,
     };
 
-    inferred: struct { pos: utils.Position },
-    symbol: struct { pos: utils.Position, inner: []const u8 },
-    optional: struct { pos: utils.Position, inner: *const Type },
+    inferred: struct { pos: usize },
+    symbol: struct { pos: usize, inner: []const u8 },
+    optional: struct { pos: usize, inner: *const Type },
     slice: Slice,
     reference: Reference,
     array: Array,
     error_union: ErrorUnion,
     function: Function,
     generic: Generic,
-    variadic: struct { pos: utils.Position },
+    variadic: struct { pos: usize },
     member: Member,
 
-    pub inline fn getPosition(self: Type) utils.Position {
+    pub inline fn getPosition(self: Type) usize {
         return switch (self) {
             inline else => |some| some.pos,
         };
@@ -167,7 +167,14 @@ pub const Type = union(enum) {
         }
     }
 
-    pub fn createFunctionType(alloc: std.mem.Allocator, pos: utils.Position, name: []const u8, parameters: ast.ParameterList, generic_parameters: ast.ParameterList, return_type: *const Type) !Type {
+    pub fn createFunctionType(
+        alloc: std.mem.Allocator,
+        pos: usize,
+        name: []const u8,
+        parameters: ast.ParameterList,
+        generic_parameters: ast.ParameterList,
+        return_type: *const Type,
+    ) !Type {
         return .{
             .function = .{
                 .pos = pos,

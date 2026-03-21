@@ -66,9 +66,8 @@ pub inline fn printErr(
     comptime err: anytype,
     comptime fmt: []const u8,
     args: anytype,
-    comptime color: Color,
 ) @TypeOf(err) {
-    print(fmt, args, color);
+    print(fmt, args, .red);
     return err;
 }
 

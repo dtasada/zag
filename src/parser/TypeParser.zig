@@ -111,7 +111,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
         while (true) {
             const arg: ast.Expression = b: {
                 const backup_pos = self.parent_parser.pos;
-                const current_pos = self.parent_parser.currentPosition();
+                const current_pos = self.parent_parser.pos;
                 if (self.parseType(alloc, .default)) |t|
                     break :b .{ .type = .{ .pos = current_pos, .payload = t } }
                 else |_| {
@@ -142,7 +142,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
 }
 
 pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     const ident = try self.parent_parser.expect(
         self.parent_parser.advance(),
         .ident,
@@ -154,7 +154,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) Error!ast.Type {
 }
 
 pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '&'
 
     const is_mut = self.parent_parser.currentToken() == .mut;
@@ -173,7 +173,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type 
 }
 
 pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '?'
 
     const inner = try alloc.create(ast.Type);
@@ -188,7 +188,7 @@ pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
 }
 
 pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '!'
 
     const success = try alloc.create(ast.Type);
@@ -203,7 +203,7 @@ pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) Error!ast.T
 }
 
 pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume "fn" keyword
     const generic_parameters: ast.ParameterList = switch (self.parent_parser.currentToken()) {
         .@"(" => &.{},
@@ -216,8 +216,7 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
             error.MissingReturnType,
             "Parser error: missing return type in function type at {f}.\n",
-            .{self.parent_parser.currentPosition()},
-            .red,
+            .{self.parent_parser.source_map[self.parent_parser.pos]},
         ),
         else => return err,
     };
@@ -234,7 +233,7 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
 }
 
 pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
 
     const failure = try alloc.create(ast.Type);
     failure.* = lhs;
@@ -252,7 +251,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
 }
 
 pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '['
 
     var size: ?*ast.Expression = null;
@@ -299,7 +298,7 @@ pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
 }
 
 pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
-    const pos = self.parent_parser.currentPosition();
+    const pos = self.parent_parser.pos;
     const member_name = try self.parent_parser.expect(
         self.parent_parser.advance(),
         .ident,
@@ -338,6 +337,5 @@ inline fn getHandler(
         error.HandlerDoesNotExist,
         "TypeParser: {s} handler for '{}' does not exist.\n",
         .{ @tagName(handler_type), token },
-        .red,
     );
 }

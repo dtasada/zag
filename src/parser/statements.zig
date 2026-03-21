@@ -35,7 +35,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
 
     const is_pub = isPub(self);
 
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume `let`
 
     const is_mut = self.currentToken() == .mut;
@@ -44,7 +44,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
     const var_name = try self.expect(self.advance(), .ident, environment, env_small);
 
     // optionally parse type
-    var @"type": ast.Type = .{ .inferred = .{ .pos = self.currentPosition() } };
+    var @"type": ast.Type = .{ .inferred = .{ .pos = self.pos } };
     if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);
@@ -76,7 +76,7 @@ pub fn compoundTypeDeclaration(
     const context = @tagName(T) ++ " declaration statement";
     const tag_name = @tagName(T) ++ "_declaration";
 
-    const pos = self.currentPosition();
+    const pos = self.pos;
     const is_pub = isPub(self);
 
     _ = self.advance(); // consume `struct`, `enum`, or `union` keyword.
@@ -120,8 +120,7 @@ pub fn compoundTypeDeclaration(
         .@"enum" => return utils.printErr(
             error.UnexpectedToken,
             "Parser error: enum declaration can't have generic parameters ({f}).\n",
-            .{self.currentPosition()},
-            .red,
+            .{self.source_map[self.pos]},
         ),
     };
 
@@ -193,8 +192,7 @@ pub fn compoundTypeDeclaration(
             else => return utils.printErr(
                 error.SyntaxError,
                 "Parser error: expected {s} variable definition, member declaration or method definition in {s} '{s}' ({f}).\n",
-                .{ @tagName(T), @tagName(T), name, self.currentPosition() },
-                .red,
+                .{ @tagName(T), @tagName(T), name, self.source_map[self.pos] },
             ),
         }
     }
@@ -224,7 +222,7 @@ pub fn unionDeclaration(self: *Parser) Error!ast.Statement {
 pub fn functionDefinition(self: *Parser) Error!ast.Statement {
     const is_pub = isPub(self);
 
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume "fn" keyword
     const function_name = try self.expect(self.advance(), .ident, "function definition", "function name");
     const generic_parameters: ast.ParameterList = switch (self.currentToken()) {
@@ -237,8 +235,7 @@ pub fn functionDefinition(self: *Parser) Error!ast.Statement {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
             error.MissingReturnType,
             "Parser error: missing return type in function '{s}' at {f}.\n",
-            .{ function_name, self.currentPosition() },
-            .red,
+            .{ function_name, self.source_map[self.pos] },
         ),
         else => return err,
     };
@@ -254,8 +251,7 @@ pub fn functionDefinition(self: *Parser) Error!ast.Statement {
         else => return utils.printErr(
             error.UnexpectedToken,
             "Parser error: expected block after function definition type ({f}).\n",
-            .{self.currentPosition()},
-            .red,
+            .{self.source_map[self.pos]},
         ),
     };
 
@@ -275,7 +271,7 @@ pub fn functionDefinition(self: *Parser) Error!ast.Statement {
 pub fn bindingDeclaration(self: *Parser) Error!ast.Statement {
     const is_pub = isPub(self);
 
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume "bind" keyword
 
     switch (self.advance()) {
@@ -286,8 +282,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.Statement {
                 error.HandlerDoesNotExist => return utils.printErr(
                     error.MissingReturnType,
                     "Parser error: missing return type in function '{s}' at {f}.\n",
-                    .{ function_name, self.currentPosition() },
-                    .red,
+                    .{ function_name, self.source_map[self.pos] },
                 ),
                 else => return err,
             };
@@ -318,14 +313,13 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.Statement {
         else => |other| return utils.printErr(
             error.UnexpectedToken,
             "Parser error: expected function, struct, union or enum declaration after 'bind', received '{f}' ({f}).\n",
-            .{ other, pos },
-            .red,
+            .{ other, self.source_map[pos] },
         ),
     }
 }
 
 pub fn @"return"(self: *Parser) Error!ast.Statement {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume "return" keyword and parse from there.
 
     var expression: ?ast.Expression = null;
@@ -337,7 +331,7 @@ pub fn @"return"(self: *Parser) Error!ast.Statement {
 }
 
 pub fn @"for"(self: *Parser) Error!ast.Statement {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume "for" keyeword and parse from there.
 
     try self.expect(self.advance(), .@"(", "for statement iterator", "(");
@@ -348,7 +342,7 @@ pub fn @"for"(self: *Parser) Error!ast.Statement {
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = self.currentPosition(), .payload = try self.parseBlock() } }
+        .{ .block = .{ .pos = self.pos, .payload = try self.parseBlock() } }
     else
         try parse(self);
 
@@ -389,11 +383,11 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = self.currentPosition(), .payload = try self.parseBlock() } }
+        .{ .block = .{ .pos = self.pos, .payload = try self.parseBlock() } }
     else
         try parse(self);
 
-    const pos = self.currentPosition();
+    const pos = self.pos;
     return switch (@"type") {
         .@"if" => {
             var @"else": ?*ast.Statement = null;
@@ -402,7 +396,7 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
 
                 @"else" = try self.alloc.create(ast.Statement);
                 @"else".?.* = if (self.currentToken() == .@"{")
-                    .{ .block = .{ .pos = self.currentPosition(), .payload = try self.parseBlock() } }
+                    .{ .block = .{ .pos = self.pos, .payload = try self.parseBlock() } }
                 else
                     try parse(self);
             }
@@ -429,7 +423,7 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
 }
 
 pub fn import(self: *Parser) Error!ast.Statement {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance(); // consume `import` keyword
 
     var module: std.ArrayList([]const u8) = .empty;
@@ -449,8 +443,7 @@ pub fn import(self: *Parser) Error!ast.Statement {
     if (module.items.len == 0) return utils.printErr(
         error.SyntaxError,
         "Parser error: import statement must include a module identifier ({f}).",
-        .{self.currentPosition()},
-        .red,
+        .{self.source_map[self.pos]},
     );
 
     switch (self.currentToken()) {
@@ -483,21 +476,21 @@ pub fn match(self: *Parser) Error!ast.Statement {
 }
 
 pub fn @"break"(self: *Parser) Error!ast.Statement {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance();
     try self.expectSemicolon("break statement");
     return .{ .@"break" = .{ .pos = pos } };
 }
 
 pub fn @"continue"(self: *Parser) Error!ast.Statement {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance();
     try self.expectSemicolon("continue statement");
     return .{ .@"continue" = .{ .pos = pos } };
 }
 
 pub fn @"defer"(self: *Parser) Error!ast.Statement {
-    const pos = self.currentPosition();
+    const pos = self.pos;
     _ = self.advance();
     const stmt = try self.alloc.create(ast.Statement);
     stmt.* = try parse(self);

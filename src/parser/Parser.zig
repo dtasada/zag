@@ -43,6 +43,7 @@ pub const Error = error{
     StatementNotInMap,
     MissingReturnType,
     SyntaxError,
+    MustBeTopLevelStatement,
 };
 
 pub const Parser = struct {
@@ -76,16 +77,10 @@ pub const Parser = struct {
 
     // errors: std.ArrayList(Error) = .empty,
 
-    /// Returns the line and column in the source file corresponding to what is being parsed.
-    pub inline fn currentPosition(self: *const Parser) utils.Position {
-        return self.source_map[std.math.clamp(self.pos, 0, self.source_map.len - 1)];
-    }
-
     /// Consumes current token and then increases position.
     pub inline fn advance(self: *Parser) lexer.Token {
-        const current_token = self.currentToken();
         self.pos += 1;
-        return current_token;
+        return self.previousToken();
     }
 
     /// Returns token at the current position.
@@ -108,13 +103,10 @@ pub const Parser = struct {
         expected_token: []const u8,
         actual: lexer.Token,
     ) error{UnexpectedToken} {
-        const pos = std.math.clamp(self.pos - 1, 0, self.source_map.len - 1);
-
         return utils.printErr(
             error.UnexpectedToken,
             "Unexpected token '{f}' in {s} at {f}. Expected '{s}'\n",
-            .{ actual, environment, self.source_map[pos], expected_token },
-            .red,
+            .{ actual, environment, self.source_map[self.pos - 1], expected_token },
         );
     }
 
@@ -134,8 +126,7 @@ pub const Parser = struct {
         else if (expected == .@";") utils.printErr(
             error.SyntaxError,
             "Parser error: expected semicolon after {s}, received '{f}' ({f}).\n",
-            .{ context, actual, self.currentPosition() },
-            .red,
+            .{ context, actual, self.source_map[self.pos] },
         ) else self.unexpectedToken(context, expected_token, actual);
     }
 
@@ -170,14 +161,12 @@ pub const Parser = struct {
             .bp => self.bp_lookup,
         }.get(token)) |handler| handler else return if (opts.silent_error)
             error.HandlerDoesNotExist
-        else {
+        else
             return utils.printErr(
                 error.HandlerDoesNotExist,
                 "Parser error: Syntax error at {f}.\n",
-                .{self.currentPosition()},
-                .red,
+                .{self.source_map[self.pos]},
             );
-        };
     }
 
     /// Parses parameters and returns `!Node.ParameterList`. Caller is responsible for cleanup.
@@ -210,7 +199,7 @@ pub const Parser = struct {
         while (std.meta.activeTag(self.currentToken()) != closing_token) {
             try args.append(self.alloc, if (is_generic) b: {
                 const backup_pos = self.pos;
-                const current_pos = self.currentPosition();
+                const current_pos = self.pos;
                 if (self.type_parser.parseType(self.alloc, .default)) |t| {
                     break :b .{ .type = .{ .pos = current_pos, .payload = t } };
                 } else |_| {
@@ -252,8 +241,7 @@ pub const Parser = struct {
             if (is_generic) return utils.printErr(
                 error.UnexpectedToken,
                 "Parser error: empty generic parameter list at {f}.\n",
-                .{self.currentPosition()},
-                .red,
+                .{self.source_map[self.pos]},
             );
 
             _ = self.advance();
@@ -263,7 +251,7 @@ pub const Parser = struct {
                 var param_names: std.ArrayList([]const u8) = .empty;
                 defer param_names.deinit(self.alloc);
 
-                const first_pos = self.currentPosition();
+                const first_pos = self.pos;
 
                 const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
                     _ = self.advance();
@@ -293,8 +281,7 @@ pub const Parser = struct {
                     else => |actual| return utils.printErr(
                         error.UnexpectedToken,
                         "Unexpected token '{f}' in " ++ context ++ " at {f}. Expected a type.\n",
-                        .{ actual, self.source_map[std.math.clamp(self.pos - 1, 0, self.source_map.len - 1)] },
-                        .red,
+                        .{ actual, self.source_map[self.pos - 1] },
                     ),
                 };
 
@@ -349,21 +336,13 @@ pub const Parser = struct {
     }
 };
 
-/// Initializes and runs parser. Populates `output`.
-/// Takes ownership of `input` and `source_map`.
+/// Parses `input` and returns an AST. Takes ownership and frees `input`, but *not* `source_map`.
 pub fn parse(
     alloc: std.mem.Allocator,
     input: []lexer.Token,
     source_map: []utils.Position,
 ) !ast.RootNode {
     defer utils.deinitSlice(lexer.Token, input, alloc);
-    defer alloc.free(source_map);
-
-    // _ = std.EnumMap(lexer.TokenKind, NudHandler);
-    // const nuds: std.EnumMap(lexer.TokenKind, NudHandler) = .init(.{
-    //     .{ .int, expressions.primary },
-    // });
-    // _ = nuds;
 
     var self: Parser = .{
         .pos = 0,
@@ -531,10 +510,27 @@ pub fn parse(
     };
     self.type_parser = try .init(&self);
 
-    var output: std.ArrayList(ast.Statement) = .empty;
+    var output: std.ArrayList(ast.TopLevelStatement) = .empty;
 
-    while (std.meta.activeTag(self.currentToken()) != .eof)
-        try output.append(self.alloc, try statements.parse(&self));
+    while (std.meta.activeTag(self.currentToken()) != .eof) {
+        const backup_pos = self.pos;
+        try output.append(self.alloc, switch (try statements.parse(&self)) {
+            inline .binding_function_declaration,
+            .binding_type_declaration,
+            .function_definition,
+            .import,
+            .enum_declaration,
+            .struct_declaration,
+            .union_declaration,
+            .variable_definition,
+            => |stmt, t| @unionInit(ast.TopLevelStatement, @tagName(t), stmt),
+            else => |stmt| return utils.printErr(
+                error.MustBeTopLevelStatement,
+                "Parser error: found {s} but expected a top-level statement ({f}).\n",
+                .{ @tagName(std.meta.activeTag(stmt)), self.source_map[backup_pos] },
+            ),
+        });
+    }
 
     return output.toOwnedSlice(alloc);
 }

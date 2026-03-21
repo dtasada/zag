@@ -9,32 +9,14 @@ pub fn build() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var registry: std.StringHashMap(compiler.Module) = .init(alloc);
-    defer registry.deinit();
-
-    var zag_header_types: std.ArrayList(u8) = .empty;
-    defer zag_header_types.deinit(alloc);
-
-    var zag_header_macros: std.ArrayList(u8) = .empty;
-    defer zag_header_macros.deinit(alloc);
-
     // Transpile stdlib first so user code can import from it
-    try transpileModuleWithHeaders(alloc, build_options.stdlib_path, &registry, &zag_header_types, &zag_header_macros);
+    try transpileModuleWithHeaders(alloc, build_options.stdlib_path);
+    try transpileModuleWithHeaders(alloc, "src");
 
-    try transpileModuleWithHeaders(alloc, "src", &registry, &zag_header_types, &zag_header_macros);
-
-    // try writeZagHeader(zag_header_types.items, zag_header_macros.items);
-    //
     // try compile(alloc);
 }
 
-fn transpileModuleWithHeaders(
-    alloc: std.mem.Allocator,
-    dir_path: []const u8,
-    registry: *std.StringHashMap(compiler.Module),
-    zag_header_types: *std.ArrayList(u8),
-    zag_header_macros: *std.ArrayList(u8),
-) !void {
+fn transpileModuleWithHeaders(alloc: std.mem.Allocator, dir_path: []const u8) !void {
     var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer dir.close();
 
@@ -48,29 +30,13 @@ fn transpileModuleWithHeaders(
         const file_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir_path, entry.path });
         defer alloc.free(file_path);
 
-        try transpileWithHeaders(alloc, file_path, registry, zag_header_types, zag_header_macros);
+        try transpileWithHeaders(alloc, file_path);
     }
 }
 
-fn transpileWithHeaders(
-    alloc: std.mem.Allocator,
-    file_path: []const u8,
-    registry: *std.StringHashMap(compiler.Module),
-    zag_header_types: *std.ArrayList(u8),
-    zag_header_macros: *std.ArrayList(u8),
-) !void {
-    // Skip if already compiled (e.g. pulled in as a dependency of another module)
-    if (registry.contains(file_path)) return;
-
-    compiler.emit(alloc, file_path, registry) catch |err|
-        return utils.printErr(error.CompilationError, "Compilation error: {}\n", .{err}, .red);
-
-    _ = zag_header_types;
-    _ = zag_header_macros;
-
-    // Accumulate zag header content from this module
-    // try zag_header_types.appendSlice(alloc, compiler.sections.get(.zag_header_types).buffer.items);
-    // try zag_header_macros.appendSlice(alloc, compiler.sections.get(.zag_header_macros).buffer.items);
+fn transpileWithHeaders(alloc: std.mem.Allocator, file_path: []const u8) !void {
+    compiler.emit(alloc, file_path) catch |err|
+        return utils.printErr(error.CompilationError, "Compilation error: {}\n", .{err});
 }
 
 fn writeZagHeader(types: []const u8, macros: []const u8) !void {
@@ -242,9 +208,9 @@ pub fn run() anyerror!void {
 
 fn checkResult(comptime err: anyerror, result: std.process.Child.Term) !void {
     switch (result) {
-        .Exited => |c| if (c != 0) return utils.printErr(err, "{}: exited with code {}.\n", .{ err, c }, .red),
-        .Signal => |c| return utils.printErr(err, "{}: exited with signal {}.\n", .{ err, c }, .red),
-        .Stopped => |c| return utils.printErr(err, "{}: stopped with code {}.\n", .{ err, c }, .red),
-        .Unknown => |c| return utils.printErr(err, "{}: unknown problem with code {}.\n", .{ err, c }, .red),
+        .Exited => |c| if (c != 0) return utils.printErr(err, "{}: exited with code {}.\n", .{ err, c }),
+        .Signal => |c| return utils.printErr(err, "{}: exited with signal {}.\n", .{ err, c }),
+        .Stopped => |c| return utils.printErr(err, "{}: stopped with code {}.\n", .{ err, c }),
+        .Unknown => |c| return utils.printErr(err, "{}: unknown problem with code {}.\n", .{ err, c }),
     }
 }

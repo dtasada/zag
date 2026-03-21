@@ -6,8 +6,8 @@ const Expression = ast.Expression;
 const Type = ast.Type;
 
 pub const Statement = union(enum) {
-    @"break": struct { pos: utils.Position },
-    @"continue": struct { pos: utils.Position },
+    @"break": struct { pos: usize },
+    @"continue": struct { pos: usize },
     @"for": For,
     @"if": If,
     @"return": Return,
@@ -23,17 +23,17 @@ pub const Statement = union(enum) {
     union_declaration: UnionDeclaration,
     variable_definition: VariableDefinition,
     block_eval: Expression,
-    @"defer": struct { pos: utils.Position, payload: *const Statement },
+    @"defer": struct { pos: usize, payload: *const Statement },
 
     pub const For = struct {
-        pos: utils.Position,
+        pos: usize,
         iterator: ast.Expression,
         capture: ?utils.Capture,
         body: *const Statement,
     };
 
     pub const FunctionDefinition = struct {
-        pos: utils.Position,
+        pos: usize,
         is_pub: bool,
         name: []const u8,
         generic_parameters: ast.ParameterList,
@@ -67,7 +67,7 @@ pub const Statement = union(enum) {
     };
 
     pub const If = struct {
-        pos: utils.Position,
+        pos: usize,
         condition: ast.Expression,
         capture: ?utils.Capture,
         body: *const Statement,
@@ -75,13 +75,19 @@ pub const Statement = union(enum) {
     };
 
     pub const Import = struct {
-        pos: utils.Position,
+        pos: usize,
         module_name: []const []const u8,
         alias: ?[]const u8,
+
+        pub fn deinit(self: Import, alloc: std.mem.Allocator) void {
+            for (self.module_name) |name| alloc.free(name);
+            alloc.free(self.module_name);
+            if (self.alias) |a| alloc.free(a);
+        }
     };
 
     pub const Return = struct {
-        pos: utils.Position,
+        pos: usize,
         @"return": ?ast.Expression,
     };
 
@@ -112,7 +118,7 @@ pub const Statement = union(enum) {
                     }
                 }
             };
-            pos: utils.Position,
+            pos: usize,
             is_pub: bool,
             name: []const u8,
             generic_types: ast.ParameterList,
@@ -166,7 +172,7 @@ pub const Statement = union(enum) {
             }
         };
 
-        pos: utils.Position,
+        pos: usize,
         is_pub: bool,
         name: []const u8,
         variables: []const VariableDefinition,
@@ -196,21 +202,25 @@ pub const Statement = union(enum) {
     };
 
     pub const While = struct {
-        pos: utils.Position,
+        pos: usize,
         condition: ast.Expression,
         capture: ?utils.Capture,
         body: *const Statement,
     };
 
     pub const BindingTypeDeclaration = struct {
-        pos: utils.Position,
+        pos: usize,
         is_pub: bool,
         name: []const u8,
         type: utils.CompoundTypeTag,
+
+        pub fn deinit(self: BindingTypeDeclaration, alloc: std.mem.Allocator) void {
+            alloc.free(self.name);
+        }
     };
 
     pub const BindingFunctionDeclaration = struct {
-        pos: utils.Position,
+        pos: usize,
         is_pub: bool,
         name: []const u8,
         parameters: ast.ParameterList,
@@ -219,10 +229,16 @@ pub const Statement = union(enum) {
         pub fn getType(self: *const BindingFunctionDeclaration, alloc: std.mem.Allocator) !Type {
             return try Type.createFunctionType(alloc, self.pos, self.name, self.parameters, &.{}, &self.return_type);
         }
+
+        pub fn deinit(self: BindingFunctionDeclaration, alloc: std.mem.Allocator) void {
+            alloc.free(self.name);
+            utils.deinitSlice(ast.VariableSignature, self.parameters, alloc);
+            self.return_type.deinit(alloc);
+        }
     };
 
     pub const VariableDefinition = struct {
-        pos: utils.Position,
+        pos: usize,
         is_pub: bool,
         binding: utils.Binding,
         variable_name: []const u8,
@@ -339,7 +355,17 @@ pub const Statement = union(enum) {
 
     pub fn deinit(self: Statement, alloc: std.mem.Allocator) void {
         switch (self) {
-            else => {},
+            inline .binding_type_declaration,
+            .binding_function_declaration,
+            .expression,
+            .block_eval,
+            .function_definition,
+            .import,
+            .struct_declaration,
+            .union_declaration,
+            .enum_declaration,
+            .variable_definition,
+            => |s| s.deinit(alloc),
             .@"for" => |s| {
                 s.iterator.deinit(alloc);
                 if (s.capture) |c| c.deinit(alloc);
@@ -357,25 +383,9 @@ pub const Statement = union(enum) {
                 if (s.capture) |c| c.deinit(alloc);
                 s.body.deinitPtr(alloc);
             },
-            .binding_function_declaration => |s| {
-                alloc.free(s.name);
-                utils.deinitSlice(ast.VariableSignature, s.parameters, alloc);
-                s.return_type.deinit(alloc);
-            },
-            .binding_type_declaration => |s| alloc.free(s.name),
             .block => |s| utils.deinitSlice(Statement, s.payload, alloc),
-            .expression, .block_eval => |s| s.deinit(alloc),
-            .function_definition => |s| s.deinit(alloc),
-            .import => |s| {
-                for (s.module_name) |name| alloc.free(name);
-                alloc.free(s.module_name);
-                if (s.alias) |a| alloc.free(a);
-            },
-            .struct_declaration => |s| s.deinit(alloc),
-            .union_declaration => |s| s.deinit(alloc),
-            .enum_declaration => |s| s.deinit(alloc),
             .@"defer" => |s| s.payload.deinitPtr(alloc),
-            .variable_definition => |s| s.deinit(alloc),
+            else => {},
         }
     }
 };
