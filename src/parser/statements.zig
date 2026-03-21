@@ -44,7 +44,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
     const var_name = try self.expect(self.advance(), .ident, environment, env_small);
 
     // optionally parse type
-    var @"type": ast.Type = .{ .inferred = .{ .pos = try self.currentPosition().clone(self.alloc) } };
+    var @"type": ast.Type = .{ .inferred = .{ .pos = self.currentPosition() } };
     if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);
@@ -58,7 +58,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
 
     return .{
         .variable_definition = .{
-            .pos = try pos.clone(self.alloc),
+            .pos = pos,
             .is_pub = is_pub,
             .variable_name = try self.alloc.dupe(u8, var_name),
             .binding = if (is_const) .@"const" else if (is_mut) .let_mut else .let,
@@ -90,7 +90,7 @@ pub fn compoundTypeDeclaration(
     };
     var compound: Type = switch (T) {
         .@"struct", .@"union" => .{
-            .pos = try pos.clone(self.alloc),
+            .pos = pos,
             .is_pub = is_pub,
             .name = try self.alloc.dupe(u8, name),
             .generic_types = &.{},
@@ -100,7 +100,7 @@ pub fn compoundTypeDeclaration(
             .methods = &.{},
         },
         .@"enum" => .{
-            .pos = try pos.clone(self.alloc),
+            .pos = pos,
             .is_pub = is_pub,
             .name = try self.alloc.dupe(u8, name),
             .variables = &.{},
@@ -158,6 +158,7 @@ pub fn compoundTypeDeclaration(
                     } else null,
                     .@"enum" => null,
                 };
+                defer if (member_type) |mt| mt.deinit(self.alloc);
 
                 const value: ?ast.Expression = switch (T) {
                     .@"enum" => if (self.currentToken() == .@"=") b: {
@@ -168,9 +169,15 @@ pub fn compoundTypeDeclaration(
                 };
 
                 for (member_names.items) |i| try members.append(self.alloc, switch (T) {
-                    .@"struct" => .{ .name = try self.alloc.dupe(u8, i), .type = member_type.? },
+                    .@"struct" => .{
+                        .name = try self.alloc.dupe(u8, i),
+                        .type = try member_type.?.clone(self.alloc),
+                    },
                     .@"enum" => .{ .name = try self.alloc.dupe(u8, i), .value = value },
-                    .@"union" => .{ .name = try self.alloc.dupe(u8, i), .type = member_type },
+                    .@"union" => .{
+                        .name = try self.alloc.dupe(u8, i),
+                        .type = if (member_type) |mt| try mt.clone(self.alloc) else null,
+                    },
                 });
 
                 if (self.currentToken() == .@",") _ = self.advance() else break;
@@ -254,7 +261,7 @@ pub fn functionDefinition(self: *Parser) Error!ast.Statement {
 
     return .{
         .function_definition = .{
-            .pos = try pos.clone(self.alloc),
+            .pos = pos,
             .is_pub = is_pub,
             .name = try self.alloc.dupe(u8, function_name),
             .generic_parameters = generic_parameters,
@@ -288,7 +295,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.Statement {
 
             return .{
                 .binding_function_declaration = .{
-                    .pos = try pos.clone(self.alloc),
+                    .pos = pos,
                     .is_pub = is_pub,
                     .name = try self.alloc.dupe(u8, function_name),
                     .parameters = parameters,
@@ -299,7 +306,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.Statement {
         inline .@"struct", .@"union", .@"enum" => |_, tag| {
             const type_decl: ast.Statement = .{
                 .binding_type_declaration = .{
-                    .pos = try pos.clone(self.alloc),
+                    .pos = pos,
                     .is_pub = is_pub,
                     .type = std.meta.stringToEnum(utils.CompoundTypeTag, @tagName(tag)).?,
                     .name = try self.alloc.dupe(u8, try self.expect(self.advance(), .ident, "binding type declaration", @tagName(tag) ++ " name")),
@@ -326,7 +333,7 @@ pub fn @"return"(self: *Parser) Error!ast.Statement {
         expression = try expressions.parse(self, .default, .{});
 
     try self.expectSemicolon("return statement");
-    return .{ .@"return" = .{ .pos = try pos.clone(self.alloc), .@"return" = expression } };
+    return .{ .@"return" = .{ .pos = pos, .@"return" = expression } };
 }
 
 pub fn @"for"(self: *Parser) Error!ast.Statement {
@@ -341,13 +348,13 @@ pub fn @"for"(self: *Parser) Error!ast.Statement {
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .payload = try self.parseBlock() } }
+        .{ .block = .{ .pos = self.currentPosition(), .payload = try self.parseBlock() } }
     else
         try parse(self);
 
     return .{
         .@"for" = .{
-            .pos = try pos.clone(self.alloc),
+            .pos = pos,
             .iterator = iterator,
             .capture = capture,
             .body = body,
@@ -382,7 +389,7 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
 
     const body = try self.alloc.create(ast.Statement);
     body.* = if (self.currentToken() == .@"{")
-        .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .payload = try self.parseBlock() } }
+        .{ .block = .{ .pos = self.currentPosition(), .payload = try self.parseBlock() } }
     else
         try parse(self);
 
@@ -395,14 +402,14 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
 
                 @"else" = try self.alloc.create(ast.Statement);
                 @"else".?.* = if (self.currentToken() == .@"{")
-                    .{ .block = .{ .pos = try self.currentPosition().clone(self.alloc), .payload = try self.parseBlock() } }
+                    .{ .block = .{ .pos = self.currentPosition(), .payload = try self.parseBlock() } }
                 else
                     try parse(self);
             }
 
             return .{
                 .@"if" = .{
-                    .pos = try pos.clone(self.alloc),
+                    .pos = pos,
                     .condition = condition,
                     .capture = capture,
                     .body = body,
@@ -412,7 +419,7 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
         },
         .@"while" => .{
             .@"while" = .{
-                .pos = try pos.clone(self.alloc),
+                .pos = pos,
                 .condition = condition,
                 .capture = capture,
                 .body = body,
@@ -464,7 +471,7 @@ pub fn import(self: *Parser) Error!ast.Statement {
 
     return .{
         .import = .{
-            .pos = try pos.clone(self.alloc),
+            .pos = pos,
             .module_name = try module.toOwnedSlice(self.alloc),
             .alias = if (alias) |a| try self.alloc.dupe(u8, a) else null,
         },
@@ -476,14 +483,14 @@ pub fn match(self: *Parser) Error!ast.Statement {
 }
 
 pub fn @"break"(self: *Parser) Error!ast.Statement {
-    const pos = try self.currentPosition().clone(self.alloc);
+    const pos = self.currentPosition();
     _ = self.advance();
     try self.expectSemicolon("break statement");
     return .{ .@"break" = .{ .pos = pos } };
 }
 
 pub fn @"continue"(self: *Parser) Error!ast.Statement {
-    const pos = try self.currentPosition().clone(self.alloc);
+    const pos = self.currentPosition();
     _ = self.advance();
     try self.expectSemicolon("continue statement");
     return .{ .@"continue" = .{ .pos = pos } };
@@ -494,7 +501,7 @@ pub fn @"defer"(self: *Parser) Error!ast.Statement {
     _ = self.advance();
     const stmt = try self.alloc.create(ast.Statement);
     stmt.* = try parse(self);
-    return .{ .@"defer" = .{ .pos = try pos.clone(self.alloc), .payload = stmt } };
+    return .{ .@"defer" = .{ .pos = pos, .payload = stmt } };
 }
 
 pub fn @"pub"(self: *Parser) Error!ast.Statement {

@@ -408,16 +408,15 @@ pub fn tokenize(
     const input = try std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20);
     defer alloc.free(input);
 
-    const self = try alloc.create(Lexer);
-    self.* = .{
+    var self: Lexer = .{
         .input = input,
         .file_path = file_path,
-        .current_line_len = std.mem.indexOfScalar(u8, self.input, '\n') orelse
-            self.input.len,
+        .current_line_len = std.mem.indexOfScalar(u8, input, '\n') orelse input.len,
         .line_col = .{ .line = 1, .col = 1, .path = file_path },
         .start_line_col = .{ .line = 1, .col = 1, .path = file_path },
     };
     errdefer self.output.deinit(alloc);
+    errdefer self.source_map.deinit(alloc);
 
     while (self.pos < self.input.len) {
         const start_pos = self.pos;
@@ -451,9 +450,12 @@ pub fn tokenize(
             const word = try atom.toOwnedSlice(alloc);
 
             const keyword = std.meta.stringToEnum(TokenKind, word);
-            const token: Token = if (keyword) |tag| switch (tag) {
-                .bad_token, .ident, .string, .char, .int, .float => unreachable,
-                inline else => |t| @unionInit(Token, @tagName(t), {}),
+            const token: Token = if (keyword) |tag| b: {
+                alloc.free(word);
+                break :b switch (tag) {
+                    .bad_token, .ident, .string, .char, .int, .float => unreachable,
+                    inline else => |t| @unionInit(Token, @tagName(t), {}),
+                };
             } else .{ .ident = word };
             try self.appendToken(alloc, token);
         } else if (std.ascii.isDigit(self.currentChar())) {

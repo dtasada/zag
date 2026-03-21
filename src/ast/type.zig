@@ -72,41 +72,41 @@ pub const Type = union(enum) {
 
     pub fn clone(self: Type, alloc: std.mem.Allocator) std.mem.Allocator.Error!Type {
         return switch (self) {
-            .inferred => |n| .{ .inferred = .{ .pos = try n.pos.clone(alloc) } },
+            .inferred => |n| .{ .inferred = .{ .pos = n.pos } },
             .symbol => |n| .{
                 .symbol = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .inner = try alloc.dupe(u8, n.inner),
                 },
             },
             .optional => |n| .{
                 .optional = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .inner = try n.inner.clonePtr(alloc),
                 },
             },
             inline .reference, .slice => |n, t| @unionInit(Type, @tagName(t), .{
-                .pos = try n.pos.clone(alloc),
+                .pos = n.pos,
                 .inner = try n.inner.clonePtr(alloc),
                 .is_mut = n.is_mut,
             }),
             .array => |n| .{
                 .array = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .inner = try n.inner.clonePtr(alloc),
                     .size = try n.size.clonePtr(alloc),
                 },
             },
             .error_union => |n| .{
                 .error_union = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .success = try n.success.clonePtr(alloc),
                     .failure = if (n.failure) |f| try f.clonePtr(alloc) else null,
                 },
             },
             .function => |n| .{
                 .function = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .name = try alloc.dupe(u8, n.name),
                     .parameters = try utils.cloneSlice(ast.VariableSignature, n.parameters, alloc),
                     .generic_parameters = try utils.cloneSlice(ast.VariableSignature, n.generic_parameters, alloc),
@@ -115,15 +115,15 @@ pub const Type = union(enum) {
             },
             .generic => |n| .{
                 .generic = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .lhs = try n.lhs.clonePtr(alloc),
                     .arguments = try utils.cloneSlice(ast.Expression, n.arguments, alloc),
                 },
             },
-            .variadic => |n| .{ .variadic = .{ .pos = try n.pos.clone(alloc) } },
+            .variadic => |n| .{ .variadic = .{ .pos = n.pos } },
             .member => |n| .{
                 .member = .{
-                    .pos = try n.pos.clone(alloc),
+                    .pos = n.pos,
                     .parent = try n.parent.clonePtr(alloc),
                     .member_name = try alloc.dupe(u8, n.member_name),
                 },
@@ -165,5 +165,17 @@ pub const Type = union(enum) {
                 alloc.free(s.member_name);
             },
         }
+    }
+
+    pub fn createFunctionType(alloc: std.mem.Allocator, pos: utils.Position, name: []const u8, parameters: ast.ParameterList, generic_parameters: ast.ParameterList, return_type: *const Type) !Type {
+        return .{
+            .function = .{
+                .pos = pos,
+                .name = try alloc.dupe(u8, name),
+                .parameters = parameters,
+                .generic_parameters = generic_parameters,
+                .return_type = return_type,
+            },
+        };
     }
 };

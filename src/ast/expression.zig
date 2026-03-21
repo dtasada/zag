@@ -53,7 +53,7 @@ pub const Expression = union(enum) {
 
             pub fn clone(self: Case, alloc: std.mem.Allocator) !Case {
                 return .{
-                    .pos = try self.pos.clone(alloc),
+                    .pos = self.pos,
                     .condition = switch (self.condition) {
                         .opts => |opts| .{ .opts = try utils.cloneSlice(ast.Expression, opts, alloc) },
                         .@"else" => .@"else",
@@ -199,30 +199,30 @@ pub const Expression = union(enum) {
     pub fn clone(self: Expression, alloc: std.mem.Allocator) std.mem.Allocator.Error!Expression {
         return switch (self) {
             inline .ident, .string => |s, t| @unionInit(Expression, @tagName(t), .{
-                .pos = try s.pos.clone(alloc),
+                .pos = s.pos,
                 .payload = try alloc.dupe(u8, s.payload),
             }),
             inline .int, .float, .char => |n, t| @unionInit(Expression, @tagName(t), .{
-                .pos = try n.pos.clone(alloc),
+                .pos = n.pos,
                 .payload = n.payload,
             }),
-            .bad_node => |bn| .{ .bad_node = .{ .pos = try bn.pos.clone(alloc) } },
+            .bad_node => |bn| .{ .bad_node = .{ .pos = bn.pos } },
             .block => |block| .{
                 .block = .{
-                    .pos = try block.pos.clone(alloc),
+                    .pos = block.pos,
                     .payload = try utils.cloneSlice(Statement, block.payload, alloc),
                 },
             },
             .generic => |generic| .{
                 .generic = .{
-                    .pos = try generic.pos.clone(alloc),
+                    .pos = generic.pos,
                     .lhs = try generic.lhs.clonePtr(alloc),
                     .arguments = try utils.cloneSlice(ast.Expression, generic.arguments, alloc),
                 },
             },
             .binary => |binary| .{
                 .binary = .{
-                    .pos = try binary.pos.clone(alloc),
+                    .pos = binary.pos,
                     .lhs = try binary.lhs.clonePtr(alloc),
                     .op = binary.op,
                     .rhs = try binary.rhs.clonePtr(alloc),
@@ -230,41 +230,41 @@ pub const Expression = union(enum) {
             },
             .comparison => |comparison| .{
                 .comparison = .{
-                    .pos = try comparison.pos.clone(alloc),
+                    .pos = comparison.pos,
                     .left = try comparison.left.clonePtr(alloc),
                     .comparisons = try utils.cloneSlice(Comparison.Item, comparison.comparisons, alloc),
                 },
             },
             .member => |member| .{
                 .member = .{
-                    .pos = try member.pos.clone(alloc),
+                    .pos = member.pos,
                     .parent = try member.parent.clonePtr(alloc),
                     .member_name = try alloc.dupe(u8, member.member_name),
                 },
             },
             .dereference => |dereference| .{
                 .dereference = .{
-                    .pos = try dereference.pos.clone(alloc),
+                    .pos = dereference.pos,
                     .parent = try dereference.parent.clonePtr(alloc),
                 },
             },
             .call => |call| .{
                 .call = .{
-                    .pos = try call.pos.clone(alloc),
+                    .pos = call.pos,
                     .callee = try call.callee.clonePtr(alloc),
                     .args = try utils.cloneSlice(ast.Expression, call.args, alloc),
                 },
             },
             .prefix => |prefix| .{
                 .prefix = .{
-                    .pos = try prefix.pos.clone(alloc),
+                    .pos = prefix.pos,
                     .op = prefix.op,
                     .rhs = try prefix.rhs.clonePtr(alloc),
                 },
             },
             .assignment => |assignment| .{
                 .assignment = .{
-                    .pos = try assignment.pos.clone(alloc),
+                    .pos = assignment.pos,
                     .assignee = try assignment.assignee.clonePtr(alloc),
                     .op = assignment.op,
                     .value = try assignment.value.clonePtr(alloc),
@@ -272,7 +272,7 @@ pub const Expression = union(enum) {
             },
             .struct_instantiation => |si| .{
                 .struct_instantiation = .{
-                    .pos = try si.pos.clone(alloc),
+                    .pos = si.pos,
                     .type_expr = try si.type_expr.clonePtr(alloc),
                     .members = b: {
                         const new_map = try alloc.create(std.StringHashMap(Expression));
@@ -288,7 +288,7 @@ pub const Expression = union(enum) {
             },
             .array_instantiation => |ai| .{
                 .array_instantiation = .{
-                    .pos = try ai.pos.clone(alloc),
+                    .pos = ai.pos,
                     .length = try ai.length.clonePtr(alloc),
                     .type = try ai.type.clone(alloc),
                     .contents = try utils.cloneSlice(ast.Expression, ai.contents, alloc),
@@ -296,7 +296,7 @@ pub const Expression = union(enum) {
             },
             .range => |range| .{
                 .range = .{
-                    .pos = try range.pos.clone(alloc),
+                    .pos = range.pos,
                     .start = try range.start.clonePtr(alloc),
                     .end = if (range.end) |e| try e.clonePtr(alloc) else null,
                     .inclusive = range.inclusive,
@@ -304,14 +304,14 @@ pub const Expression = union(enum) {
             },
             .reference => |reference| .{
                 .reference = .{
-                    .pos = try reference.pos.clone(alloc),
+                    .pos = reference.pos,
                     .inner = try reference.inner.clonePtr(alloc),
                     .is_mut = reference.is_mut,
                 },
             },
             .@"if" => |@"if"| .{
                 .@"if" = .{
-                    .pos = try @"if".pos.clone(alloc),
+                    .pos = @"if".pos,
                     .condition = try @"if".condition.clonePtr(alloc),
                     .capture = if (@"if".capture) |c| try c.clone(alloc) else null,
                     .body = try @"if".body.clonePtr(alloc),
@@ -320,14 +320,14 @@ pub const Expression = union(enum) {
             },
             .index => |index| .{
                 .index = .{
-                    .pos = try index.pos.clone(alloc),
+                    .pos = index.pos,
                     .lhs = try index.lhs.clonePtr(alloc),
                     .index = try index.index.clonePtr(alloc),
                 },
             },
             .slice => |slice| .{
                 .slice = .{
-                    .pos = try slice.pos.clone(alloc),
+                    .pos = slice.pos,
                     .lhs = try slice.lhs.clonePtr(alloc),
                     .start = if (slice.start) |s| try s.clonePtr(alloc) else null,
                     .end = if (slice.end) |e| try e.clonePtr(alloc) else null,
@@ -336,21 +336,21 @@ pub const Expression = union(enum) {
             },
             .match => |match| .{
                 .match = .{
-                    .pos = try match.pos.clone(alloc),
+                    .pos = match.pos,
                     .condition = try match.condition.clonePtr(alloc),
                     .cases = try utils.cloneSlice(Expression.Match.Case, match.cases, alloc),
                 },
             },
-            .type => |t| .{ .type = .{ .pos = try t.pos.clone(alloc), .payload = try t.payload.clone(alloc) } },
+            .type => |t| .{ .type = .{ .pos = t.pos, .payload = try t.payload.clone(alloc) } },
             .@"try" => |@"try"| .{
                 .@"try" = .{
-                    .pos = try @"try".pos.clone(alloc),
+                    .pos = @"try".pos,
                     .payload = try @"try".payload.clonePtr(alloc),
                 },
             },
             .@"catch" => |@"catch"| .{
                 .@"catch" = .{
-                    .pos = try @"catch".pos.clone(alloc),
+                    .pos = @"catch".pos,
                     .lhs = try @"catch".lhs.clonePtr(alloc),
                     .rhs = try @"catch".rhs.clonePtr(alloc),
                 },

@@ -41,21 +41,13 @@ pub const Statement = union(enum) {
         return_type: Type,
         body: ast.Block,
 
-        pub fn getType(self: *const FunctionDefinition) Type {
-            return .{
-                .function = .{
-                    .name = self.name,
-                    .pos = self.pos,
-                    .generic_parameters = self.generic_parameters,
-                    .parameters = self.parameters,
-                    .return_type = &self.return_type,
-                },
-            };
+        pub fn getType(self: *const FunctionDefinition, alloc: std.mem.Allocator) !Type {
+            return try Type.createFunctionType(alloc, self.pos, self.name, self.parameters, self.generic_parameters, &self.return_type);
         }
 
         pub fn clone(self: FunctionDefinition, alloc: std.mem.Allocator) !FunctionDefinition {
             return .{
-                .pos = try self.pos.clone(alloc),
+                .pos = self.pos,
                 .is_pub = self.is_pub,
                 .name = try alloc.dupe(u8, self.name),
                 .generic_parameters = try utils.cloneSlice(ast.VariableSignature, self.generic_parameters, alloc),
@@ -131,7 +123,7 @@ pub const Statement = union(enum) {
 
             pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) std.mem.Allocator.Error!CompoundTypeDeclaration(T) {
                 return .{
-                    .pos = try self.pos.clone(alloc),
+                    .pos = self.pos,
                     .is_pub = self.is_pub,
                     .name = try alloc.dupe(u8, self.name),
                     .generic_types = try utils.cloneSlice(ast.VariableSignature, self.generic_types, alloc),
@@ -184,7 +176,7 @@ pub const Statement = union(enum) {
 
         pub fn clone(self: *const EnumDeclaration, alloc: std.mem.Allocator) !EnumDeclaration {
             return .{
-                .pos = try self.pos.clone(alloc),
+                .pos = self.pos,
                 .is_pub = self.is_pub,
                 .name = try alloc.dupe(u8, self.name),
                 .variables = try utils.cloneSlice(VariableDefinition, self.variables, alloc),
@@ -224,16 +216,8 @@ pub const Statement = union(enum) {
         parameters: ast.ParameterList,
         return_type: Type,
 
-        pub fn getType(self: *const BindingFunctionDeclaration) Type {
-            return .{
-                .function = .{
-                    .pos = self.pos,
-                    .name = self.name,
-                    .generic_parameters = &.{},
-                    .parameters = self.parameters,
-                    .return_type = &self.return_type,
-                },
-            };
+        pub fn getType(self: *const BindingFunctionDeclaration, alloc: std.mem.Allocator) !Type {
+            return try Type.createFunctionType(alloc, self.pos, self.name, self.parameters, &.{}, &self.return_type);
         }
     };
 
@@ -247,7 +231,7 @@ pub const Statement = union(enum) {
 
         pub fn clone(self: VariableDefinition, alloc: std.mem.Allocator) !VariableDefinition {
             return .{
-                .pos = try self.pos.clone(alloc),
+                .pos = self.pos,
                 .is_pub = self.is_pub,
                 .binding = self.binding,
                 .variable_name = try alloc.dupe(u8, self.variable_name),
@@ -271,17 +255,17 @@ pub const Statement = union(enum) {
 
     pub fn clone(self: Statement, alloc: std.mem.Allocator) std.mem.Allocator.Error!Statement {
         return switch (self) {
-            .@"break" => |b| .{ .@"break" = .{ .pos = try b.pos.clone(alloc) } },
-            .@"continue" => |c| .{ .@"continue" = .{ .pos = try c.pos.clone(alloc) } },
+            .@"break" => |b| .{ .@"break" = .{ .pos = b.pos } },
+            .@"continue" => |c| .{ .@"continue" = .{ .pos = c.pos } },
             .@"defer" => |@"defer"| .{
                 .@"defer" = .{
-                    .pos = try @"defer".pos.clone(alloc),
+                    .pos = @"defer".pos,
                     .payload = try @"defer".payload.clonePtr(alloc),
                 },
             },
             .@"for" => |@"for"| .{
                 .@"for" = .{
-                    .pos = try @"for".pos.clone(alloc),
+                    .pos = @"for".pos,
                     .iterator = try @"for".iterator.clone(alloc),
                     .capture = if (@"for".capture) |c| try c.clone(alloc) else null,
                     .body = try @"for".body.clonePtr(alloc),
@@ -289,7 +273,7 @@ pub const Statement = union(enum) {
             },
             .@"if" => |@"if"| .{
                 .@"if" = .{
-                    .pos = try @"if".pos.clone(alloc),
+                    .pos = @"if".pos,
                     .condition = try @"if".condition.clone(alloc),
                     .capture = if (@"if".capture) |c| try c.clone(alloc) else null,
                     .body = try @"if".body.clonePtr(alloc),
@@ -298,13 +282,13 @@ pub const Statement = union(enum) {
             },
             .@"return" => |@"return"| .{
                 .@"return" = .{
-                    .pos = try @"return".pos.clone(alloc),
+                    .pos = @"return".pos,
                     .@"return" = if (@"return".@"return") |r| try r.clone(alloc) else null,
                 },
             },
             .@"while" => |@"while"| .{
                 .@"while" = .{
-                    .pos = try @"while".pos.clone(alloc),
+                    .pos = @"while".pos,
                     .condition = try @"while".condition.clone(alloc),
                     .capture = if (@"while".capture) |c| try c.clone(alloc) else null,
                     .body = try @"while".body.clonePtr(alloc),
@@ -312,7 +296,7 @@ pub const Statement = union(enum) {
             },
             .binding_function_declaration => |bfd| .{
                 .binding_function_declaration = .{
-                    .pos = try bfd.pos.clone(alloc),
+                    .pos = bfd.pos,
                     .is_pub = bfd.is_pub,
                     .name = try alloc.dupe(u8, bfd.name),
                     .parameters = try utils.cloneSlice(ast.VariableSignature, bfd.parameters, alloc),
@@ -321,7 +305,7 @@ pub const Statement = union(enum) {
             },
             .binding_type_declaration => |btd| .{
                 .binding_type_declaration = .{
-                    .pos = try btd.pos.clone(alloc),
+                    .pos = btd.pos,
                     .is_pub = btd.is_pub,
                     .name = try alloc.dupe(u8, btd.name),
                     .type = btd.type,
@@ -329,13 +313,13 @@ pub const Statement = union(enum) {
             },
             .block => |block| .{
                 .block = .{
-                    .pos = try block.pos.clone(alloc),
+                    .pos = block.pos,
                     .payload = try utils.cloneSlice(ast.Statement, block.payload, alloc),
                 },
             },
             .import => |import| .{
                 .import = .{
-                    .pos = try import.pos.clone(alloc),
+                    .pos = import.pos,
                     .module_name = b: {
                         const mn = try alloc.alloc([]const u8, import.module_name.len);
                         for (import.module_name, 0..) |name, i| mn[i] = try alloc.dupe(u8, name);

@@ -230,7 +230,7 @@ pub const Parser = struct {
         while (std.meta.activeTag(self.currentToken()) != closing_token) {
             try args.append(self.alloc, if (is_generic) b: {
                 const backup_pos = self.pos;
-                const current_pos = try self.currentPosition().clone(self.alloc);
+                const current_pos = self.currentPosition();
                 if (self.type_parser.parseType(self.alloc, .default)) |t| {
                     break :b .{ .type = .{ .pos = current_pos, .payload = t } };
                 } else |_| {
@@ -266,12 +266,7 @@ pub const Parser = struct {
         const closing_token = if (is_generic) .@">" else .@")";
 
         var params: std.ArrayList(ast.VariableSignature) = .empty;
-        try self.expect(
-            self.advance(),
-            opening_token,
-            "parameter list",
-            @tagName(opening_token),
-        );
+        try self.expect(self.advance(), opening_token, "parameter list", @tagName(opening_token));
 
         if (self.currentToken() == closing_token) {
             if (is_generic) return utils.printErr(
@@ -288,7 +283,7 @@ pub const Parser = struct {
                 var param_names: std.ArrayList([]const u8) = .empty;
                 defer param_names.deinit(self.alloc);
 
-                const first_pos = try self.currentPosition().clone(self.alloc);
+                const first_pos = self.currentPosition();
 
                 const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
                     _ = self.advance();
@@ -382,7 +377,7 @@ pub fn parse(
     source_map: []utils.Position,
 ) !ast.RootNode {
     defer utils.deinitSlice(lexer.Token, input, alloc);
-    // defer utils.deinitSlice(utils.Position, source_map, alloc);
+    defer alloc.free(source_map);
 
     var self: Parser = .{
         .pos = 0,
