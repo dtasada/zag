@@ -1,7 +1,9 @@
 const std = @import("std");
-const Compiler = @import("compiler.zig").Compiler;
-
+const utils = @import("utils");
 const ast = @import("ast");
+
+const Compiler = @import("compiler.zig").Compiler;
+const Type = @import("type.zig").Type;
 
 pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement) ![]const u8 {
     // switch (statement) {}
@@ -11,16 +13,88 @@ pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement) ![]const u8 {
     unreachable;
 }
 
-pub fn compileTopLevel(alloc: std.mem.Allocator, compiler: *Compiler, statement: ast.TopLevelStatement) !void {
+pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatement, compiler: *Compiler) !void {
     switch (statement) {
         .import => |s| try import(alloc, compiler, s),
         .binding_function_declaration => |bfd| {
-            _ = bfd;
-            // var out: std.ArrayList(u8) = .empty;
-            // out.print(alloc, "", .{bfd.return_type});
+            var return_type: ?*const Type = try .fromAstPtr(alloc, bfd.return_type, compiler);
+            errdefer if (return_type) |rt| rt.deinitPtr(alloc);
+
+            var params: std.ArrayList(Type) = .empty;
+            {
+                errdefer utils.deinitArrayList(Type, &params, alloc);
+                for (bfd.parameters) |param| {
+                    const param_type: Type = try .fromAst(alloc, param.type, compiler);
+                    errdefer param_type.deinit(alloc);
+
+                    try compiler.module.register(alloc, .{
+                        .name = param.name,
+                        .inner_name = param.name,
+                        .type = param_type,
+                        .free_inner_name = false,
+                        .free_type = false,
+                    });
+                    try params.append(alloc, param_type);
+                }
+            }
+
+            const function_type: Type = .{
+                .function = .{
+                    .parameters = try params.toOwnedSlice(alloc),
+                    .return_type = return_type.?,
+                },
+            };
+            return_type = null;
+
+            errdefer function_type.deinit(alloc);
+
+            try compiler.module.register(alloc, .{
+                .name = bfd.name,
+                .inner_name = bfd.name,
+                .type = function_type,
+                .binding = .@"const",
+                .is_pub = bfd.is_pub,
+                .free_inner_name = false,
+                .free_type = true,
+            });
+
+            const return_type_comp = try compiler.compileType(alloc, function_type.function.return_type, bfd.return_type.pos());
+            defer alloc.free(return_type_comp);
+
+            const param_list_comp = try parameterList(alloc, bfd.parameters, compiler);
+            defer alloc.free(param_list_comp);
+
+            try compiler.header.function_decls.print(alloc, "{s} {s}{s};", .{
+                return_type_comp,
+                bfd.name,
+                param_list_comp,
+            });
         },
         else => {},
     }
+}
+
+fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableSignature, c: *Compiler) ![]const u8 {
+    var buf: std.ArrayList(u8) = .empty;
+    errdefer buf.deinit(alloc);
+
+    try buf.append(alloc, '(');
+    for (parameter_list, 0..) |param, i| {
+        try buf.appendSlice(alloc, try variableSignature(alloc, param, c));
+        try buf.append(alloc, if (i == parameter_list.len - 1) ')' else ',');
+    }
+
+    return buf.toOwnedSlice(alloc);
+}
+
+fn variableSignature(alloc: std.mem.Allocator, signature: ast.VariableSignature, c: *Compiler) ![]const u8 {
+    const t: Type = try .fromAst(alloc, signature.type, c);
+    defer t.deinit(alloc);
+
+    const type_comp = try c.compileType(alloc, &t, signature.type.pos());
+    defer alloc.free(type_comp);
+
+    return try std.fmt.allocPrint(alloc, "{s} {s}", .{ type_comp, signature.name });
 }
 
 fn import(alloc: std.mem.Allocator, compiler: *Compiler, statement: ast.TopLevelStatement.Import) !void {

@@ -6,13 +6,16 @@ const errors = @import("errors.zig");
 const compiler = @import("compiler.zig");
 
 const Compiler = compiler.Compiler;
+const Symbol = compiler.Symbol;
 const Module = compiler.Module;
 const Value = compiler.Value;
+const Error = errors.Error;
 
 pub const Type = union(enum) {
     void,
     bool,
     type,
+    variadic,
 
     i8,
     i16,
@@ -26,6 +29,9 @@ pub const Type = union(enum) {
     u64,
     usize,
 
+    f32,
+    f64,
+
     c_char,
     c_short,
     c_int,
@@ -35,6 +41,9 @@ pub const Type = union(enum) {
     c_ushort,
     c_uint,
     c_ulong,
+
+    c_float,
+    c_double,
 
     optional: *const Type,
     reference: Reference,
@@ -61,73 +70,172 @@ pub const Type = union(enum) {
 
     fn CompoundType(tag: utils.CompoundTypeTag) type {
         return struct {
-            const Member = switch (tag) {
-                .@"enum" => usize,
-                else => Type,
+            const Member = if (tag == .@"enum") struct {
+                name: []const u8,
+                value: usize,
+                pub fn deinit(_: Member, _: std.mem.Allocator) void {}
+            } else struct {
+                name: []const u8,
+                type: Type,
+                pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
+                    self.type.deinit(alloc);
+                }
             };
 
-            members: std.StringHashMap(Member),
-            methods: std.StringHashMap(Function),
-            variables: std.StringHashMap(Function),
+            name: []const u8,
+            members: []const Member,
+            symbols: []const Symbol,
         };
     }
 
     const Function = struct {
-        const Parameter = struct {
-            name: []const u8,
-            type: Type,
-        };
-
-        parameters: std.ArrayList(Parameter),
+        parameters: []const Type,
         return_type: *const Type,
+
+        pub fn deinit(self: Function, alloc: std.mem.Allocator) void {
+            utils.deinitSlice(Type, self.parameters, alloc);
+            self.return_type.deinitPtr(alloc);
+        }
     };
 
-    pub const GenericTemplate = struct {
-        params: []const Param,
-        definition: *const ast.Statement,
-        module: Module,
-
-        pub const Param = struct {
-            name: []const u8,
-            constraint: ?Type = null,
-        };
-    };
-
-    fn fromAstPtr(alloc: std.mem.Allocator, t: ast.Type, c: Compiler) !*Type {
+    pub fn fromAstPtr(alloc: std.mem.Allocator, t: ast.Type, c: *const Compiler) !*Type {
         const ret = try alloc.create(Type);
-        ret.* = fromAst(alloc, t, c);
+        ret.* = try fromAst(alloc, t, c);
         return ret;
     }
 
-    pub fn fromAst(alloc: std.mem.Allocator, t: ast.Type, c: Compiler) !Type {
-        switch (t) {
-            .inferred => unreachable,
-            .symbol => |symbol| c.module.getSymbol(symbol.inner) orelse
-                errors.unknownSymbol(symbol.inner, c.source_map[symbol.pos]),
-            .optional => |opt| .{ .optional = try fromAstPtr(alloc, opt.inner, c) },
+    pub fn fromAst(alloc: std.mem.Allocator, t: ast.Type, c: *const Compiler) Error!Type {
+        return switch (t) {
+            .symbol => |s| {
+                const symbol = c.module.getSymbol(s.inner) orelse
+                    return errors.unknownSymbol(s.inner, c.source_map[s.pos]);
+
+                return switch (symbol.type) {
+                    .type => symbol.value.?.type,
+                    else => |received| errors.typeMismatch(.type, received, c.source_map[s.pos]),
+                };
+            },
+            .optional => |opt| .{ .optional = try fromAstPtr(alloc, opt.inner.*, c) },
             inline .slice, .reference => |ref, tag| @unionInit(Type, @tagName(tag), .{
-                .inner = try fromAstPtr(alloc, ref.inner, c),
+                .inner = try fromAstPtr(alloc, ref.inner.*, c),
                 .is_mut = ref.is_mut,
             }),
             .array => |array| .{
                 .array = .{
-                    .inner = try fromAstPtr(alloc, array.inner, c),
-                    .len = switch (try Value.eval(array.size)) {
+                    .inner = try fromAstPtr(alloc, array.inner.*, c),
+                    .len = switch (try Value.eval(array.size, c)) {
                         .uint => |uint| uint,
-                        else => |val| return errors.arrayLengthMustBeInteger(val.getType(), array.size.getPosition()),
+                        else => |val| return errors.arrayLengthMustBeInteger(
+                            val.getType(),
+                            c.source_map[array.size.pos()],
+                        ),
                     },
                 },
             },
             .error_union => |eu| .{
                 .error_union = .{
-                    .failure = try fromAstPtr(alloc, eu.failure, c),
-                    .success = try fromAstPtr(alloc, eu.failure, c),
+                    .failure = try fromAstPtr(alloc, eu.failure.*, c),
+                    .success = try fromAstPtr(alloc, eu.success.*, c),
                 },
             },
-            // .function => |f| .{
-            //     .function = .{},
-            // },
-            else => unreachable,
+            .function => |f| {
+                var params: std.ArrayList(Type) = try .initCapacity(alloc, f.parameters.len);
+                errdefer utils.deinitArrayList(Type, &params, alloc);
+                for (f.parameters) |param| params.appendAssumeCapacity(try fromAst(alloc, param, c));
+
+                const return_type = try fromAstPtr(alloc, f.return_type.*, c);
+                errdefer return_type.deinitPtr(alloc);
+
+                return .{
+                    .function = .{
+                        .parameters = try params.toOwnedSlice(alloc),
+                        .return_type = return_type,
+                    },
+                };
+            },
+            .variadic => .variadic,
+            inline else => |_, tag| {
+                std.debug.print("failing with {s}\n", .{@tagName(tag)});
+                unreachable;
+            },
+        };
+    }
+
+    pub fn deinitPtr(self: *const Type, alloc: std.mem.Allocator) void {
+        self.deinit(alloc);
+        alloc.destroy(self);
+    }
+
+    pub fn deinit(self: Type, alloc: std.mem.Allocator) void {
+        switch (self) {
+            .optional => |opt| opt.deinitPtr(alloc),
+            .error_union => |eu| {
+                eu.failure.deinitPtr(alloc);
+                eu.success.deinitPtr(alloc);
+            },
+            .function => |f| f.deinit(alloc),
+            inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
+            inline .@"struct", .@"enum", .@"union" => |ct| {
+                utils.deinitSlice(@TypeOf(ct).Member, ct.members, alloc);
+                utils.deinitSlice(Symbol, ct.symbols, alloc);
+            },
+            else => {},
         }
+    }
+
+    pub fn format(self: Type, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        switch (self) {
+            .optional => |inner| try writer.print("?{f}", .{inner.*}),
+            .reference => |ref| try writer.print("&{s}{f}", .{ if (ref.is_mut) "mut " else "", ref.inner.* }),
+            .slice => |slice| try writer.print("[]{s}{f}", .{ if (slice.is_mut) "mut " else "", slice.inner.* }),
+            .array => |array| try writer.print("[{}]{f}", .{ array.len, array.inner.* }),
+            .error_union => |eu| try writer.print("{f}!{f}", .{ eu.failure.*, eu.success.* }),
+            .function => |f| {
+                try writer.writeAll("fn (");
+                for (f.parameters, 0..) |param, i| {
+                    try writer.print("{f}", .{param});
+                    try writer.writeAll(if (i == f.parameters.len - 1) ")" else ", ");
+                }
+            },
+            inline .@"struct", .@"enum", .@"union" => |ct| try writer.writeAll(ct.name),
+            .module => |m| try writer.writeAll(m.name),
+            inline else => |_, t| try writer.writeAll(@tagName(t)),
+        }
+    }
+
+    pub fn hash(self: Type) u64 {
+        var h = std.hash.Wyhash.init(0);
+
+        h.update(std.mem.asBytes(&std.meta.activeTag(self)));
+
+        switch (self) {
+            .optional => |inner| h.update(std.mem.asBytes(&inner.hash())),
+            inline .reference, .slice => |ref| {
+                h.update(std.mem.asBytes(&ref.inner.hash()));
+                h.update(std.mem.asBytes(&ref.is_mut));
+            },
+            .array => |array| {
+                h.update(std.mem.asBytes(&array.inner.hash()));
+                h.update(std.mem.asBytes(&array.len));
+            },
+            .error_union => |eu| {
+                h.update(std.mem.asBytes(&eu.failure.hash()));
+                h.update(std.mem.asBytes(&eu.success.hash()));
+            },
+            .function => |f| {
+                h.update(std.mem.asBytes(&f.return_type.hash()));
+                for (f.parameters) |param_t| h.update(std.mem.asBytes(&param_t.hash()));
+            },
+            inline .@"struct", .@"enum", .@"union" => |ct, tag| {
+                h.update(std.mem.asBytes(&tag));
+                for (ct.members) |member| {
+                    h.update(member.name);
+                    h.update(std.mem.asBytes(&if (tag == .@"enum") member else member.type.hash()));
+                }
+            },
+            else => {},
+        }
+
+        return h.final();
     }
 };

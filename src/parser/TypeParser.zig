@@ -44,7 +44,6 @@ pub fn init(parent_parser: *parser.Parser) !Self {
             .@"[" = parseArrayType,
             .@"&" = parseReferenceType,
             .@"?" = parseOptionalType,
-            .@"!" = parseInferredErrorType,
             .@"fn" = parseFunctionType,
             .@"(" = parseGroupType,
             .@"..." = parseVariadic,
@@ -135,7 +134,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
 
     return .{
         .generic = .{
-            .pos = lhs.getPosition(), // Simplification: use start pos
+            .pos = lhs.pos(), // Simplification: use start pos
             .lhs = ptr,
             .arguments = try args.toOwnedSlice(self.parent_parser.alloc),
         },
@@ -184,21 +183,6 @@ pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
         .optional = .{
             .pos = pos,
             .inner = inner,
-        },
-    };
-}
-
-pub fn parseInferredErrorType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
-    const pos = self.parent_parser.pos;
-    _ = self.parent_parser.advance(); // consume '!'
-
-    const success = try alloc.create(ast.Type);
-    success.* = try parseType(self, alloc, .default);
-
-    return .{
-        .error_union = .{
-            .pos = pos,
-            .success = success,
         },
     };
 }

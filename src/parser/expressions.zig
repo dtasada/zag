@@ -62,7 +62,7 @@ pub fn binary(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) Error
                 try comparisons.append(self.alloc, .{ .op = op, .right = new_rhs });
                 return .{
                     .comparison = .{
-                        .pos = lhs.getPosition(),
+                        .pos = lhs.pos(),
                         .left = lhs.comparison.left,
                         .comparisons = try comparisons.toOwnedSlice(self.alloc),
                     },
@@ -72,7 +72,7 @@ pub fn binary(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) Error
             if (lhs.* == .binary) switch (lhs.binary.op) {
                 .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => return .{
                     .comparison = .{
-                        .pos = lhs.getPosition(),
+                        .pos = lhs.pos(),
                         .left = lhs.binary.lhs,
                         .comparisons = &.{
                             .{ .op = lhs.binary.op, .right = lhs.binary.rhs },
@@ -190,24 +190,8 @@ pub fn group(self: *Parser) Error!ast.Expression {
 pub fn structInstantiation(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!ast.Expression {
     try self.expect(self.advance(), .@"{", "struct instantiation", "{");
 
-    var @"struct": ast.Expression.StructInstantiation = .{
-        .pos = lhs.getPosition(),
-        .type_expr = lhs,
-        .members = b: {
-            const members = try self.alloc.create(std.StringHashMap(ast.Expression));
-            members.* = .init(self.alloc);
-            break :b members;
-        },
-    };
-    errdefer {
-        var members_it = @"struct".members.iterator();
-        while (members_it.next()) |entry| {
-            self.alloc.free(entry.key_ptr.*);
-            entry.value_ptr.deinit(self.alloc);
-        }
-        @"struct".members.deinit();
-        self.alloc.destroy(@"struct".members);
-    }
+    var members: std.ArrayList(ast.Expression.StructInstantiation.Member) = .empty;
+    errdefer utils.deinitArrayList(ast.Expression.StructInstantiation.Member, &members, self.alloc);
 
     while (self.currentToken() != .eof and self.currentToken() != .@"}") {
         const member_name = try self.expect(self.advance(), .ident, "struct instantiation", "struct member name");
@@ -215,14 +199,20 @@ pub fn structInstantiation(self: *Parser, lhs: *const ast.Expression, _: Binding
         const member_value = try parse(self, .default, .{});
         errdefer member_value.deinit(self.alloc);
 
-        try @"struct".members.put(try self.alloc.dupe(u8, member_name), member_value);
+        try members.append(self.alloc, .{ .name = try self.alloc.dupe(u8, member_name), .value = member_value });
 
         if (self.currentToken() != .@"}") try self.expect(self.advance(), .@",", "struct instantiation", ",");
     }
 
     try self.expect(self.advance(), .@"}", "struct instantiation", "}");
 
-    return .{ .struct_instantiation = @"struct" };
+    return .{
+        .struct_instantiation = .{
+            .pos = lhs.pos(),
+            .type_expr = lhs,
+            .members = try members.toOwnedSlice(self.alloc),
+        },
+    };
 }
 
 pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
@@ -274,7 +264,7 @@ pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
 pub fn call(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!ast.Expression {
     return .{
         .call = .{
-            .pos = lhs.getPosition(),
+            .pos = lhs.pos(),
             .callee = lhs,
             .args = try self.parseArguments(),
         },
@@ -308,7 +298,7 @@ fn isGenericLookahead(self: *Parser) bool {
 pub fn generic(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!ast.Expression {
     return .{
         .generic = .{
-            .pos = lhs.getPosition(),
+            .pos = lhs.pos(),
             .lhs = lhs,
             .arguments = try self.parseGenericArguments(),
         },
@@ -455,7 +445,7 @@ pub fn range(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
 
     return .{
         .range = .{
-            .pos = lhs.getPosition(),
+            .pos = lhs.pos(),
             .start = lhs,
             .end = end,
             .inclusive = token != .@"..",
@@ -485,7 +475,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
 
         return .{
             .slice = .{
-                .pos = lhs.getPosition(),
+                .pos = lhs.pos(),
                 .lhs = lhs,
                 .start = null,
                 .end = end,
@@ -502,7 +492,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
 
     const expr: ast.Expression = if (i.* == .range) .{
         .slice = .{
-            .pos = lhs.getPosition(),
+            .pos = lhs.pos(),
             .lhs = lhs,
             .start = try i.range.start.clonePtr(self.alloc),
             .end = if (i.range.end) |e| try e.clonePtr(self.alloc) else null,
@@ -510,7 +500,7 @@ pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
         },
     } else .{
         .index = .{
-            .pos = lhs.getPosition(),
+            .pos = lhs.pos(),
             .lhs = lhs,
             .index = i,
         },
@@ -567,7 +557,7 @@ pub fn @"catch"(self: *Parser, lhs: *const ast.Expression, binding_power: Bindin
 
     return .{
         .@"catch" = .{
-            .pos = lhs.getPosition(),
+            .pos = lhs.pos(),
             .lhs = lhs,
             .rhs = rhs,
         },

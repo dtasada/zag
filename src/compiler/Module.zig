@@ -3,43 +3,63 @@ const utils = @import("utils");
 
 const Type = @import("type.zig").Type;
 const Symbol = @import("compiler.zig").Symbol;
+const Value = @import("value.zig").Value;
 
 const Module = @This();
 
 const Scope = std.ArrayList(Symbol);
 
+name: []const u8,
 scopes: std.ArrayList(*Scope) = .empty,
 
-pub fn init(alloc: std.mem.Allocator) !Module {
-    var self: Module = .{};
+fn registerBuiltin(self: *Module, alloc: std.mem.Allocator, comptime name: []const u8, comptime inner_name: []const u8, value: Value) !void {
+    try self.register(alloc, .{
+        .name = name,
+        .inner_name = inner_name,
+        .type = .type,
+        .binding = .@"const",
+        .value = value,
+        .free_inner_name = false,
+        .free_type = true,
+    });
+}
+
+pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
+    var self: Module = .{ .name = name };
 
     try self.pushScope(alloc);
 
-    try self.register(alloc, .{ .name = "i8", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "i16", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "i32", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "i64", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "isize", .type = .type, .binding = .@"const" });
+    try self.registerBuiltin(alloc, "i8", "int8_t", .{ .type = .i8 });
+    try self.registerBuiltin(alloc, "i16", "int16_t", .{ .type = .i16 });
+    try self.registerBuiltin(alloc, "i32", "int32_t", .{ .type = .i32 });
+    try self.registerBuiltin(alloc, "i64", "int64_t", .{ .type = .i64 });
+    try self.registerBuiltin(alloc, "isize", "ptrdiff_t", .{ .type = .isize });
 
-    try self.register(alloc, .{ .name = "u8", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "u16", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "u32", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "u64", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "usize", .type = .type, .binding = .@"const" });
+    try self.registerBuiltin(alloc, "u8", "uint8_t", .{ .type = .u8 });
+    try self.registerBuiltin(alloc, "u16", "uint16_t", .{ .type = .u16 });
+    try self.registerBuiltin(alloc, "u32", "uint32_t", .{ .type = .u32 });
+    try self.registerBuiltin(alloc, "u64", "uint64_t", .{ .type = .u64 });
+    try self.registerBuiltin(alloc, "usize", "size_t", .{ .type = .usize });
 
-    try self.register(alloc, .{ .name = "void", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "bool", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "type", .type = .type, .binding = .@"const" });
+    try self.registerBuiltin(alloc, "f32", "float", .{ .type = .f32 });
+    try self.registerBuiltin(alloc, "f64", "double", .{ .type = .f64 });
 
-    try self.register(alloc, .{ .name = "c_char", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "c_short", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "c_int", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "c_long", .type = .type, .binding = .@"const" });
+    try self.registerBuiltin(alloc, "void", "void", .{ .type = .void });
+    try self.registerBuiltin(alloc, "bool", "bool", .{ .type = .bool });
+    try self.registerBuiltin(alloc, "type", "type_type", .{ .type = .type });
 
-    try self.register(alloc, .{ .name = "c_uchar", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "c_ushort", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "c_uint", .type = .type, .binding = .@"const" });
-    try self.register(alloc, .{ .name = "c_ulong", .type = .type, .binding = .@"const" });
+    try self.registerBuiltin(alloc, "c_char", "char", .{ .type = .c_char });
+    try self.registerBuiltin(alloc, "c_short", "short", .{ .type = .c_short });
+    try self.registerBuiltin(alloc, "c_int", "int", .{ .type = .c_int });
+    try self.registerBuiltin(alloc, "c_long", "long", .{ .type = .c_long });
+
+    try self.registerBuiltin(alloc, "c_uchar", "unsigned char", .{ .type = .c_uchar });
+    try self.registerBuiltin(alloc, "c_ushort", "unsigned short", .{ .type = .c_ushort });
+    try self.registerBuiltin(alloc, "c_uint", "unsigned int", .{ .type = .c_uint });
+    try self.registerBuiltin(alloc, "c_ulong", "unsigned long", .{ .type = .c_ulong });
+
+    try self.registerBuiltin(alloc, "c_float", "float", .{ .type = .c_float });
+    try self.registerBuiltin(alloc, "c_double", "double", .{ .type = .c_double });
 
     return self;
 }

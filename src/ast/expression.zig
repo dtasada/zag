@@ -137,9 +137,29 @@ pub const Expression = union(enum) {
     };
 
     pub const StructInstantiation = struct {
+        pub const Member = struct {
+            name: []const u8,
+            value: Expression,
+
+            pub fn clone(
+                self: StructInstantiation.Member,
+                alloc: std.mem.Allocator,
+            ) !StructInstantiation.Member {
+                return .{
+                    .name = try alloc.dupe(u8, self.name),
+                    .value = try self.value.clone(alloc),
+                };
+            }
+
+            pub fn deinit(self: StructInstantiation.Member, alloc: std.mem.Allocator) void {
+                alloc.free(self.name);
+                self.value.deinit(alloc);
+            }
+        };
+
         pos: usize,
         type_expr: *const Expression,
-        members: *std.StringHashMap(Expression),
+        members: []const StructInstantiation.Member,
     };
 
     pub const ArrayInstantiation = struct {
@@ -184,7 +204,7 @@ pub const Expression = union(enum) {
         inclusive: bool,
     };
 
-    pub inline fn getPosition(self: *const Expression) usize {
+    pub inline fn pos(self: *const Expression) usize {
         return switch (self.*) {
             inline else => |some| some.pos,
         };
@@ -274,16 +294,7 @@ pub const Expression = union(enum) {
                 .struct_instantiation = .{
                     .pos = si.pos,
                     .type_expr = try si.type_expr.clonePtr(alloc),
-                    .members = b: {
-                        const new_map = try alloc.create(std.StringHashMap(Expression));
-                        new_map.* = .init(alloc);
-                        var it = si.members.iterator();
-                        while (it.next()) |entry| try new_map.put(
-                            try alloc.dupe(u8, entry.key_ptr.*),
-                            try entry.value_ptr.*.clone(alloc),
-                        );
-                        break :b new_map;
-                    },
+                    .members = try utils.cloneSlice(StructInstantiation.Member, si.members, alloc),
                 },
             },
             .array_instantiation => |ai| .{
@@ -428,13 +439,7 @@ pub const Expression = union(enum) {
             .reference => |s| s.inner.deinitPtr(alloc),
             .struct_instantiation => |s| {
                 s.type_expr.deinitPtr(alloc);
-                var it = s.members.iterator();
-                while (it.next()) |entry| {
-                    alloc.free(entry.key_ptr.*);
-                    entry.value_ptr.deinit(alloc);
-                }
-                s.members.deinit();
-                alloc.destroy(s.members);
+                utils.deinitSlice(StructInstantiation.Member, s.members, alloc);
             },
             .type => |s| s.payload.deinit(alloc),
             .@"try" => |s| s.payload.deinitPtr(alloc),

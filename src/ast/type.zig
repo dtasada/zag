@@ -23,7 +23,7 @@ pub const Type = union(enum) {
     const ErrorUnion = struct {
         pos: usize,
         success: *const Type,
-        failure: ?*const Type = null,
+        failure: *const Type,
     };
 
     const Function = struct {
@@ -57,7 +57,7 @@ pub const Type = union(enum) {
     variadic: struct { pos: usize },
     member: Member,
 
-    pub inline fn getPosition(self: Type) usize {
+    pub inline fn pos(self: Type) usize {
         return switch (self) {
             inline else => |some| some.pos,
         };
@@ -99,8 +99,8 @@ pub const Type = union(enum) {
             .error_union => |n| .{
                 .error_union = .{
                     .pos = n.pos,
+                    .failure = try n.failure.clonePtr(alloc),
                     .success = try n.success.clonePtr(alloc),
-                    .failure = if (n.failure) |f| try f.clonePtr(alloc) else null,
                 },
             },
             .function => |n| .{
@@ -145,8 +145,8 @@ pub const Type = union(enum) {
                 s.size.deinitPtr(alloc);
             },
             .error_union => |s| {
+                s.failure.deinitPtr(alloc);
                 s.success.deinitPtr(alloc);
-                if (s.failure) |f| f.deinitPtr(alloc);
             },
             .function => |s| {
                 utils.deinitSlice(Type, s.parameters, alloc);
@@ -166,7 +166,7 @@ pub const Type = union(enum) {
 
     pub fn createFunctionType(
         alloc: std.mem.Allocator,
-        pos: usize,
+        position: usize,
         name: []const u8,
         parameters: ast.ParameterList,
         generic_parameters: ast.ParameterList,
@@ -174,7 +174,7 @@ pub const Type = union(enum) {
     ) !Type {
         return .{
             .function = .{
-                .pos = pos,
+                .pos = position,
                 .name = try alloc.dupe(u8, name),
                 .parameters = parameters,
                 .generic_parameters = generic_parameters,

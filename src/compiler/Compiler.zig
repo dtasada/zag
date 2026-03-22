@@ -6,55 +6,54 @@ const build_options = @import("build_options");
 const parser = @import("parser");
 const lexer = @import("lexer");
 
+const errors = @import("errors.zig");
 const statements = @import("statements.zig");
-const Type = @import("type.zig").Type;
 
+pub const Type = @import("type.zig").Type;
 pub const Module = @import("Module.zig");
-pub const Value = @import("Value.zig").Value;
+pub const Value = @import("value.zig").Value;
 
 pub const Symbol = struct {
     name: []const u8,
+    inner_name: []const u8,
     type: Type,
     binding: utils.Binding = .let,
     is_pub: bool = false,
+    value: ?Value = null,
+    free_inner_name: bool,
+    free_type: bool,
 
     pub fn deinit(self: Symbol, alloc: std.mem.Allocator) void {
-        _ = self;
-        _ = alloc;
+        if (self.free_inner_name) alloc.free(self.inner_name);
+        if (self.free_type) self.type.deinit(alloc);
     }
 };
 
 pub const Compiler = struct {
     source: struct {
         includes: *std.ArrayList(u8),
-        type_impls: *std.ArrayList(u8),
         function_impls: *std.ArrayList(u8),
 
         fn init(alloc: std.mem.Allocator) !@This() {
             const self: @This() = .{
                 .includes = try alloc.create(std.ArrayList(u8)),
-                .type_impls = try alloc.create(std.ArrayList(u8)),
                 .function_impls = try alloc.create(std.ArrayList(u8)),
             };
             self.includes.* = .empty;
-            self.type_impls.* = .empty;
             self.function_impls.* = .empty;
             return self;
         }
 
         fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
             self.includes.deinit(alloc);
-            self.type_impls.deinit(alloc);
             self.function_impls.deinit(alloc);
 
             alloc.destroy(self.includes);
-            alloc.destroy(self.type_impls);
             alloc.destroy(self.function_impls);
         }
 
         fn write(self: *@This(), writer: *std.Io.Writer) !void {
             try writer.writeAll(self.includes.items);
-            try writer.writeAll(self.type_impls.items);
             try writer.writeAll(self.function_impls.items);
             try writer.flush();
         }
@@ -62,16 +61,19 @@ pub const Compiler = struct {
 
     header: struct {
         includes: *std.ArrayList(u8),
+        typedefs: *std.ArrayList(u8),
         forward_decls: *std.ArrayList(u8),
         function_decls: *std.ArrayList(u8),
 
         fn init(alloc: std.mem.Allocator) !@This() {
             const self: @This() = .{
                 .includes = try alloc.create(std.ArrayList(u8)),
+                .typedefs = try alloc.create(std.ArrayList(u8)),
                 .forward_decls = try alloc.create(std.ArrayList(u8)),
                 .function_decls = try alloc.create(std.ArrayList(u8)),
             };
             self.includes.* = .empty;
+            self.typedefs.* = .empty;
             self.forward_decls.* = .empty;
             self.function_decls.* = .empty;
             return self;
@@ -79,22 +81,26 @@ pub const Compiler = struct {
 
         fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
             self.includes.deinit(alloc);
+            self.typedefs.deinit(alloc);
             self.forward_decls.deinit(alloc);
             self.function_decls.deinit(alloc);
 
             alloc.destroy(self.includes);
+            alloc.destroy(self.typedefs);
             alloc.destroy(self.forward_decls);
             alloc.destroy(self.function_decls);
         }
 
         fn write(self: *@This(), writer: *std.Io.Writer) !void {
             try writer.writeAll(self.includes.items);
+            try writer.writeAll(self.typedefs.items);
             try writer.writeAll(self.forward_decls.items);
             try writer.writeAll(self.function_decls.items);
             try writer.flush();
         }
     },
 
+    primitives: std.BufSet,
     module: Module,
     source_map: []const utils.Position,
 
@@ -102,6 +108,34 @@ pub const Compiler = struct {
         self.source.deinit(alloc);
         self.header.deinit(alloc);
         self.module.deinit(alloc);
+    }
+
+    /// Caller owns memory
+    pub fn compileType(self: *Compiler, alloc: std.mem.Allocator, t: *const Type, pos: usize) ![]const u8 {
+        return switch (t.*) {
+            .optional => |optional| {
+                const type_name = try std.fmt.allocPrint(alloc, "__zag_Optional_{x}", .{optional.hash()});
+                if (!self.primitives.contains(type_name)) {
+                    try self.header.typedefs.print(
+                        alloc,
+                        "typedef struct {s} {{ bool is_some; {s} payload; }} {0s};",
+                        .{ type_name, try self.compileType(alloc, optional, pos) },
+                    );
+
+                    try self.primitives.insert(type_name);
+                }
+
+                return type_name;
+            },
+            .reference => |ref| try std.fmt.allocPrint(alloc, "{s}{s}*", .{
+                if (!ref.is_mut) "const " else "",
+                try self.compileType(alloc, ref.inner, pos),
+            }),
+            inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
+                alloc.dupe(u8, symbol.inner_name)
+            else
+                errors.unknownSymbol(@tagName(tag), self.source_map[pos]),
+        };
     }
 };
 
@@ -112,20 +146,21 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     const root_node = try parser.parse(alloc, tokens, source_map);
     defer utils.deinitSlice(ast.TopLevelStatement, root_node, alloc);
 
+    std.debug.assert(std.mem.eql(u8, file_path[file_path.len - 4 ..], ".zag"));
+
     var compiler: Compiler = .{
         .header = try .init(alloc),
         .source = try .init(alloc),
-        .module = try .init(alloc),
+        .module = try .init(alloc, std.fs.path.basename(file_path)[std.fs.path.basename(file_path).len - 4 ..]),
         .source_map = source_map,
+        .primitives = .init(alloc),
     };
     defer compiler.deinit(alloc);
 
-    for (root_node) |statement| try statements.compileTopLevel(alloc, &compiler, statement);
+    for (root_node) |statement| try statements.compileTopLevel(alloc, statement, &compiler);
 
     var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
     defer @".zag-out".close();
-
-    std.debug.assert(std.mem.eql(u8, file_path[file_path.len - 4 ..], ".zag"));
 
     const relative_path = if (std.mem.startsWith(u8, file_path, build_options.stdlib_path))
         try std.fmt.allocPrint(alloc, "lib/{s}", .{file_path[build_options.stdlib_path.len + 1 ..]})
