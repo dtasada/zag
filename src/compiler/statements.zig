@@ -70,6 +70,28 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                 param_list_comp,
             });
         },
+        .binding_type_declaration => |btd| {
+            compiler.module.register(alloc, .{
+                .name = btd.name,
+                .inner_name = btd.name,
+                .type = .type,
+                .binding = .@"const",
+                .is_pub = btd.is_pub,
+                .value = .{
+                    .type = @unionInit(Type, @tagName(btd.type), .{
+                        .name = btd.name,
+                        .members = &.{},
+                        .symbols = &.{},
+                    }),
+                },
+                .free_inner_name = false,
+                .free_type = false,
+            });
+            try compiler.header.forward_decls.print(alloc, "typedef {s} {s} {1s};", .{
+                @tagName(btd.type),
+                btd.name,
+            });
+        },
         else => {},
     }
 }
