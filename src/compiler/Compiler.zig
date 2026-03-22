@@ -127,10 +127,15 @@ pub const Compiler = struct {
 
                 return type_name;
             },
-            .reference => |ref| try std.fmt.allocPrint(alloc, "{s}{s}*", .{
-                if (!ref.is_mut) "const " else "",
-                try self.compileType(alloc, ref.inner, pos),
-            }),
+            .reference => |ref| {
+                const inner = try self.compileType(alloc, ref.inner, pos);
+                defer alloc.free(inner);
+                return try std.fmt.allocPrint(alloc, "{s}{s}*", .{
+                    if (!ref.is_mut) "const " else "",
+                    inner,
+                });
+            },
+            .variadic => unreachable,
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else

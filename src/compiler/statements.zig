@@ -80,7 +80,9 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableS
 
     try buf.append(alloc, '(');
     for (parameter_list, 0..) |param, i| {
-        try buf.appendSlice(alloc, try variableSignature(alloc, param, c));
+        const variable_signature = try variableSignature(alloc, param, c);
+        defer alloc.free(variable_signature);
+        try buf.appendSlice(alloc, variable_signature);
         try buf.append(alloc, if (i == parameter_list.len - 1) ')' else ',');
     }
 
@@ -88,6 +90,8 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableS
 }
 
 fn variableSignature(alloc: std.mem.Allocator, signature: ast.VariableSignature, c: *Compiler) ![]const u8 {
+    if (signature.type == .variadic) return try alloc.dupe(u8, "...");
+
     const t: Type = try .fromAst(alloc, signature.type, c);
     defer t.deinit(alloc);
 
