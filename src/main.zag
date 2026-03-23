@@ -1,5 +1,6 @@
 bind fn printf(fmt: &c_char, args...) c_int;
 
 fn main() void {
-    printf("hello world");
+    let digit = 69;
+    printf("hello world %d\n", digit);
 }

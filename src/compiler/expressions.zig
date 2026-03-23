@@ -41,7 +41,7 @@ pub fn compile(
             return try std.fmt.allocPrint(alloc, "({s})", .{block_comp});
         },
         .array_instantiation => |inst| {
-            const inner_ast: Type = try .fromAst(alloc, inst.type, c);
+            const inner_ast: Type = try .fromAst(alloc, &inst.type, c);
             defer inner_ast.deinit(alloc);
 
             var buf: std.ArrayList(u8) = .empty;
@@ -89,6 +89,8 @@ pub fn compile(
                 return errors.argumentCount(function_t.parameters.len, call.args.len, c.source_map[call.pos]);
 
             var buf: std.ArrayList(u8) = .empty;
+            errdefer buf.deinit(alloc);
+
             const lhs = try compile(alloc, call.callee, c, .{});
             defer alloc.free(lhs);
             try buf.appendSlice(alloc, lhs);
@@ -99,7 +101,7 @@ pub fn compile(
                 defer received.deinit(alloc);
                 const expected = function_t.parameters[i];
 
-                if (!received.check(expected))
+                if (expected != .variadic and !received.check(expected))
                     return errors.typeMismatch(expected, received, c.source_map[arg.pos()]);
 
                 const arg_comp = try compile(alloc, arg, c, .{ .expected_type = expected });

@@ -120,7 +120,7 @@ pub const Type = union(enum) {
         }
     };
 
-    pub fn fromAstPtr(alloc: std.mem.Allocator, t: ast.Type, c: *const Compiler) !*Type {
+    pub fn fromAstPtr(alloc: std.mem.Allocator, t: *const ast.Type, c: *const Compiler) !*Type {
         const ret = try alloc.create(Type);
         errdefer alloc.destroy(ret);
         ret.* = try fromAst(alloc, t, c);
@@ -128,8 +128,8 @@ pub const Type = union(enum) {
     }
 
     /// Caller owns memory
-    pub fn fromAst(alloc: std.mem.Allocator, t: ast.Type, c: *const Compiler) Error!Type {
-        return switch (t) {
+    pub fn fromAst(alloc: std.mem.Allocator, t: *const ast.Type, c: *const Compiler) Error!Type {
+        return switch (t.*) {
             .symbol => |s| {
                 const symbol = c.module.getSymbol(s.inner) orelse
                     return errors.unknownSymbol(s.inner, c.source_map[s.pos]);
@@ -139,14 +139,14 @@ pub const Type = union(enum) {
                     else => |received| errors.typeMismatch(.type, received, c.source_map[s.pos]),
                 };
             },
-            .optional => |opt| .{ .optional = try fromAstPtr(alloc, opt.inner.*, c) },
+            .optional => |opt| .{ .optional = try fromAstPtr(alloc, opt.inner, c) },
             inline .slice, .reference => |ref, tag| @unionInit(Type, @tagName(tag), .{
-                .inner = try fromAstPtr(alloc, ref.inner.*, c),
+                .inner = try fromAstPtr(alloc, ref.inner, c),
                 .is_mut = ref.is_mut,
             }),
             .array => |array| .{
                 .array = .{
-                    .inner = try fromAstPtr(alloc, array.inner.*, c),
+                    .inner = try fromAstPtr(alloc, array.inner, c),
                     .len = switch (try Value.eval(array.size, c)) {
                         .uint => |uint| uint,
                         else => |val| return errors.arrayLengthMustBeInteger(
@@ -158,16 +158,16 @@ pub const Type = union(enum) {
             },
             .error_union => |eu| .{
                 .error_union = .{
-                    .failure = try fromAstPtr(alloc, eu.failure.*, c),
-                    .success = try fromAstPtr(alloc, eu.success.*, c),
+                    .failure = try fromAstPtr(alloc, eu.failure, c),
+                    .success = try fromAstPtr(alloc, eu.success, c),
                 },
             },
             .function => |f| {
                 var params: std.ArrayList(Type) = try .initCapacity(alloc, f.parameters.len);
                 errdefer utils.deinitArrayList(Type, &params, alloc);
-                for (f.parameters) |param| params.appendAssumeCapacity(try fromAst(alloc, param, c));
+                for (f.parameters) |*param| params.appendAssumeCapacity(try fromAst(alloc, param, c));
 
-                const return_type = try fromAstPtr(alloc, f.return_type.*, c);
+                const return_type = try fromAstPtr(alloc, f.return_type, c);
                 errdefer return_type.deinitPtr(alloc);
 
                 return .{
@@ -223,7 +223,7 @@ pub const Type = union(enum) {
                 }
             },
             .array_instantiation => |ai| {
-                const inner = try fromAstPtr(alloc, ai.type, c);
+                const inner = try fromAstPtr(alloc, &ai.type, c);
                 errdefer inner.deinitPtr(alloc);
 
                 const len: Value = try .eval(ai.length, c);
@@ -267,7 +267,7 @@ pub const Type = union(enum) {
                         .type = if (vd.type == .inferred)
                             try infer(alloc, &vd.assigned_value, c)
                         else
-                            try fromAst(alloc, vd.type, c),
+                            try fromAst(alloc, &vd.type, c),
                         .binding = vd.binding,
                         .is_pub = vd.is_pub,
                         .free_inner_name = false,
@@ -387,7 +387,7 @@ pub const Type = union(enum) {
                 const symbol = c.module.getSymbol(si.type_expr.ident.payload).?;
                 return try symbol.value.?.type.clone(alloc);
             },
-            .type => |t| fromAst(alloc, t.payload, c),
+            .type => |t| fromAst(alloc, &t.payload, c),
             else => unreachable,
         };
     }

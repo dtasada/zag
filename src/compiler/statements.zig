@@ -23,6 +23,40 @@ pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement, c: *Compiler)
         },
         .block_eval => |*eval| try expressions.compile(alloc, eval, c, .{}),
         .block => |b| block(alloc, b.payload, c),
+        .variable_definition => |vd| {
+            const t: Type = if (vd.type == .inferred)
+                try .infer(alloc, &vd.assigned_value, c)
+            else
+                try .fromAst(alloc, &vd.type, c);
+
+            try c.module.register(alloc, .{
+                .name = vd.variable_name,
+                .type = t,
+                .binding = vd.binding,
+                .inner_name = vd.variable_name,
+                .free_inner_name = false,
+                .free_type = true,
+            });
+
+            const t_comp = try c.compileType(alloc, &t, vd.type.pos());
+            defer alloc.free(t_comp);
+
+            if (vd.assigned_value == .ident and
+                std.mem.eql(u8, vd.assigned_value.ident.payload, "undefined"))
+                return try std.fmt.allocPrint(alloc, "{s} {s};", .{ t_comp, vd.variable_name });
+
+            const expr_comp = try expressions.compile(alloc, &vd.assigned_value, c, .{
+                .is_variable_decl = true,
+                .expected_type = if (vd.type == .inferred) null else t,
+            });
+            defer alloc.free(expr_comp);
+
+            return try std.fmt.allocPrint(alloc, "{s} {s} = {s};", .{
+                t_comp,
+                vd.variable_name,
+                expr_comp,
+            });
+        },
         else => unreachable,
     };
 }
@@ -50,7 +84,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             const function_type_ast = try bfd.getType(alloc);
             defer function_type_ast.deinit(alloc);
 
-            const function_type: Type = try .fromAst(alloc, function_type_ast, c);
+            const function_type: Type = try .fromAst(alloc, &function_type_ast, c);
             errdefer function_type.deinit(alloc);
 
             try c.module.register(alloc, .{
@@ -104,7 +138,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             const function_type_ast = try fd.getType(alloc);
             defer function_type_ast.deinit(alloc);
 
-            const function_type: Type = try .fromAst(alloc, function_type_ast, c);
+            const function_type: Type = try .fromAst(alloc, &function_type_ast, c);
             try c.module.register(alloc, .{
                 .name = fd.name,
                 .inner_name = inner_name,
@@ -129,10 +163,6 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
             const body = try block(alloc, fd.body, c);
             defer alloc.free(body);
-            std.debug.print("return_type: {s}\n", .{return_type_comp});
-            std.debug.print("inner_name: {s}\n", .{inner_name});
-            std.debug.print("param_list_comp: {s}\n", .{param_list_comp});
-            std.debug.print("body: {s}\n", .{body});
             try c.source.function_impls.print(alloc, "{s} {s}{s} {s}", .{
                 return_type_comp,
                 inner_name,
@@ -178,7 +208,7 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableS
 fn variableSignature(alloc: std.mem.Allocator, signature: ast.VariableSignature, c: *Compiler) ![]const u8 {
     if (signature.type == .variadic) return try alloc.dupe(u8, "...");
 
-    const t: Type = try .fromAst(alloc, signature.type, c);
+    const t: Type = try .fromAst(alloc, &signature.type, c);
     defer t.deinit(alloc);
 
     const type_comp = try c.compileType(alloc, &t, signature.type.pos());

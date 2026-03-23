@@ -39,31 +39,6 @@ fn transpileWithHeaders(alloc: std.mem.Allocator, file_path: []const u8) !void {
         return utils.printErr(error.CompilationError, "Compilation error: {}\n", .{err});
 }
 
-fn writeZagHeader(types: []const u8, macros: []const u8) !void {
-    var zag_out = try std.fs.cwd().openDir(".zag-out", .{});
-    defer zag_out.close();
-
-    try zag_out.makePath("zag");
-
-    var zag_header_buf: [1024]u8 = undefined;
-    const zag_header = try zag_out.createFile("zag/zag.h", .{});
-    defer zag_header.close();
-    var zag_header_writer = zag_header.writer(&zag_header_buf);
-
-    try zag_header_writer.interface.writeAll(
-        \\#ifndef ZAG_H
-        \\#define ZAG_H
-        \\#include <stdbool.h>
-        \\#include <stdlib.h>
-        \\#include <stdint.h>
-        \\
-    );
-    try zag_header_writer.interface.writeAll(types);
-    try zag_header_writer.interface.writeAll(macros);
-    try zag_header_writer.interface.writeAll("\n#endif\n");
-    try zag_header_writer.interface.flush();
-}
-
 /// Compiles C code into machine code.
 pub fn compile(alloc: std.mem.Allocator) !void {
     var @".zag-out" = try std.fs.cwd().openDir(".zag-out", .{});
@@ -74,12 +49,6 @@ pub fn compile(alloc: std.mem.Allocator) !void {
 
     const main_obj = try std.fs.path.join(alloc, &.{ ".zag-out", "bin", "main" });
     defer alloc.free(main_obj);
-
-    const @"-I.zag-out/zag" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "zag" });
-    defer alloc.free(@"-I.zag-out/zag");
-
-    const @"-I.zag-out/lib" = try std.fs.path.join(alloc, &.{ "-I./", ".zag-out", "lib" });
-    defer alloc.free(@"-I.zag-out/lib");
 
     const src_path = try std.fs.path.join(alloc, &.{ ".zag-out", "src" });
     defer alloc.free(src_path);
@@ -122,8 +91,7 @@ pub fn compile(alloc: std.mem.Allocator) !void {
         &.{ "/usr/bin/cc", "-g", "-o", main_obj },
         files.items,
         &.{
-            @"-I.zag-out/zag",
-            @"-I.zag-out/lib",
+            "-I.zag-out/",
             // "-Wall",
             // "-Wextra",
             "-Wno-parentheses-equality",

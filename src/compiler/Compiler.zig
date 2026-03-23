@@ -185,8 +185,6 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     };
     defer compiler.deinit(alloc);
 
-    for (root_node) |statement| try statements.compileTopLevel(alloc, statement, &compiler);
-
     var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
     defer @".zag-out".close();
 
@@ -203,6 +201,10 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     defer alloc.free(header_path);
 
     try @".zag-out".makePath(std.fs.path.dirname(relative_path).?);
+
+    try compiler.source.includes.print(alloc, "#include <{s}>\n", .{header_path});
+
+    for (root_node) |statement| try statements.compileTopLevel(alloc, statement, &compiler);
 
     var source_writer_buf: [1024]u8 = undefined;
     var source = try @".zag-out".createFile(source_path, .{});
