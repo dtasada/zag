@@ -328,17 +328,14 @@ pub fn @"if"(self: *Parser) Error!ast.Expression {
         try parse(self, .default, .{});
     errdefer body.deinit(self.alloc);
 
-    var @"else": ?*ast.Expression = null;
-    errdefer if (@"else") |e| e.deinitPtr(self.alloc);
+    const @"else" = try self.alloc.create(ast.Expression);
+    errdefer self.alloc.destroy(@"else");
     if (self.currentToken() == .@"{") {
         // block
     } else if (self.currentToken() == .@"else") {
         _ = self.advance(); // consume `else`
 
-        @"else" = try self.alloc.create(ast.Expression);
-        errdefer self.alloc.destroy(@"else".?);
-
-        @"else".?.* = if (self.currentToken() == .@"{")
+        @"else".* = if (self.currentToken() == .@"{")
             try block(self)
         else
             try parse(self, .default, .{});
@@ -455,34 +452,6 @@ pub fn range(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!a
 
 pub fn index(self: *Parser, lhs: *const ast.Expression, _: BindingPower) Error!ast.Expression {
     _ = self.advance(); // move past '['
-
-    if (self.currentToken() == .@".." or self.currentToken() == .@"..=") {
-        const inclusive = self.advance() == .@"..=";
-
-        const end = try self.alloc.create(ast.Expression);
-        errdefer self.alloc.destroy(end);
-        end.* = parse(self, .default, .{}) catch |err| switch (err) {
-            error.HandlerDoesNotExist => return utils.printErr(
-                error.SyntaxError,
-                "Parser error: slice expression with no start index must contain an end index ({f}).\n",
-                .{self.source_map[self.pos]},
-            ),
-            else => return err,
-        };
-        errdefer end.deinit(self.alloc);
-
-        try self.expect(self.advance(), .@"]", "index expression", "]");
-
-        return .{
-            .slice = .{
-                .pos = lhs.pos(),
-                .lhs = lhs,
-                .start = null,
-                .end = end,
-                .inclusive = inclusive,
-            },
-        };
-    }
 
     const i = try self.alloc.create(ast.Expression);
     errdefer self.alloc.destroy(i);

@@ -20,12 +20,35 @@ pub const Symbol = struct {
     binding: utils.Binding = .let,
     is_pub: bool = false,
     value: ?Value = null,
-    free_inner_name: bool,
     free_type: bool,
+    free_inner_name: bool,
 
     pub fn deinit(self: Symbol, alloc: std.mem.Allocator) void {
-        if (self.free_inner_name) alloc.free(self.inner_name);
         if (self.free_type) self.type.deinit(alloc);
+        if (self.free_inner_name) alloc.free(self.inner_name);
+    }
+
+    pub fn eql(lhs: Symbol, rhs: Symbol) bool {
+        return std.mem.eql(u8, lhs.name, rhs.name) and
+            std.mem.eql(u8, lhs.inner_name, rhs.inner_name) and
+            lhs.type.eql(rhs.type) and
+            lhs.binding == rhs.binding and
+            lhs.is_pub == rhs.is_pub and
+            (lhs.value == null and rhs.value == null or
+                (lhs.value != null and rhs.value != null and lhs.value.?.eql(rhs.value.?)));
+    }
+
+    pub fn clone(self: Symbol, alloc: std.mem.Allocator) !Symbol {
+        return .{
+            .name = try alloc.dupe(u8, self.name),
+            .inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name,
+            .type = if (self.free_type) try self.type.clone(alloc) else self.type,
+            .binding = self.binding,
+            .is_pub = self.is_pub,
+            .value = if (self.value) |v| try v.clone(alloc) else null,
+            .free_type = self.free_type,
+            .free_inner_name = self.free_inner_name,
+        };
     }
 };
 
@@ -156,7 +179,7 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     var compiler: Compiler = .{
         .header = try .init(alloc),
         .source = try .init(alloc),
-        .module = try .init(alloc, std.fs.path.basename(file_path)[std.fs.path.basename(file_path).len - 4 ..]),
+        .module = try .init(alloc, std.fs.path.basename(file_path)[std.fs.path.basename(file_path).len - 3 ..]),
         .source_map = source_map,
         .primitives = .init(alloc),
     };

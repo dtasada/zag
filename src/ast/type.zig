@@ -63,7 +63,7 @@ pub const Type = union(enum) {
         };
     }
 
-    fn clonePtr(self: Type, alloc: std.mem.Allocator) !*Type {
+    pub fn clonePtr(self: Type, alloc: std.mem.Allocator) !*Type {
         const ret = try alloc.create(Type);
         ret.* = try self.clone(alloc);
         return ret;
@@ -162,24 +162,5 @@ pub const Type = union(enum) {
                 alloc.free(s.member_name);
             },
         }
-    }
-
-    pub fn createFunctionType(
-        alloc: std.mem.Allocator,
-        position: usize,
-        name: []const u8,
-        parameters: ast.ParameterList,
-        generic_parameters: ast.ParameterList,
-        return_type: *const Type,
-    ) !Type {
-        return .{
-            .function = .{
-                .pos = position,
-                .name = try alloc.dupe(u8, name),
-                .parameters = parameters,
-                .generic_parameters = generic_parameters,
-                .return_type = return_type,
-            },
-        };
     }
 };

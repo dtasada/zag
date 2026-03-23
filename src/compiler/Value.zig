@@ -1,3 +1,4 @@
+const std = @import("std");
 const ast = @import("ast");
 
 const compiler = @import("compiler.zig");
@@ -28,6 +29,29 @@ pub const Value = union(enum) {
             .float => .f64,
             .bool => .bool,
             .type => .type,
+        };
+    }
+
+    pub fn eql(lhs: Value, rhs: Value) bool {
+        if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
+
+        return switch (lhs) {
+            inline .uint, .int, .float, .bool => |a, tag| a == @field(lhs, @tagName(tag)),
+            .type => lhs.type.eql(rhs.type),
+        };
+    }
+
+    pub fn deinit(self: Value, alloc: std.mem.Allocator) void {
+        switch (self) {
+            .type => |t| t.deinit(alloc),
+            else => {},
+        }
+    }
+
+    pub fn clone(self: Value, alloc: std.mem.Allocator) !Value {
+        return switch (self) {
+            .type => |t| .{ .type = try t.clone(alloc) },
+            else => self,
         };
     }
 };

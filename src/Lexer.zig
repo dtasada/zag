@@ -397,6 +397,34 @@ pub const Token = union(enum) {
     }
 };
 
+const keywords: std.StaticStringMap(Token) = .initComptime(.{
+    .{ "and", .@"and" },
+    .{ "as", .as },
+    .{ "bind", .bind },
+    .{ "break", .@"break" },
+    .{ "but", .but },
+    .{ "catch", .@"catch" },
+    .{ "const", .@"const" },
+    .{ "continue", .@"continue" },
+    .{ "defer", .@"defer" },
+    .{ "else", .@"else" },
+    .{ "enum", .@"enum" },
+    .{ "fn", .@"fn" },
+    .{ "for", .@"for" },
+    .{ "if", .@"if" },
+    .{ "import", .import },
+    .{ "let", .let },
+    .{ "match", .match },
+    .{ "mut", .mut },
+    .{ "or", .@"or" },
+    .{ "pub", .@"pub" },
+    .{ "return", .@"return" },
+    .{ "struct", .@"struct" },
+    .{ "try", .@"try" },
+    .{ "union", .@"union" },
+    .{ "while", .@"while" },
+});
+
 /// Initializes and runs tokenizer. Populates `tokens`. User owns return values.
 pub fn tokenize(
     alloc: std.mem.Allocator,
@@ -449,15 +477,9 @@ pub fn tokenize(
 
             const word = try atom.toOwnedSlice(alloc);
 
-            const keyword = std.meta.stringToEnum(TokenKind, word);
-            const token: Token = if (keyword) |tag| b: {
-                alloc.free(word);
-                break :b switch (tag) {
-                    .bad_token, .ident, .string, .char, .int, .float => unreachable,
-                    inline else => |t| @unionInit(Token, @tagName(t), {}),
-                };
-            } else .{ .ident = word };
-            try self.appendToken(alloc, token);
+            const keyword = keywords.get(word);
+            if (keyword) |_| alloc.free(word);
+            try self.appendToken(alloc, keyword orelse .{ .ident = word });
         } else if (std.ascii.isDigit(self.currentChar())) {
             try self.parseNumber(alloc, start_pos);
         } else switch (self.currentChar()) {

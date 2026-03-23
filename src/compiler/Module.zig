@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("utils");
+const ast = @import("ast");
 
 const Type = @import("type.zig").Type;
 const Symbol = @import("compiler.zig").Symbol;
@@ -61,6 +62,10 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
     try self.registerBuiltin(alloc, "c_float", "float", .{ .type = .c_float });
     try self.registerBuiltin(alloc, "c_double", "double", .{ .type = .c_double });
 
+    try self.registerBuiltin(alloc, "c_null", "NULL", .{ .type = .{ .reference = .{ .is_mut = false, .inner = &.void } } });
+    try self.registerBuiltin(alloc, "nil", "nil", .{ .type = .@"typeof(nil)" });
+    try self.registerBuiltin(alloc, "undefined", "undefined", .{ .type = .@"typeof(undefined)" });
+
     return self;
 }
 
@@ -93,4 +98,14 @@ pub fn getSymbol(self: *const Module, name: []const u8) ?Symbol {
     }
 
     return null;
+}
+
+pub fn getExpressionMutability(self: *const Module, expr: *const ast.Expression) !bool {
+    return switch (expr.*) {
+        .ident => |ident| {
+            const symbol = self.getSymbol(ident.payload) orelse return error.UnknownSymbol;
+            return symbol.binding == .let_mut;
+        },
+        else => false,
+    };
 }

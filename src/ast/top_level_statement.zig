@@ -198,7 +198,19 @@ pub const TopLevelStatement = union(enum) {
         return_type: Type,
 
         pub fn getType(self: *const BindingFunctionDeclaration, alloc: std.mem.Allocator) !Type {
-            return try Type.createFunctionType(alloc, self.pos, self.name, self.parameters, &.{}, &self.return_type);
+            const params = try alloc.alloc(ast.Type, self.parameters.len);
+            for (self.parameters, 0..) |param, i| params[i] = try param.type.clone(alloc);
+
+            const generic_params = try alloc.alloc(ast.Type, 0);
+
+            return .{
+                .function = .{
+                    .pos = self.pos,
+                    .parameters = params,
+                    .generic_parameters = generic_params,
+                    .return_type = try self.return_type.clonePtr(alloc),
+                },
+            };
         }
 
         pub fn deinit(self: BindingFunctionDeclaration, alloc: std.mem.Allocator) void {
@@ -218,7 +230,20 @@ pub const TopLevelStatement = union(enum) {
         body: ast.Block,
 
         pub fn getType(self: *const FunctionDefinition, alloc: std.mem.Allocator) !Type {
-            return try Type.createFunctionType(alloc, self.pos, self.name, self.parameters, self.generic_parameters, &self.return_type);
+            const params = try alloc.alloc(ast.Type, self.parameters.len);
+            for (self.parameters, 0..) |param, i| params[i] = try param.type.clone(alloc);
+
+            const generic_params = try alloc.alloc(ast.Type, self.generic_parameters.len);
+            for (self.generic_parameters, 0..) |param, i| generic_params[i] = try param.type.clone(alloc);
+
+            return .{
+                .function = .{
+                    .pos = self.pos,
+                    .parameters = params,
+                    .generic_parameters = generic_params,
+                    .return_type = try self.return_type.clonePtr(alloc),
+                },
+            };
         }
 
         pub fn clone(self: FunctionDefinition, alloc: std.mem.Allocator) !FunctionDefinition {

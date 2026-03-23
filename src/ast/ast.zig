@@ -71,6 +71,10 @@ pub const PrefixOperator = enum {
         return std.meta.stringToEnum(PrefixOperator, @tagName(std.meta.activeTag(t))) orelse
             @panic("called PrefixOperator.fromLexerToken on Lexer.Token that is not a prefix operator");
     }
+
+    pub fn format(self: PrefixOperator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.writeAll(@tagName(self));
+    }
 };
 
 pub const VariableSignature = struct {

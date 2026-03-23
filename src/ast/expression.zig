@@ -187,7 +187,7 @@ pub const Expression = union(enum) {
         condition: *const Expression,
         capture: ?utils.Capture,
         body: *const Expression,
-        @"else": ?*const Expression = null,
+        @"else": *const Expression,
     };
 
     pub const Index = struct {
@@ -199,7 +199,7 @@ pub const Expression = union(enum) {
     pub const Slice = struct {
         pos: usize,
         lhs: *const Expression,
-        start: ?*const Expression,
+        start: *const Expression,
         end: ?*const Expression,
         inclusive: bool,
     };
@@ -326,7 +326,7 @@ pub const Expression = union(enum) {
                     .condition = try @"if".condition.clonePtr(alloc),
                     .capture = if (@"if".capture) |c| try c.clone(alloc) else null,
                     .body = try @"if".body.clonePtr(alloc),
-                    .@"else" = if (@"if".@"else") |e| try e.clonePtr(alloc) else null,
+                    .@"else" = try @"if".@"else".clonePtr(alloc),
                 },
             },
             .index => |index| .{
@@ -340,7 +340,7 @@ pub const Expression = union(enum) {
                 .slice = .{
                     .pos = slice.pos,
                     .lhs = try slice.lhs.clonePtr(alloc),
-                    .start = if (slice.start) |s| try s.clonePtr(alloc) else null,
+                    .start = try slice.start.clonePtr(alloc),
                     .end = if (slice.end) |e| try e.clonePtr(alloc) else null,
                     .inclusive = slice.inclusive,
                 },
@@ -383,7 +383,7 @@ pub const Expression = union(enum) {
                 s.condition.deinitPtr(alloc);
                 if (s.capture) |c| c.deinit(alloc);
                 s.body.deinitPtr(alloc);
-                if (s.@"else") |e| e.deinitPtr(alloc);
+                s.@"else".deinitPtr(alloc);
             },
             .array_instantiation => |s| {
                 s.length.deinitPtr(alloc);
@@ -418,7 +418,7 @@ pub const Expression = union(enum) {
             },
             .slice => |s| {
                 s.lhs.deinitPtr(alloc);
-                if (s.start) |start| start.deinitPtr(alloc);
+                s.start.deinitPtr(alloc);
                 if (s.end) |end| end.deinitPtr(alloc);
             },
             .match => |s| {

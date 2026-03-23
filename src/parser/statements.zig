@@ -121,10 +121,11 @@ pub fn @"if"(self: *Parser) Error!ast.Statement {
 }
 
 /// parses either `if` statement or `while` statement
-pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Error!ast.Statement {
-    const context = switch (@"type") {
+pub fn conditional(self: *Parser, comptime T: utils.ConditionalTag) Error!ast.Statement {
+    const context = switch (T) {
         .@"while" => "while statement",
         .@"if" => "if statement",
+        else => @compileError("bad tag passed, must be 'while' or 'if'"),
     };
 
     _ = self.advance(); // consume `if` or `while` keyword
@@ -148,7 +149,7 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
     errdefer body.deinit(self.alloc);
 
     const pos = self.pos;
-    return switch (@"type") {
+    return switch (T) {
         .@"if" => {
             var @"else": ?*ast.Statement = null;
             errdefer if (@"else") |e| e.deinitPtr(self.alloc);
@@ -180,6 +181,7 @@ pub fn conditional(self: *Parser, comptime @"type": enum { @"if", @"while" }) Er
                 .body = body,
             },
         },
+        else => unreachable,
     };
 }
 

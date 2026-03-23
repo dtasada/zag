@@ -31,6 +31,12 @@ pub const CompoundTypeTag = enum {
     @"union",
 };
 
+pub const ConditionalTag = enum {
+    @"if",
+    @"while",
+    @"for",
+};
+
 pub const Position = struct {
     line: usize,
     col: usize,

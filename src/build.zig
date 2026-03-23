@@ -10,7 +10,7 @@ pub fn build() !void {
     const alloc = gpa.allocator();
 
     // Transpile stdlib first so user code can import from it
-    try transpileModuleWithHeaders(alloc, build_options.stdlib_path);
+    // try transpileModuleWithHeaders(alloc, build_options.stdlib_path);
     try transpileModuleWithHeaders(alloc, "src");
 
     // try compile(alloc);
