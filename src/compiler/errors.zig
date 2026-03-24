@@ -146,3 +146,35 @@ pub fn unknownMember(parent: Type, name: []const u8, pos: utils.Position) Error 
         .{ name, parent, pos },
     );
 }
+
+pub fn assignmentOnNonMut(pos: utils.Position) Error {
+    return utils.printErr(
+        error.BadMutability,
+        "Compiler error: Assignment on non-mutable expression ({f}).\n",
+        .{pos},
+    );
+}
+
+pub fn derefNonPtr(t: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Attempting to dereference expression of non-reference type '{f}' ({f}).\n",
+        .{ t, pos },
+    );
+}
+
+pub fn illegalIndex(t: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Attempting to index on expression of type '{f}' ({f}).\n",
+        .{ t, pos },
+    );
+}
+
+pub fn illegalIndexType(t: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Index must be an integer, received expression of type '{f}' ({f}).\n",
+        .{ t, pos },
+    );
+}

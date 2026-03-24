@@ -2,9 +2,12 @@ const std = @import("std");
 const utils = @import("utils");
 const ast = @import("ast");
 
+const compiler = @import("compiler.zig");
+const errors = @import("errors.zig");
 const Type = @import("type.zig").Type;
-const Symbol = @import("compiler.zig").Symbol;
 const Value = @import("value.zig").Value;
+const Symbol = compiler.Symbol;
+const Compiler = compiler.Compiler;
 
 const Module = @This();
 
@@ -13,7 +16,13 @@ const Scope = std.ArrayList(Symbol);
 name: []const u8,
 scopes: std.ArrayList(*Scope) = .empty,
 
-fn registerBuiltin(self: *Module, alloc: std.mem.Allocator, comptime name: []const u8, comptime inner_name: []const u8, value: Value) !void {
+fn registerBuiltin(
+    self: *Module,
+    alloc: std.mem.Allocator,
+    comptime name: []const u8,
+    comptime inner_name: []const u8,
+    value: Value,
+) !void {
     try self.register(alloc, .{
         .name = name,
         .inner_name = inner_name,
@@ -100,11 +109,52 @@ pub fn getSymbol(self: *const Module, name: []const u8) ?Symbol {
     return null;
 }
 
-pub fn getExpressionMutability(self: *const Module, expr: *const ast.Expression) !bool {
+pub fn getExpressionMutability(
+    self: *const Module,
+    alloc: std.mem.Allocator,
+    expr: *const ast.Expression,
+    c: *Compiler,
+) errors.Error!bool {
     return switch (expr.*) {
         .ident => |ident| {
             const symbol = self.getSymbol(ident.payload) orelse return error.UnknownSymbol;
-            return symbol.binding == .let_mut;
+            return symbol.binding == .let_mut or
+                (symbol.type == .slice and symbol.type.slice.is_mut);
+        },
+        .index => |index| {
+            const t: Type = try .infer(alloc, index.lhs, c);
+            defer t.deinit(alloc);
+            if (t != .reference and t != .array)
+                return errors.illegalIndex(t, c.source_map[index.pos]);
+
+            const i_t: Type = try .infer(alloc, index.lhs, c);
+            defer i_t.deinit(alloc);
+            if (!i_t.isInteger())
+                return errors.illegalIndexType(i_t, c.source_map[index.pos]);
+
+            return try self.getExpressionMutability(alloc, index.lhs, c);
+        },
+        .dereference => |deref| {
+            const t: Type = try .infer(alloc, deref.parent, c);
+            defer t.deinit(alloc);
+            if (t != .reference) return errors.derefNonPtr(t, c.source_map[deref.pos]);
+
+            return t.reference.is_mut;
+        },
+        .member => |member| {
+            const parent_t: Type = try .infer(alloc, member.parent, c);
+            defer parent_t.deinit(alloc);
+
+            return switch (parent_t) {
+                inline .@"struct", .@"union" => try self.getExpressionMutability(alloc, member.parent, c),
+                .@"enum" => false,
+                .slice => if (std.mem.eql(u8, member.member_name, "ptr") or
+                    std.mem.eql(u8, member.member_name, "len"))
+                    true
+                else
+                    errors.badMemberAccessSlice(parent_t, member.member_name, c.source_map[member.pos]),
+                else => errors.badMemberAccess(parent_t, member.member_name, c.source_map[member.pos]),
+            };
         },
         else => false,
     };

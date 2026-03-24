@@ -13,7 +13,7 @@ pub fn build() !void {
     // try transpileModuleWithHeaders(alloc, build_options.stdlib_path);
     try transpileModuleWithHeaders(alloc, "src");
 
-    // try compile(alloc);
+    try compile(alloc);
 }
 
 fn transpileModuleWithHeaders(alloc: std.mem.Allocator, dir_path: []const u8) !void {
@@ -53,17 +53,17 @@ pub fn compile(alloc: std.mem.Allocator) !void {
     const src_path = try std.fs.path.join(alloc, &.{ ".zag-out", "src" });
     defer alloc.free(src_path);
 
-    const lib_path = try std.fs.path.join(alloc, &.{ ".zag-out", "lib" });
-    defer alloc.free(lib_path);
+    // const lib_path = try std.fs.path.join(alloc, &.{ ".zag-out", "lib" });
+    // defer alloc.free(lib_path);
 
     var @".zag-out/src" = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
     defer @".zag-out/src".close();
 
-    var @".zag-out/lib" = try std.fs.cwd().openDir(lib_path, .{ .iterate = true });
-    defer @".zag-out/lib".close();
+    // var @".zag-out/lib" = try std.fs.cwd().openDir(lib_path, .{ .iterate = true });
+    // defer @".zag-out/lib".close();
 
     var files_src_it = @".zag-out/src".iterate();
-    var files_lib_it = @".zag-out/lib".iterate();
+    // var files_lib_it = @".zag-out/lib".iterate();
 
     var files: std.ArrayList([]const u8) = .empty;
     defer files.deinit(alloc);
@@ -73,13 +73,20 @@ pub fn compile(alloc: std.mem.Allocator) !void {
         try files.append(alloc, try std.fs.path.join(alloc, &.{ src_path, file.name }));
     };
 
-    while (try files_lib_it.next()) |file| if (std.mem.endsWith(u8, file.name, ".c")) {
-        try files.append(alloc, try std.fs.path.join(alloc, &.{ lib_path, file.name }));
-    };
+    // while (try files_lib_it.next()) |file| if (std.mem.endsWith(u8, file.name, ".c")) {
+    //     try files.append(alloc, try std.fs.path.join(alloc, &.{ lib_path, file.name }));
+    // };
 
+    var headers = try alloc.alloc([]const u8, files.items.len);
+    defer {
+        for (headers) |header| alloc.free(header);
+        alloc.free(headers);
+    }
+    for (files.items, 0..) |file, i| headers[i] = try std.mem.replaceOwned(u8, alloc, file, ".c", ".h");
     const clang_format_args = try std.mem.concat(alloc, []const u8, &.{
         &.{ "clang-format", "-i" },
         files.items,
+        headers,
     });
     defer alloc.free(clang_format_args);
     _ = try std.process.Child.run(.{
@@ -99,7 +106,7 @@ pub fn compile(alloc: std.mem.Allocator) !void {
             "-Wno-logical-op-parentheses",
             "-Wno-incompatible-pointer-types-discards-qualifiers",
             "-Wno-incompatible-pointer-types",
-            "-lraylib",
+            // "-lraylib",
         },
     });
     defer alloc.free(cmd_args);

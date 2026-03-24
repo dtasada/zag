@@ -23,40 +23,7 @@ pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement, c: *Compiler)
         },
         .block_eval => |*eval| try expressions.compile(alloc, eval, c, .{}),
         .block => |b| block(alloc, b.payload, c),
-        .variable_definition => |vd| {
-            const t: Type = if (vd.type == .inferred)
-                try .infer(alloc, &vd.assigned_value, c)
-            else
-                try .fromAst(alloc, &vd.type, c);
-
-            try c.module.register(alloc, .{
-                .name = vd.variable_name,
-                .type = t,
-                .binding = vd.binding,
-                .inner_name = vd.variable_name,
-                .free_inner_name = false,
-                .free_type = true,
-            });
-
-            const t_comp = try c.compileType(alloc, &t, vd.type.pos());
-            defer alloc.free(t_comp);
-
-            if (vd.assigned_value == .ident and
-                std.mem.eql(u8, vd.assigned_value.ident.payload, "undefined"))
-                return try std.fmt.allocPrint(alloc, "{s} {s};", .{ t_comp, vd.variable_name });
-
-            const expr_comp = try expressions.compile(alloc, &vd.assigned_value, c, .{
-                .is_variable_decl = true,
-                .expected_type = if (vd.type == .inferred) null else t,
-            });
-            defer alloc.free(expr_comp);
-
-            return try std.fmt.allocPrint(alloc, "{s} {s} = {s};", .{
-                t_comp,
-                vd.variable_name,
-                expr_comp,
-            });
-        },
+        .variable_definition => |vd| try variableDefinition(alloc, vd, c),
         else => unreachable,
     };
 }
@@ -170,8 +137,57 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                 body,
             });
         },
+        .variable_definition => |vd| {
+            const def_comp = try variableDefinition(alloc, vd, c);
+            defer alloc.free(def_comp);
+
+            const signature = std.mem.indexOfScalar(u8, def_comp, '=') orelse
+                std.mem.indexOfScalar(u8, def_comp, ';').?;
+            try c.header.variables.print(alloc, "extern {s};", .{def_comp[0..signature]});
+
+            try c.source.variables.appendSlice(alloc, def_comp);
+        },
         else => {},
     }
+}
+
+fn variableDefinition(
+    alloc: std.mem.Allocator,
+    vd: ast.Statement.VariableDefinition,
+    c: *Compiler,
+) Error![]const u8 {
+    const t: Type = if (vd.type == .inferred)
+        try .infer(alloc, &vd.assigned_value, c)
+    else
+        try .fromAst(alloc, &vd.type, c);
+
+    try c.module.register(alloc, .{
+        .name = vd.variable_name,
+        .type = t,
+        .binding = vd.binding,
+        .inner_name = vd.variable_name,
+        .free_inner_name = false,
+        .free_type = true,
+    });
+
+    const t_comp = try c.compileType(alloc, &t, vd.type.pos());
+    defer alloc.free(t_comp);
+
+    if (vd.assigned_value == .ident and
+        std.mem.eql(u8, vd.assigned_value.ident.payload, "undefined"))
+        return try std.fmt.allocPrint(alloc, "{s} {s};", .{ t_comp, vd.variable_name });
+
+    const expr_comp = try expressions.compile(alloc, &vd.assigned_value, c, .{
+        .is_variable_decl = true,
+        .expected_type = if (vd.type == .inferred) null else t,
+    });
+    defer alloc.free(expr_comp);
+
+    return try std.fmt.allocPrint(alloc, "{s} {s} = {s};", .{
+        t_comp,
+        vd.variable_name,
+        expr_comp,
+    });
 }
 
 pub fn block(alloc: std.mem.Allocator, b: ast.Block, c: *Compiler) ![]const u8 {

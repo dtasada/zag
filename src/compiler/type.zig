@@ -75,25 +75,42 @@ pub const Type = union(enum) {
         return struct {
             const Member = if (tag == .@"enum") struct {
                 name: []const u8,
+                inner_name: []const u8,
                 value: usize,
-                pub fn deinit(_: Member, _: std.mem.Allocator) void {}
+                pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
+                    alloc.free(self.inner_name);
+                }
                 pub fn eql(lhs: Member, rhs: Member) bool {
-                    return std.mem.eql(u8, lhs.name, rhs.name) and lhs.value == rhs.value;
+                    return std.mem.eql(u8, lhs.name, rhs.name) and
+                        std.mem.eql(u8, lhs.inner_name, rhs.inner_name) and
+                        lhs.value == rhs.value;
                 }
                 pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
-                    return .{ .name = try alloc.dupe(u8, self.name), .value = self.value };
+                    return .{
+                        .name = try alloc.dupe(u8, self.name),
+                        .inner_name = try alloc.dupe(u8, self.inner_name),
+                        .value = self.value,
+                    };
                 }
             } else struct {
                 name: []const u8,
+                inner_name: []const u8,
                 type: Type,
                 pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
+                    alloc.free(self.inner_name);
                     self.type.deinit(alloc);
                 }
                 pub fn eql(lhs: Member, rhs: Member) bool {
-                    return std.mem.eql(u8, lhs.name, rhs.name) and lhs.type.eql(rhs.type);
+                    return std.mem.eql(u8, lhs.name, rhs.name) and
+                        std.mem.eql(u8, lhs.inner_name, rhs.inner_name) and
+                        lhs.type.eql(rhs.type);
                 }
                 pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
-                    return .{ .name = try alloc.dupe(u8, self.name), .type = try self.type.clone(alloc) };
+                    return .{
+                        .name = try alloc.dupe(u8, self.name),
+                        .inner_name = try alloc.dupe(u8, self.inner_name),
+                        .type = try self.type.clone(alloc),
+                    };
                 }
             };
 
@@ -106,6 +123,13 @@ pub const Type = union(enum) {
                 for (self.symbols) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol.type;
 
                 return null;
+            }
+
+            pub fn hasMember(self: CompoundType(tag), name: []const u8) bool {
+                for (self.members) |member| if (std.mem.eql(u8, member.name, name)) return true;
+                for (self.symbols) |symbol| if (std.mem.eql(u8, symbol.name, name)) return true;
+
+                return false;
             }
         };
     }
@@ -178,10 +202,7 @@ pub const Type = union(enum) {
                 };
             },
             .variadic => .variadic,
-            inline else => |_, tag| {
-                std.debug.print("failing with {s}\n", .{@tagName(tag)});
-                unreachable;
-            },
+            inline else => |_, tag| std.debug.panic("failing with {s}\n", .{@tagName(tag)}),
         };
     }
 
@@ -330,7 +351,7 @@ pub const Type = union(enum) {
                             inline .slice, .array => |s| try s.inner.clonePtr(alloc),
                             else => unreachable,
                         },
-                        .is_mut = c.module.getExpressionMutability(slice.lhs) catch |err| switch (err) {
+                        .is_mut = c.module.getExpressionMutability(alloc, slice.lhs, c) catch |err| switch (err) {
                             error.UnknownSymbol => return errors.unknownSymbol(
                                 slice.lhs.ident.payload,
                                 c.source_map[slice.lhs.ident.pos],
@@ -343,6 +364,7 @@ pub const Type = union(enum) {
             .member => |member| {
                 const t = try infer(alloc, member.parent, c);
                 defer t.deinit(alloc);
+
                 return switch (t) {
                     inline .@"struct", .@"union" => |ct| ct.getMemberType(member.member_name) orelse
                         errors.unknownMember(t, member.member_name, c.source_map[member.pos]),
@@ -370,7 +392,7 @@ pub const Type = union(enum) {
             .reference => |ref| {
                 const rhs_t = try alloc.create(Type);
                 rhs_t.* = try infer(alloc, ref.inner, c);
-                if (ref.is_mut and !try c.module.getExpressionMutability(ref.inner))
+                if (ref.is_mut and !try c.module.getExpressionMutability(alloc, ref.inner, c))
                     return errors.mutRefOfConst(c.source_map[ref.pos]);
                 return .{
                     .reference = .{
@@ -387,7 +409,7 @@ pub const Type = union(enum) {
                 const symbol = c.module.getSymbol(si.type_expr.ident.payload).?;
                 return try symbol.value.?.type.clone(alloc);
             },
-            .type => |t| fromAst(alloc, &t.payload, c),
+            .type => .type,
             else => unreachable,
         };
     }
@@ -417,6 +439,31 @@ pub const Type = union(enum) {
             .c_float,
             .c_double,
             .reference,
+            => true,
+            else => false,
+        };
+    }
+
+    pub fn isInteger(self: Type) bool {
+        return switch (self) {
+            .i8,
+            .i16,
+            .i32,
+            .i64,
+            .isize,
+            .u8,
+            .u16,
+            .u32,
+            .u64,
+            .usize,
+            .c_char,
+            .c_short,
+            .c_int,
+            .c_long,
+            .c_uchar,
+            .c_ushort,
+            .c_uint,
+            .c_ulong,
             => true,
             else => false,
         };

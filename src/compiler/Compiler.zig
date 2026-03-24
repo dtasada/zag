@@ -55,28 +55,34 @@ pub const Symbol = struct {
 pub const Compiler = struct {
     source: struct {
         includes: *std.ArrayList(u8),
+        variables: *std.ArrayList(u8),
         function_impls: *std.ArrayList(u8),
 
         fn init(alloc: std.mem.Allocator) !@This() {
             const self: @This() = .{
                 .includes = try alloc.create(std.ArrayList(u8)),
+                .variables = try alloc.create(std.ArrayList(u8)),
                 .function_impls = try alloc.create(std.ArrayList(u8)),
             };
             self.includes.* = .empty;
+            self.variables.* = .empty;
             self.function_impls.* = .empty;
             return self;
         }
 
         fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
             self.includes.deinit(alloc);
+            self.variables.deinit(alloc);
             self.function_impls.deinit(alloc);
 
             alloc.destroy(self.includes);
+            alloc.destroy(self.variables);
             alloc.destroy(self.function_impls);
         }
 
         fn write(self: *@This(), writer: *std.Io.Writer) !void {
             try writer.writeAll(self.includes.items);
+            try writer.writeAll(self.variables.items);
             try writer.writeAll(self.function_impls.items);
             try writer.flush();
         }
@@ -86,17 +92,20 @@ pub const Compiler = struct {
         includes: *std.ArrayList(u8),
         typedefs: *std.ArrayList(u8),
         forward_decls: *std.ArrayList(u8),
+        variables: *std.ArrayList(u8),
         function_decls: *std.ArrayList(u8),
 
         fn init(alloc: std.mem.Allocator) !@This() {
             const self: @This() = .{
                 .includes = try alloc.create(std.ArrayList(u8)),
                 .typedefs = try alloc.create(std.ArrayList(u8)),
+                .variables = try alloc.create(std.ArrayList(u8)),
                 .forward_decls = try alloc.create(std.ArrayList(u8)),
                 .function_decls = try alloc.create(std.ArrayList(u8)),
             };
             self.includes.* = .empty;
             self.typedefs.* = .empty;
+            self.variables.* = .empty;
             self.forward_decls.* = .empty;
             self.function_decls.* = .empty;
             return self;
@@ -105,11 +114,13 @@ pub const Compiler = struct {
         fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
             self.includes.deinit(alloc);
             self.typedefs.deinit(alloc);
+            self.variables.deinit(alloc);
             self.forward_decls.deinit(alloc);
             self.function_decls.deinit(alloc);
 
             alloc.destroy(self.includes);
             alloc.destroy(self.typedefs);
+            alloc.destroy(self.variables);
             alloc.destroy(self.forward_decls);
             alloc.destroy(self.function_decls);
         }
@@ -117,6 +128,7 @@ pub const Compiler = struct {
         fn write(self: *@This(), writer: *std.Io.Writer) !void {
             try writer.writeAll(self.includes.items);
             try writer.writeAll(self.typedefs.items);
+            try writer.writeAll(self.variables.items);
             try writer.writeAll(self.forward_decls.items);
             try writer.writeAll(self.function_decls.items);
             try writer.flush();
@@ -176,10 +188,11 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
 
     std.debug.assert(std.mem.eql(u8, file_path[file_path.len - 4 ..], ".zag"));
 
+    const module_name = std.fs.path.basename(file_path)[0 .. std.fs.path.basename(file_path).len - 4];
     var compiler: Compiler = .{
         .header = try .init(alloc),
         .source = try .init(alloc),
-        .module = try .init(alloc, std.fs.path.basename(file_path)[std.fs.path.basename(file_path).len - 3 ..]),
+        .module = try .init(alloc, module_name),
         .source_map = source_map,
         .primitives = .init(alloc),
     };
@@ -203,8 +216,15 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     try @".zag-out".makePath(std.fs.path.dirname(relative_path).?);
 
     try compiler.source.includes.print(alloc, "#include <{s}>\n", .{header_path});
+    try compiler.source.includes.print(alloc, "#include <stddef.h>\n", .{});
+    try compiler.source.includes.print(alloc, "#include <stdint.h>\n", .{});
+
+    try compiler.header.includes.print(alloc, "#include <stddef.h>\n", .{});
+    try compiler.header.includes.print(alloc, "#include <stdint.h>\n", .{});
 
     for (root_node) |statement| try statements.compileTopLevel(alloc, statement, &compiler);
+
+    try compiler.source.includes.print(alloc, "int main() {{ {s}_main(); return 0; }}", .{module_name});
 
     var source_writer_buf: [1024]u8 = undefined;
     var source = try @".zag-out".createFile(source_path, .{});

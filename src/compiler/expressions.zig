@@ -113,6 +113,74 @@ pub fn compile(
 
             return try buf.toOwnedSlice(alloc);
         },
+        .type => |t_ast| {
+            const t: Type = try .fromAst(alloc, &t_ast.payload, c);
+            defer t.deinit(alloc);
+
+            return try c.compileType(alloc, &t, t_ast.pos);
+        },
+        .assignment => |assignment| {
+            const expected_type: Type = try .infer(alloc, assignment.assignee, c);
+            defer expected_type.deinit(alloc);
+
+            if (!try c.module.getExpressionMutability(alloc, assignment.assignee, c))
+                return errors.assignmentOnNonMut(c.source_map[assignment.pos]);
+
+            const lhs = try compile(alloc, assignment.assignee, c, .{});
+            defer alloc.free(lhs);
+
+            const rhs = try compile(alloc, assignment.value, c, .{ .expected_type = expected_type });
+            defer alloc.free(rhs);
+
+            return if (assignment.op == .@"^=")
+                // the line below will re-evaluate the lhs twice, but the check above for `getExpressionMutability`
+                // ensures that only idempotent lhs can be assigned.
+                try std.fmt.allocPrint(alloc, "{s} = pow({s}, {s});", .{ lhs, lhs, rhs })
+            else
+                try std.fmt.allocPrint(alloc, "{s} {s} {s}];", .{ lhs, @tagName(assignment.op), rhs });
+        },
+        .reference => |ref| {
+            const child = try compile(alloc, ref.inner, c, .{});
+            defer alloc.free(child);
+            return try std.fmt.allocPrint(alloc, "&{s}", .{child});
+        },
+        .dereference => |deref| {
+            const parent = try compile(alloc, deref.parent, c, .{});
+            defer alloc.free(parent);
+            return try std.fmt.allocPrint(alloc, "*({s})", .{parent});
+        },
+        .member => |member| {
+            const parent_t: Type = try .infer(alloc, member.parent, c);
+            defer parent_t.deinit(alloc);
+
+            const parent_comp = try compile(alloc, member.parent, c, .{});
+            defer alloc.free(parent_comp);
+
+            return switch (parent_t) {
+                inline .@"struct", .@"union", .@"enum" => |ct, tag| {
+                    if (!ct.hasMember(member.member_name))
+                        return errors.unknownMember(parent_t, member.member_name, c.source_map[member.pos]);
+
+                    for (ct.members) |m| if (std.mem.eql(u8, m.name, member.member_name)) {
+                        return if (tag == .@"enum")
+                            try alloc.dupe(u8, m.inner_name)
+                        else
+                            try std.fmt.allocPrint(alloc, "{s}.{s}", .{ parent_comp, m.inner_name });
+                    };
+
+                    for (ct.symbols) |s| if (std.mem.eql(u8, s.name, member.member_name))
+                        return try alloc.dupe(u8, s.inner_name);
+
+                    unreachable;
+                },
+                .slice => if (std.mem.eql(u8, member.member_name, "ptr") or
+                    std.mem.eql(u8, member.member_name, "len"))
+                    std.fmt.allocPrint(alloc, "{s}.{s}", .{ parent_comp, member.member_name })
+                else
+                    errors.badMemberAccessSlice(parent_t, member.member_name, c.source_map[member.pos]),
+                else => errors.badMemberAccess(parent_t, member.member_name, c.source_map[member.pos]),
+            };
+        },
         else => std.debug.panic("{}", .{expr.*}),
     };
 }
