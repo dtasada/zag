@@ -95,16 +95,19 @@ pub fn compile(
             defer alloc.free(lhs);
             try buf.appendSlice(alloc, lhs);
 
-            try buf.append(alloc, '(');
-            for (call.args, 0..) |*arg, i| {
-                const received: Type = try .infer(alloc, arg, c);
+            for (function_t.parameters[0 .. is_variadic orelse function_t.parameters.len], 0..) |expected, i| {
+                const received: Type = try .infer(alloc, &call.args[i], c);
                 defer received.deinit(alloc);
-                const expected = function_t.parameters[i];
 
                 if (expected != .variadic and !received.check(expected))
-                    return errors.typeMismatch(expected, received, c.source_map[arg.pos()]);
+                    return errors.typeMismatch(expected, received, c.source_map[call.args[i].pos()]);
+            }
 
-                const arg_comp = try compile(alloc, arg, c, .{ .expected_type = expected });
+            try buf.append(alloc, '(');
+            for (call.args, 0..) |*arg, i| {
+                const arg_comp = try compile(alloc, arg, c, .{
+                    .expected_type = if (i < function_t.parameters.len) function_t.parameters[i] else null,
+                });
                 defer alloc.free(arg_comp);
                 try buf.appendSlice(alloc, arg_comp);
                 if (i < call.args.len - 1) try buf.append(alloc, ',');

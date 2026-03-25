@@ -3,5 +3,6 @@ bind fn printf(fmt: &c_char, args...) c_int;
 let some_global: i32 = 42;
 
 fn main() void {
-    printf("hello world %d\n", some_global);
+    let sixnine = 69;
+    printf("hello world %d, %d\n", some_global, sixnine);
 }

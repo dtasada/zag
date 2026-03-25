@@ -119,6 +119,8 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             const return_type_comp = try c.compileType(alloc, function_type.function.return_type, fd.return_type.pos());
             defer alloc.free(return_type_comp);
 
+            try c.module.pushScope(alloc);
+            defer c.module.popScope(alloc);
             const param_list_comp = try parameterList(alloc, fd.parameters, c);
             defer alloc.free(param_list_comp);
 
@@ -211,26 +213,35 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableS
 
     try buf.append(alloc, '(');
     for (parameter_list, 0..) |param, i| {
-        const variable_signature = try variableSignature(alloc, param, c);
+        const param_t: Type = try .fromAst(alloc, &param.type, c);
+
+        const variable_signature = try variableSignature(alloc, param.name, param_t, param.type.pos(), c);
         defer alloc.free(variable_signature);
+
         try buf.appendSlice(alloc, variable_signature);
         if (i < parameter_list.len - 1) try buf.append(alloc, ',');
+
+        try c.module.register(alloc, .{
+            .name = param.name,
+            .inner_name = param.name,
+            .type = param_t,
+            .binding = if (param.is_mut) .let_mut else .let,
+            .free_inner_name = false,
+            .free_type = true,
+        });
     }
     try buf.append(alloc, ')');
 
     return buf.toOwnedSlice(alloc);
 }
 
-fn variableSignature(alloc: std.mem.Allocator, signature: ast.VariableSignature, c: *Compiler) ![]const u8 {
-    if (signature.type == .variadic) return try alloc.dupe(u8, "...");
+fn variableSignature(alloc: std.mem.Allocator, name: []const u8, t: Type, t_pos: usize, c: *Compiler) ![]const u8 {
+    if (t == .variadic) return try alloc.dupe(u8, "...");
 
-    const t: Type = try .fromAst(alloc, &signature.type, c);
-    defer t.deinit(alloc);
-
-    const type_comp = try c.compileType(alloc, &t, signature.type.pos());
+    const type_comp = try c.compileType(alloc, &t, t_pos);
     defer alloc.free(type_comp);
 
-    return try std.fmt.allocPrint(alloc, "{s} {s}", .{ type_comp, signature.name });
+    return try std.fmt.allocPrint(alloc, "{s} {s}", .{ type_comp, name });
 }
 
 fn import(alloc: std.mem.Allocator, compiler: *Compiler, statement: ast.TopLevelStatement.Import) !void {
