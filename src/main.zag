@@ -2,6 +2,10 @@ bind fn printf(fmt: &c_char, args...) c_int;
 
 let some_global: i32 = 42;
 
+// struct Vector2 {
+//     x, y: f32,
+// }
+
 fn main() void {
     let sixnine = 69;
     printf("hello world %d, %d\n", some_global, sixnine);

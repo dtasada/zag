@@ -38,7 +38,7 @@ pub fn compile(
         .block => |block| {
             const block_comp = try statements.block(alloc, block.payload, c);
             defer alloc.free(block_comp);
-            return try std.fmt.allocPrint(alloc, "({s})", .{block_comp});
+            return try std.fmt.allocPrint(alloc, "({{{s}}})", .{block_comp});
         },
         .array_instantiation => |inst| {
             const inner_ast: Type = try .fromAst(alloc, &inst.type, c);
@@ -150,7 +150,7 @@ pub fn compile(
         .dereference => |deref| {
             const parent = try compile(alloc, deref.parent, c, .{});
             defer alloc.free(parent);
-            return try std.fmt.allocPrint(alloc, "*({s})", .{parent});
+            return try std.fmt.allocPrint(alloc, "*{s}", .{parent});
         },
         .member => |member| {
             const parent_t: Type = try .infer(alloc, member.parent, c);
@@ -183,6 +183,143 @@ pub fn compile(
                     errors.badMemberAccessSlice(parent_t, member.member_name, c.source_map[member.pos]),
                 else => errors.badMemberAccess(parent_t, member.member_name, c.source_map[member.pos]),
             };
+        },
+        .prefix => |prefix| {
+            const rhs_t: Type = try .infer(alloc, prefix.rhs, c);
+            defer rhs_t.deinit(alloc);
+
+            if (rhs_t == .bool and prefix.op != .@"!") return errors.badBangPrefix(rhs_t, c.source_map[prefix.pos]);
+            if ((rhs_t.isNumeric() or rhs_t == .reference) and prefix.op != .@"-")
+                return errors.badDashPrefix(rhs_t, c.source_map[prefix.pos]);
+
+            const rhs_comp = try compile(alloc, prefix.rhs, c, .{});
+            defer alloc.free(rhs_comp);
+
+            return std.fmt.allocPrint(alloc, "{s}{s}", .{ @tagName(prefix.op), rhs_comp });
+        },
+        .index => |index| {
+            const lhs_t: Type = try .infer(alloc, index.lhs, c);
+            defer lhs_t.deinit(alloc);
+            if (lhs_t != .slice and lhs_t != .array) return errors.illegalIndex(lhs_t, c.source_map[index.pos]);
+
+            const index_t: Type = try .infer(alloc, index.index, c);
+            defer index_t.deinit(alloc);
+            if (!index_t.isInteger()) return errors.illegalIndexType(index_t, c.source_map[index.index.pos()]);
+
+            const lhs_comp = try compile(alloc, index.lhs, c, .{});
+            defer alloc.free(lhs_comp);
+
+            const index_comp = try compile(alloc, index.index, c, .{});
+            defer alloc.free(index_comp);
+
+            return try std.fmt.allocPrint(alloc, "{s}{s}[{s}]", .{
+                lhs_comp,
+                if (index_t == .slice) ".ptr" else "",
+                index_comp,
+            });
+        },
+        .binary => |binary| {
+            const lhs_t: Type = try .infer(alloc, binary.lhs, c);
+            defer lhs_t.deinit(alloc);
+
+            const rhs_t: Type = try .infer(alloc, binary.rhs, c);
+            defer rhs_t.deinit(alloc);
+
+            if (!lhs_t.eql(rhs_t))
+                return errors.typeMismatchBinExpr(lhs_t, rhs_t, binary.op, c.source_map[binary.pos]);
+
+            if (lhs_t.isNumeric() and
+                (binary.op == .@"and" or binary.op == .@"or" or binary.op == .but))
+                return errors.booleanOperatorUsedOnNumerical(lhs_t, binary.op, c.source_map[binary.pos]);
+
+            if (lhs_t == .bool and
+                (binary.op != .@"and" and binary.op != .@"or" and binary.op != .but))
+                return errors.numericalOperatorUsedOnBoolean(lhs_t, binary.op, c.source_map[binary.pos]);
+
+            const lhs_comp = try compile(alloc, binary.lhs, c, .{});
+            defer alloc.free(lhs_comp);
+
+            const rhs_comp = try compile(alloc, binary.rhs, c, .{});
+            defer alloc.free(rhs_comp);
+
+            return if (binary.op == .@"^")
+                try std.fmt.allocPrint(alloc, "pow({s}, {s})", .{ lhs_comp, rhs_comp })
+            else
+                try std.fmt.allocPrint(alloc, "{s} {s} {s}", .{ lhs_comp, @tagName(binary.op), rhs_comp });
+        },
+        .struct_instantiation => |si| {
+            const t: Type = try .infer(alloc, si.type_expr, c);
+            defer t.deinit(alloc);
+            if (t != .type) return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+
+            const result = c.module.getSymbolFromExpression(si.type_expr) orelse
+                return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+
+            const symbol = if (result == .success)
+                result.success
+            else
+                return errors.unknownSymbol(result.failure, c.source_map[si.type_expr.pos()]);
+
+            if (symbol.value == null or symbol.value.? != .type or
+                symbol.value.?.type != .@"struct" or
+                symbol.value.?.type != .@"union")
+                return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+
+            const si_t = symbol.value.?.type;
+            if (si_t == .@"struct") {
+                // check for missing members
+                var received: std.BufSet = .init(alloc);
+                defer received.deinit();
+
+                for (si.members) |m| try received.insert(m.name);
+
+                var missing: std.ArrayList([]const u8) = .empty;
+                defer missing.deinit(alloc);
+
+                for (si_t.@"struct".members) |m| if (!received.contains(m.name))
+                    try missing.append(alloc, m.name);
+
+                if (missing.items.len > 0)
+                    return errors.missingStructMembers(si_t, missing.items, c.source_map[si.pos]);
+
+                // check for extraneous members
+                var expected: std.BufSet = .init(alloc);
+                defer received.deinit();
+
+                for (si_t.@"struct".members) |m| try expected.insert(m.name);
+
+                var extraneous: std.ArrayList([]const u8) = .empty;
+                defer extraneous.deinit(alloc);
+
+                for (si.members) |m| if (!expected.contains(m.name))
+                    try extraneous.append(alloc, m.name);
+
+                if (extraneous.items.len > 0)
+                    return errors.extraneousStructMembers(si_t, extraneous.items, c.source_map[si.pos]);
+            } else if (si.members.len != 1) return errors.unionMemberCount(si_t, si.members.len, c.source_map[si.pos]);
+
+            var ret: std.ArrayList(u8) = .empty;
+            errdefer ret.deinit(alloc);
+
+            const t_comp = try c.compileType(alloc, &si_t, si.type_expr.pos());
+            defer alloc.free(t_comp);
+
+            try ret.print(alloc, "({s}){{", .{t_comp});
+            for (si.members) |member| {
+                const expected = switch (si_t) {
+                    inline .@"struct", .@"union" => |ct| ct.getMemberType(member.name).?,
+                    else => unreachable,
+                };
+                const expr_comp = try compile(alloc, &member.value, c, .{
+                    .is_variable_decl = true,
+                    .expected_type = expected,
+                });
+                defer alloc.free(expr_comp);
+                try ret.print(alloc, ".{s} = {s},", .{ member.name, expr_comp });
+            }
+            try ret.append(alloc, '}');
+
+            return try ret.toOwnedSlice(alloc);
         },
         else => std.debug.panic("{}", .{expr.*}),
     };

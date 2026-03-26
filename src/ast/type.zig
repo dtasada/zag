@@ -45,7 +45,6 @@ pub const Type = union(enum) {
         member_name: []const u8,
     };
 
-    inferred: struct { pos: usize },
     symbol: struct { pos: usize, inner: []const u8 },
     optional: struct { pos: usize, inner: *const Type },
     slice: Slice,
@@ -71,7 +70,6 @@ pub const Type = union(enum) {
 
     pub fn clone(self: Type, alloc: std.mem.Allocator) std.mem.Allocator.Error!Type {
         return switch (self) {
-            .inferred => |n| .{ .inferred = .{ .pos = n.pos } },
             .symbol => |n| .{
                 .symbol = .{
                     .pos = n.pos,

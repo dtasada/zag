@@ -280,9 +280,12 @@ pub const Parser = struct {
                 const param_type: ast.Type = if (is_generic and self.currentToken() == .@":") b: {
                     _ = self.advance();
                     break :b try self.type_parser.parseType(self.alloc, .default);
-                } else if (is_generic)
-                    .{ .inferred = .{ .pos = first_pos } }
-                else switch (self.advance()) {
+                } else if (is_generic) .{
+                    .symbol = .{
+                        .inner = try self.alloc.dupe(u8, "type"),
+                        .pos = first_pos,
+                    },
+                } else switch (self.advance()) {
                     .@":" => try self.type_parser.parseType(self.alloc, .default),
                     .@"..." => b: {
                         last_arg = true;
@@ -295,11 +298,12 @@ pub const Parser = struct {
                     ),
                 };
 
-                for (param_names.items, 0..) |p, i| try params.append(self.alloc, .{
-                    .is_mut = is_mut,
-                    .name = try self.alloc.dupe(u8, p),
-                    .type = if (i == 0) param_type else try param_type.clone(self.alloc),
-                });
+                for (param_names.items, 0..) |p, i|
+                    try params.append(self.alloc, .{
+                        .is_mut = is_mut,
+                        .name = try self.alloc.dupe(u8, p),
+                        .type = if (i == 0) param_type else try param_type.clone(self.alloc),
+                    });
 
                 if (self.currentToken() == .@",") _ = self.advance() else {
                     try self.expect(self.advance(), closing_token, context, @tagName(closing_token));

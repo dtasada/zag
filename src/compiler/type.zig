@@ -67,13 +67,13 @@ pub const Type = union(enum) {
     const Array = struct { inner: *const Type, len: usize };
     const ErrorUnion = struct { failure: *const Type, success: *const Type };
 
-    const Struct = CompoundType(.@"struct");
-    const Enum = CompoundType(.@"enum");
-    const Union = CompoundType(.@"union");
+    pub const Struct = CompoundType(.@"struct");
+    pub const Enum = CompoundType(.@"enum");
+    pub const Union = CompoundType(.@"union");
 
     fn CompoundType(tag: utils.CompoundTypeTag) type {
         return struct {
-            const Member = if (tag == .@"enum") struct {
+            pub const Member = if (tag == .@"enum") struct {
                 name: []const u8,
                 inner_name: []const u8,
                 value: usize,
@@ -285,10 +285,10 @@ pub const Type = union(enum) {
                     .variable_definition => |vd| try c.module.register(alloc, .{
                         .name = vd.variable_name,
                         .inner_name = vd.variable_name,
-                        .type = if (vd.type == .inferred)
-                            try infer(alloc, &vd.assigned_value, c)
+                        .type = if (vd.type) |*t|
+                            try fromAst(alloc, t, c)
                         else
-                            try fromAst(alloc, &vd.type, c),
+                            try infer(alloc, &vd.assigned_value, c),
                         .binding = vd.binding,
                         .is_pub = vd.is_pub,
                         .free_inner_name = false,

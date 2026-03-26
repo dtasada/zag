@@ -44,8 +44,8 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
     const var_name = try self.expect(self.advance(), .ident, environment, env_small);
 
     // optionally parse type
-    var @"type": ast.Type = .{ .inferred = .{ .pos = self.pos } };
-    errdefer @"type".deinit(self.alloc);
+    var @"type": ?ast.Type = null;
+    errdefer if (@"type") |t| t.deinit(self.alloc);
     if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
         @"type" = try self.type_parser.parseType(self.alloc, .default);

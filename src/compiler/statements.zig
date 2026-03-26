@@ -149,6 +149,51 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
             try c.source.variables.appendSlice(alloc, def_comp);
         },
+        .struct_declaration => |sd| {
+            var typedef: std.ArrayList(u8) = .empty;
+            errdefer typedef.deinit(alloc);
+
+            var members: std.ArrayList(Type.Struct.Member) = .empty;
+
+            try typedef.print(alloc, "typedef struct {s}_{s} {{", .{ c.module.name, sd.name });
+            for (sd.members) |member| {
+                const member_t: Type = try .fromAst(alloc, &member.type, c);
+                try members.append(alloc, .{
+                    .name = member.name,
+                    .inner_name = try alloc.dupe(u8, member.name),
+                    .type = member_t,
+                });
+
+                const t_comp = try c.compileType(alloc, &member_t, member.type.pos());
+                defer alloc.free(t_comp);
+
+                try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
+            }
+            try typedef.appendSlice(alloc, "}\n");
+
+            // for (sd.variables) |variable| {
+            //     const variable_t: Type = try .fromAst(variable.type);
+            // }
+
+            const t: Type = .{
+                .@"struct" = .{
+                    .name = sd.name,
+                    .members = try members.toOwnedSlice(alloc),
+                    .symbols = &.{},
+                },
+            };
+
+            try c.module.register(alloc, .{
+                .name = sd.name,
+                .inner_name = sd.name,
+                .type = .type,
+                .binding = .@"const",
+                .is_pub = sd.is_pub,
+                .value = .{ .type = t },
+                .free_type = true,
+                .free_inner_name = false,
+            });
+        },
         else => {},
     }
 }
@@ -158,10 +203,10 @@ fn variableDefinition(
     vd: ast.Statement.VariableDefinition,
     c: *Compiler,
 ) Error![]const u8 {
-    const t: Type = if (vd.type == .inferred)
-        try .infer(alloc, &vd.assigned_value, c)
+    const t: Type = if (vd.type) |*t|
+        try .fromAst(alloc, t, c)
     else
-        try .fromAst(alloc, &vd.type, c);
+        try .infer(alloc, &vd.assigned_value, c);
 
     try c.module.register(alloc, .{
         .name = vd.variable_name,
@@ -172,7 +217,7 @@ fn variableDefinition(
         .free_type = true,
     });
 
-    const t_comp = try c.compileType(alloc, &t, vd.type.pos());
+    const t_comp = try c.compileType(alloc, &t, if (vd.type) |vdt| vdt.pos() else 0);
     defer alloc.free(t_comp);
 
     if (vd.assigned_value == .ident and
@@ -181,7 +226,7 @@ fn variableDefinition(
 
     const expr_comp = try expressions.compile(alloc, &vd.assigned_value, c, .{
         .is_variable_decl = true,
-        .expected_type = if (vd.type == .inferred) null else t,
+        .expected_type = if (vd.type) |_| t else null,
     });
     defer alloc.free(expr_comp);
 
@@ -215,10 +260,16 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableS
     for (parameter_list, 0..) |param, i| {
         const param_t: Type = try .fromAst(alloc, &param.type, c);
 
-        const variable_signature = try variableSignature(alloc, param.name, param_t, param.type.pos(), c);
-        defer alloc.free(variable_signature);
+        if (param_t == .variadic) {
+            try buf.appendSlice(alloc, "...");
+            if (i < parameter_list.len - 1) try buf.append(alloc, ',');
+            continue;
+        }
 
-        try buf.appendSlice(alloc, variable_signature);
+        const t_comp = try c.compileType(alloc, &param_t, param.type.pos());
+        defer alloc.free(t_comp);
+
+        try buf.print(alloc, "{s} {s}", .{ t_comp, param.name });
         if (i < parameter_list.len - 1) try buf.append(alloc, ',');
 
         try c.module.register(alloc, .{
@@ -233,15 +284,6 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableS
     try buf.append(alloc, ')');
 
     return buf.toOwnedSlice(alloc);
-}
-
-fn variableSignature(alloc: std.mem.Allocator, name: []const u8, t: Type, t_pos: usize, c: *Compiler) ![]const u8 {
-    if (t == .variadic) return try alloc.dupe(u8, "...");
-
-    const type_comp = try c.compileType(alloc, &t, t_pos);
-    defer alloc.free(type_comp);
-
-    return try std.fmt.allocPrint(alloc, "{s} {s}", .{ type_comp, name });
 }
 
 fn import(alloc: std.mem.Allocator, compiler: *Compiler, statement: ast.TopLevelStatement.Import) !void {

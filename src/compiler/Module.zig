@@ -159,3 +159,26 @@ pub fn getExpressionMutability(
         else => false,
     };
 }
+
+pub fn getSymbolFromExpression(
+    self: *const Module,
+    expr: *const ast.Expression,
+) ?union(enum) {
+    success: Symbol,
+    failure: []const u8,
+} {
+    return switch (expr.*) {
+        .ident => |ident| if (self.getSymbol(ident.payload)) |symbol|
+            .{ .success = symbol }
+        else
+            .{ .failure = ident.payload },
+        .type => |t| switch (t.payload) {
+            .symbol => |symbol| if (self.getSymbol(symbol.inner)) |s|
+                .{ .success = s }
+            else
+                .{ .failure = symbol.inner },
+            else => null,
+        },
+        else => null,
+    };
+}

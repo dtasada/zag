@@ -15,6 +15,7 @@ pub const Error = error{
     DoubleReturn,
     ExpressionNotCallable,
     IllegalOperator,
+    MissingMembers,
     TypeMismatch,
     UnknownSymbol,
 } || std.mem.Allocator.Error;
@@ -176,5 +177,73 @@ pub fn illegalIndexType(t: Type, pos: utils.Position) Error {
         error.TypeMismatch,
         "Compiler error: Index must be an integer, received expression of type '{f}' ({f}).\n",
         .{ t, pos },
+    );
+}
+
+pub fn badBangPrefix(t: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Unary operator '!' used on expression of type '{f}'. '!' may only be used on boolean expressions ({f}).\n",
+        .{ t, pos },
+    );
+}
+
+pub fn badDashPrefix(t: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Unary operator '-' used on expression of type '{f}'. '-' may only be used on integers or floats ({f}).\n",
+        .{ t, pos },
+    );
+}
+
+pub fn typeMismatchBinExpr(lhs: Type, rhs: Type, op: ast.BinaryOperator, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Two sides of binary expression should be of the same type. Received '{f}' {s} '{f}' ({f}).\n",
+        .{ lhs, @tagName(op), rhs, pos },
+    );
+}
+
+pub fn booleanOperatorUsedOnNumerical(t: Type, op: ast.BinaryOperator, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Binary operator '{[op]s}' may only be used on boolean expressions, but was used as '{[t]f}' {[op]s} '{[t]f}' ({[pos]f}).\n",
+        .{ .op = @tagName(op), .t = t, .pos = pos },
+    );
+}
+
+pub fn numericalOperatorUsedOnBoolean(t: Type, op: ast.BinaryOperator, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Binary operator '{[op]s}' may only be used on numerical expressions, but was used as '{[t]f}' {[op]s} '{[t]f}' ({[pos]f}).\n",
+        .{ .op = @tagName(op), .t = t, .pos = pos },
+    );
+}
+
+pub fn missingStructMembers(t: Type, missing: []const []const u8, pos: utils.Position) Error {
+    const m = try std.mem.join(std.heap.c_allocator, "', '", missing);
+    defer std.heap.c_allocator.free(m);
+    return utils.printErr(
+        error.MissingMembers,
+        "Compiler error: In instantiation of struct '{f}': missing members '{s}' ({f}).\n",
+        .{ t, m, pos },
+    );
+}
+
+pub fn extraneousStructMembers(t: Type, missing: []const []const u8, pos: utils.Position) Error {
+    const m = try std.mem.join(std.heap.c_allocator, "', '", missing);
+    defer std.heap.c_allocator.free(m);
+    return utils.printErr(
+        error.MissingMembers,
+        "Compiler error: In instantiation of struct '{f}': extraneous members '{s}' ({f}).\n",
+        .{ t, m, pos },
+    );
+}
+
+pub fn unionMemberCount(t: Type, received: usize, pos: utils.Position) Error {
+    return utils.printErr(
+        error.MissingMembers,
+        "Compiler error: Instantiation of union type '{f}': union instantiation must include exactly one member, but received {} ({f}).\n",
+        .{ t, received, pos },
     );
 }

@@ -50,7 +50,7 @@ pub const Statement = union(enum) {
         is_pub: bool,
         binding: utils.Binding,
         variable_name: []const u8,
-        type: Type,
+        type: ?Type,
         assigned_value: ast.Expression,
 
         pub fn clone(self: VariableDefinition, alloc: std.mem.Allocator) !VariableDefinition {
@@ -59,14 +59,14 @@ pub const Statement = union(enum) {
                 .is_pub = self.is_pub,
                 .binding = self.binding,
                 .variable_name = try alloc.dupe(u8, self.variable_name),
-                .type = try self.type.clone(alloc),
+                .type = if (self.type) |t| try t.clone(alloc) else null,
                 .assigned_value = try self.assigned_value.clone(alloc),
             };
         }
 
         pub fn deinit(self: VariableDefinition, alloc: std.mem.Allocator) void {
             alloc.free(self.variable_name);
-            self.type.deinit(alloc);
+            if (self.type) |t| t.deinit(alloc);
             self.assigned_value.deinit(alloc);
         }
     };
