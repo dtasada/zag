@@ -188,10 +188,10 @@ pub fn functionDefinition(self: *Parser) Error!ast.TopLevelStatement {
         .@"<" => try self.parseGenericParameters(),
         else => |other| return self.unexpectedToken("Function definition", "(' or '<", other),
     };
-    errdefer utils.deinitSlice(ast.VariableSignature, generic_parameters, self.alloc);
+    errdefer utils.deinitSlice(ast.ParameterGroup, generic_parameters, self.alloc);
 
     const parameters = try self.parseParameters();
-    errdefer utils.deinitSlice(ast.VariableSignature, parameters, self.alloc);
+    errdefer utils.deinitSlice(ast.ParameterGroup, parameters, self.alloc);
     const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
             error.MissingReturnType,
@@ -242,7 +242,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.TopLevelStatement {
         .@"fn" => {
             const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
             const parameters = try self.parseParameters();
-            errdefer utils.deinitSlice(ast.VariableSignature, parameters, self.alloc);
+            errdefer utils.deinitSlice(ast.ParameterGroup, parameters, self.alloc);
             const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
                 error.HandlerDoesNotExist => return utils.printErr(
                     error.MissingReturnType,

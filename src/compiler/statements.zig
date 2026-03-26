@@ -252,34 +252,36 @@ pub fn block(alloc: std.mem.Allocator, b: ast.Block, c: *Compiler) ![]const u8 {
     return try buf.toOwnedSlice(alloc);
 }
 
-fn parameterList(alloc: std.mem.Allocator, parameter_list: []const ast.VariableSignature, c: *Compiler) ![]const u8 {
+fn parameterList(alloc: std.mem.Allocator, parameter_list: ast.ParameterList, c: *Compiler) ![]const u8 {
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
 
     try buf.append(alloc, '(');
-    for (parameter_list, 0..) |param, i| {
-        const param_t: Type = try .fromAst(alloc, &param.type, c);
+    for (parameter_list, 0..) |group, i| {
+        for (group.names, 0..) |name, j| {
+            const param_t: Type = try .fromAst(alloc, &group.type, c);
 
-        if (param_t == .variadic) {
-            try buf.appendSlice(alloc, "...");
-            if (i < parameter_list.len - 1) try buf.append(alloc, ',');
-            continue;
+            if (param_t == .variadic) {
+                try buf.appendSlice(alloc, "...");
+                if (i < parameter_list.len - 1 or j < group.names.len - 1) try buf.append(alloc, ',');
+                continue;
+            }
+
+            const t_comp = try c.compileType(alloc, &param_t, group.type.pos());
+            defer alloc.free(t_comp);
+
+            try buf.print(alloc, "{s} {s}", .{ t_comp, name });
+            if (i < parameter_list.len - 1 or j < group.names.len - 1) try buf.append(alloc, ',');
+
+            try c.module.register(alloc, .{
+                .name = name,
+                .inner_name = name,
+                .type = param_t,
+                .binding = if (group.is_mut[j]) .let_mut else .let,
+                .free_inner_name = false,
+                .free_type = true,
+            });
         }
-
-        const t_comp = try c.compileType(alloc, &param_t, param.type.pos());
-        defer alloc.free(t_comp);
-
-        try buf.print(alloc, "{s} {s}", .{ t_comp, param.name });
-        if (i < parameter_list.len - 1) try buf.append(alloc, ',');
-
-        try c.module.register(alloc, .{
-            .name = param.name,
-            .inner_name = param.name,
-            .type = param_t,
-            .binding = if (param.is_mut) .let_mut else .let,
-            .free_inner_name = false,
-            .free_type = true,
-        });
     }
     try buf.append(alloc, ')');
 

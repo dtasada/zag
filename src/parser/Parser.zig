@@ -243,8 +243,9 @@ pub const Parser = struct {
         const opening_token = if (is_generic) .@"<" else .@"(";
         const closing_token = if (is_generic) .@">" else .@")";
 
-        var params: std.ArrayList(ast.VariableSignature) = .empty;
-        errdefer utils.deinitArrayList(ast.VariableSignature, &params, self.alloc);
+        var params: std.ArrayList(ast.ParameterGroup) = .empty;
+        errdefer utils.deinitArrayList(ast.ParameterGroup, &params, self.alloc);
+
         try self.expect(self.advance(), opening_token, "parameter list", @tagName(opening_token));
 
         if (self.currentToken() == closing_token) {
@@ -259,22 +260,27 @@ pub const Parser = struct {
             var last_arg = false;
             while (!last_arg) {
                 var param_names: std.ArrayList([]const u8) = .empty;
-                defer param_names.deinit(self.alloc);
+                var is_mut: std.ArrayList(bool) = .empty;
 
                 const first_pos = self.pos;
 
-                const is_mut = if (is_generic) false else if (self.currentToken() == .mut) b: {
+                try is_mut.append(self.alloc, if (is_generic) false else if (self.currentToken() == .mut) b: {
                     _ = self.advance();
                     break :b true;
-                } else false;
+                } else false);
 
                 const first_name = try self.expect(self.advance(), .ident, context, "parameter name");
-                try param_names.append(self.alloc, first_name);
+                try param_names.append(self.alloc, try self.alloc.dupe(u8, first_name));
 
                 while (self.currentToken() == .@",") {
                     _ = self.advance();
-                    const name = try self.expect(self.advance(), .ident, context, "parameter name");
-                    try param_names.append(self.alloc, name);
+
+                    try is_mut.append(self.alloc, if (is_generic) false else if (self.currentToken() == .mut) b: {
+                        _ = self.advance();
+                        break :b true;
+                    } else false);
+
+                    try param_names.append(self.alloc, try self.alloc.dupe(u8, try self.expect(self.advance(), .ident, context, "parameter name")));
                 }
 
                 const param_type: ast.Type = if (is_generic and self.currentToken() == .@":") b: {
@@ -298,12 +304,11 @@ pub const Parser = struct {
                     ),
                 };
 
-                for (param_names.items, 0..) |p, i|
-                    try params.append(self.alloc, .{
-                        .is_mut = is_mut,
-                        .name = try self.alloc.dupe(u8, p),
-                        .type = if (i == 0) param_type else try param_type.clone(self.alloc),
-                    });
+                try params.append(self.alloc, .{
+                    .is_mut = try is_mut.toOwnedSlice(self.alloc),
+                    .names = try param_names.toOwnedSlice(self.alloc),
+                    .type = param_type,
+                });
 
                 if (self.currentToken() == .@",") _ = self.advance() else {
                     try self.expect(self.advance(), closing_token, context, @tagName(closing_token));
@@ -312,7 +317,7 @@ pub const Parser = struct {
             }
         }
 
-        return params.toOwnedSlice(self.alloc);
+        return try params.toOwnedSlice(self.alloc);
     }
 
     pub fn parseTypeList(self: *Parser, comptime is_generic: bool) Error![]const ast.Type {

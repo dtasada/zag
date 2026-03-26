@@ -189,6 +189,7 @@ pub const Type = union(enum) {
             .function => |f| {
                 var params: std.ArrayList(Type) = try .initCapacity(alloc, f.parameters.len);
                 errdefer utils.deinitArrayList(Type, &params, alloc);
+
                 for (f.parameters) |*param| params.appendAssumeCapacity(try fromAst(alloc, param, c));
 
                 const return_type = try fromAstPtr(alloc, f.return_type, c);

@@ -108,7 +108,7 @@ pub const TopLevelStatement = union(enum) {
 
             pub fn deinit(self: CompoundTypeDeclaration(T), alloc: std.mem.Allocator) void {
                 alloc.free(self.name);
-                utils.deinitSlice(ast.VariableSignature, self.generic_types, alloc);
+                utils.deinitSlice(ast.ParameterGroup, self.generic_types, alloc);
                 utils.deinitSlice(Statement.VariableDefinition, self.variables, alloc);
                 utils.deinitSlice(Subtype, self.subtypes, alloc);
                 utils.deinitSlice(Member, self.members, alloc);
@@ -215,7 +215,7 @@ pub const TopLevelStatement = union(enum) {
 
         pub fn deinit(self: BindingFunctionDeclaration, alloc: std.mem.Allocator) void {
             alloc.free(self.name);
-            utils.deinitSlice(ast.VariableSignature, self.parameters, alloc);
+            utils.deinitSlice(ast.ParameterGroup, self.parameters, alloc);
             self.return_type.deinit(alloc);
         }
     };
@@ -230,17 +230,19 @@ pub const TopLevelStatement = union(enum) {
         body: ast.Block,
 
         pub fn getType(self: *const FunctionDefinition, alloc: std.mem.Allocator) !Type {
-            const params = try alloc.alloc(ast.Type, self.parameters.len);
-            for (self.parameters, 0..) |param, i| params[i] = try param.type.clone(alloc);
+            var params: std.ArrayList(ast.Type) = .empty;
+            for (self.parameters) |group| for (0..group.names.len) |_|
+                try params.append(alloc, try group.type.clone(alloc));
 
-            const generic_params = try alloc.alloc(ast.Type, self.generic_parameters.len);
-            for (self.generic_parameters, 0..) |param, i| generic_params[i] = try param.type.clone(alloc);
+            var generic_params: std.ArrayList(ast.Type) = .empty;
+            for (self.generic_parameters) |group| for (0..group.names.len) |_|
+                try generic_params.append(alloc, try group.type.clone(alloc));
 
             return .{
                 .function = .{
                     .pos = self.pos,
-                    .parameters = params,
-                    .generic_parameters = generic_params,
+                    .parameters = try params.toOwnedSlice(alloc),
+                    .generic_parameters = try generic_params.toOwnedSlice(alloc),
                     .return_type = try self.return_type.clonePtr(alloc),
                 },
             };
@@ -260,8 +262,8 @@ pub const TopLevelStatement = union(enum) {
 
         pub fn deinit(self: FunctionDefinition, alloc: std.mem.Allocator) void {
             alloc.free(self.name);
-            utils.deinitSlice(ast.VariableSignature, self.generic_parameters, alloc);
-            utils.deinitSlice(ast.VariableSignature, self.parameters, alloc);
+            utils.deinitSlice(ast.ParameterGroup, self.generic_parameters, alloc);
+            utils.deinitSlice(ast.ParameterGroup, self.parameters, alloc);
             self.return_type.deinit(alloc);
             utils.deinitSlice(Statement, self.body, alloc);
         }

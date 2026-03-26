@@ -6,7 +6,12 @@ let some_global: i32 = 42;
 //     x, y: f32,
 // }
 
+fn print_xy(x, y: i32, f: f32) void {
+    printf("x %d, y: %d, f: %f\n", x, y, f);
+}
+
 fn main() void {
     let sixnine = 69;
     printf("hello world %d, %d\n", some_global, sixnine);
+    print_xy(2, 3, 6.9);
 }

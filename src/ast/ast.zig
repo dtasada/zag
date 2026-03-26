@@ -10,7 +10,7 @@ pub const Expression = @import("expression.zig").Expression;
 pub const TopLevelStatement = @import("top_level_statement.zig").TopLevelStatement;
 pub const Type = @import("type.zig").Type;
 
-pub const ParameterList = []const VariableSignature;
+pub const ParameterList = []const ParameterGroup;
 pub const ArgumentList = []const Expression;
 pub const RootNode = []const TopLevelStatement;
 pub const Block = []const Statement;
@@ -93,5 +93,18 @@ pub const VariableSignature = struct {
     pub fn deinit(self: VariableSignature, alloc: std.mem.Allocator) void {
         alloc.free(self.name);
         self.type.deinit(alloc);
+    }
+};
+
+pub const ParameterGroup = struct {
+    names: []const []const u8,
+    is_mut: []const bool,
+    type: Type,
+
+    pub fn deinit(self: ParameterGroup, alloc: std.mem.Allocator) void {
+        self.type.deinit(alloc);
+        alloc.free(self.is_mut);
+        for (self.names) |n| alloc.free(n);
+        alloc.free(self.names);
     }
 };
