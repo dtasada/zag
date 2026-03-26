@@ -71,7 +71,7 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
     try self.registerBuiltin(alloc, "c_float", "float", .{ .type = .c_float });
     try self.registerBuiltin(alloc, "c_double", "double", .{ .type = .c_double });
 
-    try self.registerBuiltin(alloc, "c_null", "NULL", .{ .type = .{ .reference = .{ .is_mut = false, .inner = &.void } } });
+    try self.registerBuiltin(alloc, "c_null", "NULL", .{ .type = .{ .reference = .{ .is_mut = false, .inner = try Type.clonePtr(.void, alloc) } } });
     try self.registerBuiltin(alloc, "nil", "nil", .{ .type = .@"typeof(nil)" });
     try self.registerBuiltin(alloc, "undefined", "undefined", .{ .type = .@"typeof(undefined)" });
 
@@ -101,8 +101,8 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
 }
 
 pub fn getSymbol(self: *const Module, name: []const u8) ?Symbol {
-    for (1..self.scopes.items.len + 1) |i| {
-        const scope = self.scopes.items[self.scopes.items.len - i];
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope| {
         for (scope.items) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol;
     }
 

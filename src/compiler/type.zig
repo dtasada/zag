@@ -78,6 +78,7 @@ pub const Type = union(enum) {
                 inner_name: []const u8,
                 value: usize,
                 pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
+                    alloc.free(self.name);
                     alloc.free(self.inner_name);
                 }
                 pub fn eql(lhs: Member, rhs: Member) bool {
@@ -97,6 +98,7 @@ pub const Type = union(enum) {
                 inner_name: []const u8,
                 type: Type,
                 pub fn deinit(self: Member, alloc: std.mem.Allocator) void {
+                    alloc.free(self.name);
                     alloc.free(self.inner_name);
                     self.type.deinit(alloc);
                 }

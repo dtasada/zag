@@ -365,6 +365,7 @@ export default grammar({
       "u32",
       "u64",
       "usize",
+      "isize",
       "f32",
       "f64",
       "void",

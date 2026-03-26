@@ -5,7 +5,7 @@ const utils = @import("utils");
 const compiler = @import("compiler");
 
 pub fn build() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{}) = .{};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
@@ -146,7 +146,7 @@ pub fn run() anyerror!void {
         return err;
     };
 
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 

@@ -121,6 +121,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
             try c.module.pushScope(alloc);
             defer c.module.popScope(alloc);
+
             const param_list_comp = try parameterList(alloc, fd.parameters, c);
             defer alloc.free(param_list_comp);
 
@@ -151,15 +152,17 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
         },
         .struct_declaration => |sd| {
             var typedef: std.ArrayList(u8) = .empty;
-            errdefer typedef.deinit(alloc);
+            defer typedef.deinit(alloc);
 
             var members: std.ArrayList(Type.Struct.Member) = .empty;
 
-            try typedef.print(alloc, "typedef struct {s}_{s} {{", .{ c.module.name, sd.name });
+            const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
+
+            try typedef.print(alloc, "typedef struct {s} {{", .{inner_name});
             for (sd.members) |member| {
                 const member_t: Type = try .fromAst(alloc, &member.type, c);
                 try members.append(alloc, .{
-                    .name = member.name,
+                    .name = try alloc.dupe(u8, member.name),
                     .inner_name = try alloc.dupe(u8, member.name),
                     .type = member_t,
                 });
@@ -169,11 +172,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
                 try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
             }
-            try typedef.appendSlice(alloc, "}\n");
-
-            // for (sd.variables) |variable| {
-            //     const variable_t: Type = try .fromAst(variable.type);
-            // }
+            try typedef.print(alloc, "}} {s};\n", .{inner_name});
 
             const t: Type = .{
                 .@"struct" = .{
@@ -185,14 +184,16 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
             try c.module.register(alloc, .{
                 .name = sd.name,
-                .inner_name = sd.name,
+                .inner_name = inner_name,
                 .type = .type,
                 .binding = .@"const",
                 .is_pub = sd.is_pub,
                 .value = .{ .type = t },
                 .free_type = true,
-                .free_inner_name = false,
+                .free_inner_name = true,
             });
+
+            try c.header.typedefs.appendSlice(alloc, typedef.items);
         },
         else => {},
     }
@@ -207,6 +208,7 @@ fn variableDefinition(
         try .fromAst(alloc, t, c)
     else
         try .infer(alloc, &vd.assigned_value, c);
+    errdefer t.deinit(alloc);
 
     try c.module.register(alloc, .{
         .name = vd.variable_name,
@@ -242,11 +244,13 @@ pub fn block(alloc: std.mem.Allocator, b: ast.Block, c: *Compiler) ![]const u8 {
     defer buf.deinit(alloc);
 
     try buf.append(alloc, '{');
+    try c.module.pushScope(alloc);
     for (b) |statement| {
         const statement_comp = try compile(alloc, statement, c);
         defer alloc.free(statement_comp);
         try buf.appendSlice(alloc, statement_comp);
     }
+    c.module.popScope(alloc);
     try buf.append(alloc, '}');
 
     return try buf.toOwnedSlice(alloc);
@@ -257,9 +261,20 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: ast.ParameterList, c:
     errdefer buf.deinit(alloc);
 
     try buf.append(alloc, '(');
-    for (parameter_list, 0..) |group, i| {
+    if (parameter_list.len == 0)
+        try buf.appendSlice(alloc, "void")
+    else for (parameter_list, 0..) |group, i| {
         for (group.names, 0..) |name, j| {
             const param_t: Type = try .fromAst(alloc, &group.type, c);
+
+            try c.module.register(alloc, .{
+                .name = name,
+                .inner_name = name,
+                .type = param_t,
+                .binding = if (group.is_mut[j]) .let_mut else .let,
+                .free_inner_name = false,
+                .free_type = true,
+            });
 
             if (param_t == .variadic) {
                 try buf.appendSlice(alloc, "...");
@@ -272,15 +287,6 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: ast.ParameterList, c:
 
             try buf.print(alloc, "{s} {s}", .{ t_comp, name });
             if (i < parameter_list.len - 1 or j < group.names.len - 1) try buf.append(alloc, ',');
-
-            try c.module.register(alloc, .{
-                .name = name,
-                .inner_name = name,
-                .type = param_t,
-                .binding = if (group.is_mut[j]) .let_mut else .let,
-                .free_inner_name = false,
-                .free_type = true,
-            });
         }
     }
     try buf.append(alloc, ')');

@@ -26,6 +26,7 @@ pub const Symbol = struct {
     pub fn deinit(self: Symbol, alloc: std.mem.Allocator) void {
         if (self.free_type) self.type.deinit(alloc);
         if (self.free_inner_name) alloc.free(self.inner_name);
+        if (self.value) |v| v.deinit(alloc);
     }
 
     pub fn eql(lhs: Symbol, rhs: Symbol) bool {
