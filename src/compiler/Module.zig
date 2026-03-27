@@ -182,3 +182,20 @@ pub fn getSymbolFromExpression(
         else => null,
     };
 }
+
+pub fn findSymbolByType(self: *const Module, t: Type) ?Symbol {
+    var it = std.mem.reverseIterator(self.scopes.items);
+    while (it.next()) |scope| {
+        for (scope.items) |symbol| {
+            if (symbol.type == .type and
+                symbol.value != null and
+                symbol.value.? == .type and
+                symbol.value.?.type.eql(t))
+                return symbol
+            else
+                continue;
+        }
+    }
+
+    return null;
+}

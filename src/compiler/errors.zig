@@ -21,6 +21,7 @@ pub const Error = error{
 } || std.mem.Allocator.Error;
 
 pub fn unknownSymbol(symbol: []const u8, pos: utils.Position) Error {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.UnknownSymbol,
         "Compiler error: Unknown symbol '{s}' ({f}).\n",
@@ -125,6 +126,7 @@ pub fn mutRefOfConst(pos: utils.Position) Error {
 }
 
 pub fn exprIsNotStruct(received: Type, pos: utils.Position) Error {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.TypeMismatch,
         "Compiler error: Expected compound type, found '{f}' ({f}).\n",

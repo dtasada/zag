@@ -161,7 +161,7 @@ pub const Type = union(enum) {
                     return errors.unknownSymbol(s.inner, c.source_map[s.pos]);
 
                 return switch (symbol.type) {
-                    .type => symbol.value.?.type,
+                    .type => try symbol.value.?.type.clone(alloc),
                     else => |received| errors.typeMismatch(.type, received, c.source_map[s.pos]),
                 };
             },
@@ -487,6 +487,7 @@ pub const Type = union(enum) {
             .function => |f| f.deinit(alloc),
             inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
             inline .@"struct", .@"enum", .@"union" => |ct| {
+                alloc.free(ct.name);
                 utils.deinitSlice(@TypeOf(ct).Member, ct.members, alloc);
                 utils.deinitSlice(Symbol, ct.symbols, alloc);
             },

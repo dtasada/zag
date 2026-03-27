@@ -261,9 +261,12 @@ pub fn compile(
                 return errors.unknownSymbol(result.failure, c.source_map[si.type_expr.pos()]);
 
             if (symbol.value == null or symbol.value.? != .type or
-                symbol.value.?.type != .@"struct" or
-                symbol.value.?.type != .@"union")
+                (symbol.value.?.type != .@"struct" and
+                    symbol.value.?.type != .@"union"))
+            {
+                std.debug.print("symbol.value: {any}\n", .{symbol.value});
                 return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+            }
 
             const si_t = symbol.value.?.type;
             if (si_t == .@"struct") {
@@ -284,7 +287,7 @@ pub fn compile(
 
                 // check for extraneous members
                 var expected: std.BufSet = .init(alloc);
-                defer received.deinit();
+                defer expected.deinit();
 
                 for (si_t.@"struct".members) |m| try expected.insert(m.name);
 

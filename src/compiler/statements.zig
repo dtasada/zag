@@ -176,7 +176,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
             const t: Type = .{
                 .@"struct" = .{
-                    .name = sd.name,
+                    .name = try alloc.dupe(u8, sd.name),
                     .members = try members.toOwnedSlice(alloc),
                     .symbols = &.{},
                 },
@@ -208,7 +208,6 @@ fn variableDefinition(
         try .fromAst(alloc, t, c)
     else
         try .infer(alloc, &vd.assigned_value, c);
-    errdefer t.deinit(alloc);
 
     try c.module.register(alloc, .{
         .name = vd.variable_name,
@@ -245,12 +244,12 @@ pub fn block(alloc: std.mem.Allocator, b: ast.Block, c: *Compiler) ![]const u8 {
 
     try buf.append(alloc, '{');
     try c.module.pushScope(alloc);
+    defer c.module.popScope(alloc);
     for (b) |statement| {
         const statement_comp = try compile(alloc, statement, c);
         defer alloc.free(statement_comp);
         try buf.appendSlice(alloc, statement_comp);
     }
-    c.module.popScope(alloc);
     try buf.append(alloc, '}');
 
     return try buf.toOwnedSlice(alloc);

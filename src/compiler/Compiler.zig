@@ -172,6 +172,7 @@ pub const Compiler = struct {
                 });
             },
             .variadic => unreachable,
+            .@"struct", .@"union", .@"enum" => try alloc.dupe(u8, self.module.findSymbolByType(t.*).?.inner_name),
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else
