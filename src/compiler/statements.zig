@@ -5,8 +5,10 @@ const ast = @import("ast");
 const expressions = @import("expressions.zig");
 
 const errors = @import("errors.zig");
+const compiler = @import("compiler.zig");
 const Error = errors.Error;
-const Compiler = @import("compiler.zig").Compiler;
+const Compiler = compiler.Compiler;
+const Symbol = compiler.Symbol;
 const Type = @import("type.zig").Type;
 
 pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement, c: *Compiler) Error![]const u8 {
@@ -46,7 +48,7 @@ fn conditional(
 
 pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatement, c: *Compiler) !void {
     switch (statement) {
-        .import => |s| try import(alloc, c, s),
+        .import => |s| try import(alloc, s, c),
         .binding_function_declaration => |bfd| {
             const function_type_ast = try bfd.getType(alloc);
             defer function_type_ast.deinit(alloc);
@@ -151,21 +153,45 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             try c.source.variables.appendSlice(alloc, def_comp);
         },
         .struct_declaration => |sd| {
-            var typedef: std.ArrayList(u8) = .empty;
-            defer typedef.deinit(alloc);
-
-            var members: std.ArrayList(Type.Struct.Member) = .empty;
+            if (sd.generic_types.len > 0) return;
 
             const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
 
+            const members = try alloc.alloc(Type.Struct.Member, sd.members.len);
+            const symbols = try alloc.alloc(Symbol, sd.methods.len);
+
+            try c.module.register(alloc, .{
+                .name = sd.name,
+                .inner_name = inner_name,
+                .type = .type,
+                .binding = .@"const",
+                .is_pub = sd.is_pub,
+                .value = .{
+                    .type = .{
+                        .@"struct" = .{
+                            .name = try alloc.dupe(u8, sd.name),
+                            .members = members,
+                            .symbols = symbols,
+                        },
+                    },
+                },
+                .free_type = true,
+                .free_inner_name = true,
+            });
+
+            try c.module.pushScope(alloc);
+            defer c.module.popScope(alloc);
+
+            var typedef: std.ArrayList(u8) = .empty;
+            defer typedef.deinit(alloc);
             try typedef.print(alloc, "typedef struct {s} {{", .{inner_name});
-            for (sd.members) |member| {
+            for (sd.members, 0..) |member, i| {
                 const member_t: Type = try .fromAst(alloc, &member.type, c);
-                try members.append(alloc, .{
+                members[i] = .{
                     .name = try alloc.dupe(u8, member.name),
                     .inner_name = try alloc.dupe(u8, member.name),
                     .type = member_t,
-                });
+                };
 
                 const t_comp = try c.compileType(alloc, &member_t, member.type.pos());
                 defer alloc.free(t_comp);
@@ -174,24 +200,47 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             }
             try typedef.print(alloc, "}} {s};\n", .{inner_name});
 
-            const t: Type = .{
-                .@"struct" = .{
-                    .name = try alloc.dupe(u8, sd.name),
-                    .members = try members.toOwnedSlice(alloc),
-                    .symbols = &.{},
-                },
-            };
+            for (sd.methods) |method| {
+                if (method.generic_parameters.len > 0) continue;
 
-            try c.module.register(alloc, .{
-                .name = sd.name,
-                .inner_name = inner_name,
-                .type = .type,
-                .binding = .@"const",
-                .is_pub = sd.is_pub,
-                .value = .{ .type = t },
-                .free_type = true,
-                .free_inner_name = true,
-            });
+                const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ inner_name, method.name });
+                const method_t_ast = try method.getType(alloc);
+                defer method_t_ast.deinit(alloc);
+                try c.module.register(alloc, .{
+                    .name = method.name,
+                    .inner_name = m_inner_name,
+                    .type = try .fromAst(alloc, &method_t_ast, c),
+                    .binding = .@"const",
+                    .is_pub = method.is_pub,
+                    .free_type = true,
+                    .free_inner_name = true,
+                });
+
+                const return_t: Type = try .fromAst(alloc, &method.return_type, c);
+                defer return_t.deinit(alloc);
+
+                const return_comp = try c.compileType(alloc, &return_t, method.return_type.pos());
+                defer alloc.free(return_comp);
+
+                const params_comp = try parameterList(alloc, method.parameters, c);
+                defer alloc.free(params_comp);
+
+                const body_comp = try block(alloc, method.body, c);
+                defer alloc.free(body_comp);
+
+                try c.header.function_decls.print(alloc, "{s} {s}{s};", .{
+                    return_comp,
+                    m_inner_name,
+                    params_comp,
+                });
+
+                try c.source.function_impls.print(alloc, "{s} {s}{s} {s}", .{
+                    return_comp,
+                    m_inner_name,
+                    params_comp,
+                    body_comp,
+                });
+            }
 
             try c.header.typedefs.appendSlice(alloc, typedef.items);
         },
@@ -293,14 +342,14 @@ fn parameterList(alloc: std.mem.Allocator, parameter_list: ast.ParameterList, c:
     return buf.toOwnedSlice(alloc);
 }
 
-fn import(alloc: std.mem.Allocator, compiler: *Compiler, statement: ast.TopLevelStatement.Import) !void {
+fn import(alloc: std.mem.Allocator, statement: ast.TopLevelStatement.Import, c: *Compiler) !void {
     // const mod = void;
     // compiler.module.register(alloc, .{
     //     .name = import.alias orelse import.module_name[import.module_name.len - 1],
     //     .type = .{ .module = mod },
     //     .binding = .@"const",
     // });
-    inline for (&.{ compiler.source.includes, compiler.header.includes }) |writer| {
+    inline for (&.{ c.source.includes, c.header.includes }) |writer| {
         try writer.appendSlice(alloc, "#include <");
         for (statement.module_name, 0..) |submod, i| {
             try writer.appendSlice(alloc, submod);

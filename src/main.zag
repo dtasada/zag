@@ -4,6 +4,10 @@ let some_global: i32 = 42;
 
 struct Vector2 {
     x, y: f32,
+
+    fn init(x, y: f32) Vector2 {
+
+    }
 }
 
 fn main() void {

@@ -136,7 +136,7 @@ pub const Type = union(enum) {
         };
     }
 
-    const Function = struct {
+    pub const Function = struct {
         parameters: []const Type,
         return_type: *const Type,
 
