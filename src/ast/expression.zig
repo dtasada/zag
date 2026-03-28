@@ -52,13 +52,16 @@ pub const Expression = union(enum) {
             result: Statement,
 
             pub fn clone(self: Case, alloc: std.mem.Allocator) !Case {
+                const result = try self.result.clone(alloc);
+                errdefer result.deinit(alloc);
+
                 return .{
                     .pos = self.pos,
                     .condition = switch (self.condition) {
                         .opts => |opts| .{ .opts = try utils.cloneSlice(ast.Expression, opts, alloc) },
                         .@"else" => .@"else",
                     },
-                    .result = try self.result.clone(alloc),
+                    .result = result,
                 };
             }
 
@@ -145,9 +148,15 @@ pub const Expression = union(enum) {
                 self: StructInstantiation.Member,
                 alloc: std.mem.Allocator,
             ) !StructInstantiation.Member {
+                const name = try alloc.dupe(u8, self.name);
+                errdefer alloc.free(name);
+
+                const value = try self.value.clone(alloc);
+                errdefer value.deinit(alloc);
+
                 return .{
-                    .name = try alloc.dupe(u8, self.name),
-                    .value = try self.value.clone(alloc),
+                    .name = name,
+                    .value = value,
                 };
             }
 
@@ -233,34 +242,66 @@ pub const Expression = union(enum) {
                     .payload = try utils.cloneSlice(Statement, block.payload, alloc),
                 },
             },
-            .generic => |generic| .{
-                .generic = .{
-                    .pos = generic.pos,
-                    .lhs = try generic.lhs.clonePtr(alloc),
-                    .arguments = try utils.cloneSlice(ast.Expression, generic.arguments, alloc),
-                },
+            .generic => |generic| {
+                const lhs = try generic.lhs.clonePtr(alloc);
+                errdefer lhs.deinitPtr(alloc);
+
+                const arguments = try utils.cloneSlice(ast.Expression, generic.arguments, alloc);
+                errdefer utils.deinitSlice(ast.Expression, arguments, alloc);
+
+                return .{
+                    .generic = .{
+                        .pos = generic.pos,
+                        .lhs = lhs,
+                        .arguments = arguments,
+                    },
+                };
             },
-            .binary => |binary| .{
-                .binary = .{
-                    .pos = binary.pos,
-                    .lhs = try binary.lhs.clonePtr(alloc),
-                    .op = binary.op,
-                    .rhs = try binary.rhs.clonePtr(alloc),
-                },
+            .binary => |binary| {
+                const lhs = try binary.lhs.clonePtr(alloc);
+                errdefer lhs.deinitPtr(alloc);
+
+                const rhs = try binary.rhs.clonePtr(alloc);
+                errdefer rhs.deinitPtr(alloc);
+
+                return .{
+                    .binary = .{
+                        .pos = binary.pos,
+                        .lhs = lhs,
+                        .op = binary.op,
+                        .rhs = rhs,
+                    },
+                };
             },
-            .comparison => |comparison| .{
-                .comparison = .{
-                    .pos = comparison.pos,
-                    .left = try comparison.left.clonePtr(alloc),
-                    .comparisons = try utils.cloneSlice(Comparison.Item, comparison.comparisons, alloc),
-                },
+            .comparison => |comparison| {
+                const left = try comparison.left.clonePtr(alloc);
+                errdefer left.deinitPtr(alloc);
+
+                const comparisons = try utils.cloneSlice(Comparison.Item, comparison.comparisons, alloc);
+                errdefer utils.deinitSlice(Comparison.Item, comparisons, alloc);
+
+                return .{
+                    .comparison = .{
+                        .pos = comparison.pos,
+                        .left = left,
+                        .comparisons = comparisons,
+                    },
+                };
             },
-            .member => |member| .{
-                .member = .{
-                    .pos = member.pos,
-                    .parent = try member.parent.clonePtr(alloc),
-                    .member_name = try alloc.dupe(u8, member.member_name),
-                },
+            .member => |member| {
+                const parent = try member.parent.clonePtr(alloc);
+                errdefer parent.deinitPtr(alloc);
+
+                const member_name = try alloc.dupe(u8, member.member_name);
+                errdefer alloc.free(member_name);
+
+                return .{
+                    .member = .{
+                        .pos = member.pos,
+                        .parent = parent,
+                        .member_name = member_name,
+                    },
+                };
             },
             .dereference => |dereference| .{
                 .dereference = .{
@@ -268,12 +309,20 @@ pub const Expression = union(enum) {
                     .parent = try dereference.parent.clonePtr(alloc),
                 },
             },
-            .call => |call| .{
-                .call = .{
-                    .pos = call.pos,
-                    .callee = try call.callee.clonePtr(alloc),
-                    .args = try utils.cloneSlice(ast.Expression, call.args, alloc),
-                },
+            .call => |call| {
+                const callee = try call.callee.clonePtr(alloc);
+                errdefer callee.deinitPtr(alloc);
+
+                const args = try utils.cloneSlice(ast.Expression, call.args, alloc);
+                errdefer utils.deinitSlice(ast.Expression, args, alloc);
+
+                return .{
+                    .call = .{
+                        .pos = call.pos,
+                        .callee = callee,
+                        .args = args,
+                    },
+                };
             },
             .prefix => |prefix| .{
                 .prefix = .{
@@ -282,36 +331,71 @@ pub const Expression = union(enum) {
                     .rhs = try prefix.rhs.clonePtr(alloc),
                 },
             },
-            .assignment => |assignment| .{
-                .assignment = .{
-                    .pos = assignment.pos,
-                    .assignee = try assignment.assignee.clonePtr(alloc),
-                    .op = assignment.op,
-                    .value = try assignment.value.clonePtr(alloc),
-                },
+            .assignment => |assignment| {
+                const assignee = try assignment.assignee.clonePtr(alloc);
+                errdefer assignee.deinitPtr(alloc);
+
+                const value = try assignment.value.clonePtr(alloc);
+                errdefer value.deinitPtr(alloc);
+
+                return .{
+                    .assignment = .{
+                        .pos = assignment.pos,
+                        .assignee = assignee,
+                        .op = assignment.op,
+                        .value = value,
+                    },
+                };
             },
-            .struct_instantiation => |si| .{
-                .struct_instantiation = .{
-                    .pos = si.pos,
-                    .type_expr = try si.type_expr.clonePtr(alloc),
-                    .members = try utils.cloneSlice(StructInstantiation.Member, si.members, alloc),
-                },
+            .struct_instantiation => |si| {
+                const type_expr = try si.type_expr.clonePtr(alloc);
+                errdefer type_expr.deinitPtr(alloc);
+
+                const members = try utils.cloneSlice(StructInstantiation.Member, si.members, alloc);
+                errdefer utils.deinitSlice(StructInstantiation.Member, members, alloc);
+
+                return .{
+                    .struct_instantiation = .{
+                        .pos = si.pos,
+                        .type_expr = type_expr,
+                        .members = members,
+                    },
+                };
             },
-            .array_instantiation => |ai| .{
-                .array_instantiation = .{
-                    .pos = ai.pos,
-                    .length = try ai.length.clonePtr(alloc),
-                    .type = try ai.type.clone(alloc),
-                    .contents = try utils.cloneSlice(ast.Expression, ai.contents, alloc),
-                },
+            .array_instantiation => |ai| {
+                const length = try ai.length.clonePtr(alloc);
+                errdefer length.deinitPtr(alloc);
+
+                const t = try ai.type.clone(alloc);
+                errdefer t.deinitPtr(alloc);
+
+                const contents = try utils.cloneSlice(ast.Expression, ai.contents, alloc);
+                errdefer utils.deinitSlice(ast.Expression, contents, alloc);
+
+                return .{
+                    .array_instantiation = .{
+                        .pos = ai.pos,
+                        .length = length,
+                        .type = t,
+                        .contents = contents,
+                    },
+                };
             },
-            .range => |range| .{
-                .range = .{
-                    .pos = range.pos,
-                    .start = try range.start.clonePtr(alloc),
-                    .end = if (range.end) |e| try e.clonePtr(alloc) else null,
-                    .inclusive = range.inclusive,
-                },
+            .range => |range| {
+                const start = try range.start.clonePtr(alloc);
+                errdefer start.deinitPtr(alloc);
+
+                const end = if (range.end) |e| try e.clonePtr(alloc) else null;
+                errdefer if (range.end) |e| e.deinitPtr(alloc);
+
+                return .{
+                    .range = .{
+                        .pos = range.pos,
+                        .start = start,
+                        .end = end,
+                        .inclusive = range.inclusive,
+                    },
+                };
             },
             .reference => |reference| .{
                 .reference = .{
@@ -320,37 +404,78 @@ pub const Expression = union(enum) {
                     .is_mut = reference.is_mut,
                 },
             },
-            .@"if" => |@"if"| .{
-                .@"if" = .{
-                    .pos = @"if".pos,
-                    .condition = try @"if".condition.clonePtr(alloc),
-                    .capture = if (@"if".capture) |c| try c.clone(alloc) else null,
-                    .body = try @"if".body.clonePtr(alloc),
-                    .@"else" = try @"if".@"else".clonePtr(alloc),
-                },
+            .@"if" => |@"if"| {
+                const condition = try @"if".condition.clonePtr(alloc);
+                errdefer condition.deinitPtr(alloc);
+
+                const capture = if (@"if".capture) |c| try c.clone(alloc) else null;
+                errdefer if (@"if".capture) |c| c.deinit(alloc);
+
+                const body = try @"if".body.clonePtr(alloc);
+                errdefer body.deinitPtr(alloc);
+
+                const @"else" = try @"if".@"else".clonePtr(alloc);
+                errdefer @"else".deinitPtr(alloc);
+
+                return .{
+                    .@"if" = .{
+                        .pos = @"if".pos,
+                        .condition = condition,
+                        .capture = capture,
+                        .body = body,
+                        .@"else" = @"else",
+                    },
+                };
             },
-            .index => |index| .{
-                .index = .{
-                    .pos = index.pos,
-                    .lhs = try index.lhs.clonePtr(alloc),
-                    .index = try index.index.clonePtr(alloc),
-                },
+            .index => |index| {
+                const lhs = try index.lhs.clonePtr(alloc);
+                errdefer lhs.deinitPtr(alloc);
+
+                const i = try index.index.clonePtr(alloc);
+                errdefer i.deinitPtr(alloc);
+
+                return .{
+                    .index = .{
+                        .pos = index.pos,
+                        .lhs = lhs,
+                        .index = i,
+                    },
+                };
             },
-            .slice => |slice| .{
-                .slice = .{
-                    .pos = slice.pos,
-                    .lhs = try slice.lhs.clonePtr(alloc),
-                    .start = try slice.start.clonePtr(alloc),
-                    .end = if (slice.end) |e| try e.clonePtr(alloc) else null,
-                    .inclusive = slice.inclusive,
-                },
+            .slice => |slice| {
+                const lhs = try slice.lhs.clonePtr(alloc);
+                errdefer lhs.deinitPtr(alloc);
+
+                const start = try slice.start.clonePtr(alloc);
+                errdefer start.deinitPtr(alloc);
+
+                const end = if (slice.end) |e| try e.clonePtr(alloc) else null;
+                errdefer if (end) |e| e.deinitPtr(alloc);
+
+                return .{
+                    .slice = .{
+                        .pos = slice.pos,
+                        .lhs = lhs,
+                        .start = start,
+                        .end = end,
+                        .inclusive = slice.inclusive,
+                    },
+                };
             },
-            .match => |match| .{
-                .match = .{
-                    .pos = match.pos,
-                    .condition = try match.condition.clonePtr(alloc),
-                    .cases = try utils.cloneSlice(Expression.Match.Case, match.cases, alloc),
-                },
+            .match => |match| {
+                const condition = try match.condition.clonePtr(alloc);
+                errdefer condition.deinitPtr(alloc);
+
+                const cases = try utils.cloneSlice(Expression.Match.Case, match.cases, alloc);
+                errdefer utils.deinitSlice(Expression.Match.Case, cases, alloc);
+
+                return .{
+                    .match = .{
+                        .pos = match.pos,
+                        .condition = condition,
+                        .cases = cases,
+                    },
+                };
             },
             .type => |t| .{ .type = .{ .pos = t.pos, .payload = try t.payload.clone(alloc) } },
             .@"try" => |@"try"| .{
@@ -359,12 +484,20 @@ pub const Expression = union(enum) {
                     .payload = try @"try".payload.clonePtr(alloc),
                 },
             },
-            .@"catch" => |@"catch"| .{
-                .@"catch" = .{
-                    .pos = @"catch".pos,
-                    .lhs = try @"catch".lhs.clonePtr(alloc),
-                    .rhs = try @"catch".rhs.clonePtr(alloc),
-                },
+            .@"catch" => |@"catch"| {
+                const lhs = try @"catch".lhs.clonePtr(alloc);
+                errdefer lhs.deinitPtr(alloc);
+
+                const rhs = try @"catch".rhs.clonePtr(alloc);
+                errdefer rhs.deinitPtr(alloc);
+
+                return .{
+                    .@"catch" = .{
+                        .pos = @"catch".pos,
+                        .lhs = lhs,
+                        .rhs = rhs,
+                    },
+                };
             },
         };
     }

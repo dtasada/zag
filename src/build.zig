@@ -5,7 +5,9 @@ const utils = @import("utils");
 const compiler = @import("compiler");
 
 pub fn build() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{
+        .verbose_log = true,
+    }) = .{};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 

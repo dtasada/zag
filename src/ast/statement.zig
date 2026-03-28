@@ -54,13 +54,22 @@ pub const Statement = union(enum) {
         assigned_value: ast.Expression,
 
         pub fn clone(self: VariableDefinition, alloc: std.mem.Allocator) !VariableDefinition {
+            const variable_name = try alloc.dupe(u8, self.variable_name);
+            errdefer alloc.free(variable_name);
+
+            const t = if (self.type) |t| try t.clone(alloc) else null;
+            errdefer if (t) |tt| tt.deinit(alloc);
+
+            const assigned_value = try self.assigned_value.clone(alloc);
+            errdefer assigned_value.deinit(alloc);
+
             return .{
                 .pos = self.pos,
                 .is_pub = self.is_pub,
                 .binding = self.binding,
-                .variable_name = try alloc.dupe(u8, self.variable_name),
-                .type = if (self.type) |t| try t.clone(alloc) else null,
-                .assigned_value = try self.assigned_value.clone(alloc),
+                .variable_name = variable_name,
+                .type = t,
+                .assigned_value = assigned_value,
             };
         }
 
@@ -87,22 +96,47 @@ pub const Statement = union(enum) {
                     .payload = try @"defer".payload.clonePtr(alloc),
                 },
             },
-            .@"for" => |@"for"| .{
-                .@"for" = .{
-                    .pos = @"for".pos,
-                    .iterator = try @"for".iterator.clone(alloc),
-                    .capture = if (@"for".capture) |c| try c.clone(alloc) else null,
-                    .body = try @"for".body.clonePtr(alloc),
-                },
+            .@"for" => |@"for"| {
+                const iterator = try @"for".iterator.clone(alloc);
+                errdefer iterator.deinit(alloc);
+
+                const capture = if (@"for".capture) |c| try c.clone(alloc) else null;
+                errdefer if (capture) |c| c.deinit(alloc);
+
+                const body = try @"for".body.clonePtr(alloc);
+                errdefer body.deinitPtr(alloc);
+
+                return .{
+                    .@"for" = .{
+                        .pos = @"for".pos,
+                        .iterator = iterator,
+                        .capture = capture,
+                        .body = body,
+                    },
+                };
             },
-            .@"if" => |@"if"| .{
-                .@"if" = .{
-                    .pos = @"if".pos,
-                    .condition = try @"if".condition.clone(alloc),
-                    .capture = if (@"if".capture) |c| try c.clone(alloc) else null,
-                    .body = try @"if".body.clonePtr(alloc),
-                    .@"else" = if (@"if".@"else") |e| try e.clonePtr(alloc) else null,
-                },
+            .@"if" => |@"if"| {
+                const condition = try @"if".condition.clone(alloc);
+                errdefer condition.deinit(alloc);
+
+                const capture = if (@"if".capture) |c| try c.clone(alloc) else null;
+                errdefer if (capture) |c| c.deinit(alloc);
+
+                const body = try @"if".body.clonePtr(alloc);
+                errdefer body.deinitPtr(alloc);
+
+                const @"else" = if (@"if".@"else") |e| try e.clonePtr(alloc) else null;
+                errdefer if (@"else") |e| e.deinitPtr(alloc);
+
+                return .{
+                    .@"if" = .{
+                        .pos = @"if".pos,
+                        .condition = condition,
+                        .capture = capture,
+                        .body = body,
+                        .@"else" = @"else",
+                    },
+                };
             },
             .@"return" => |@"return"| .{
                 .@"return" = .{
@@ -110,13 +144,24 @@ pub const Statement = union(enum) {
                     .@"return" = if (@"return".@"return") |r| try r.clone(alloc) else null,
                 },
             },
-            .@"while" => |@"while"| .{
-                .@"while" = .{
-                    .pos = @"while".pos,
-                    .condition = try @"while".condition.clone(alloc),
-                    .capture = if (@"while".capture) |c| try c.clone(alloc) else null,
-                    .body = try @"while".body.clonePtr(alloc),
-                },
+            .@"while" => |@"while"| {
+                const condition = try @"while".condition.clone(alloc);
+                errdefer condition.deinit(alloc);
+
+                const capture = if (@"while".capture) |c| try c.clone(alloc) else null;
+                errdefer if (capture) |c| c.deinit(alloc);
+
+                const body = try @"while".body.clonePtr(alloc);
+                errdefer body.deinitPtr(alloc);
+
+                return .{
+                    .@"while" = .{
+                        .pos = @"while".pos,
+                        .condition = condition,
+                        .capture = capture,
+                        .body = body,
+                    },
+                };
             },
             .block => |block| .{
                 .block = .{

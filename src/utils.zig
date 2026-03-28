@@ -10,10 +10,16 @@ pub const Capture = struct {
     index: ?[]const u8,
 
     pub fn clone(self: Capture, alloc: std.mem.Allocator) !Capture {
+        const name = try alloc.dupe(u8, self.name);
+        errdefer alloc.free(name);
+
+        const index = if (self.index) |i| try alloc.dupe(u8, i) else null;
+        errdefer if (index) |i| alloc.free(i);
+
         return .{
-            .name = try alloc.dupe(u8, self.name),
+            .name = name,
             .takes_ref = self.takes_ref,
-            .index = if (self.index) |i| try alloc.dupe(u8, i) else null,
+            .index = index,
         };
     }
 
@@ -77,15 +83,15 @@ pub inline fn printErr(
     return err;
 }
 
-var prng: std.Random.DefaultPrng = .init(0);
-pub fn randInt(comptime T: type) T {
-    const rand = prng.random();
-    return rand.int(T);
-}
-
 pub fn cloneSlice(comptime T: type, list: []const T, alloc: std.mem.Allocator) ![]T {
     const new_list = try alloc.alloc(T, list.len);
-    for (list, 0..) |item, i| new_list[i] = try item.clone(alloc);
+    for (list, 0..) |item, i| {
+        new_list[i] = item.clone(alloc) catch |err| {
+            for (new_list[0..i]) |j| j.deinit(alloc);
+            alloc.free(new_list);
+            return err;
+        };
+    }
     return new_list;
 }
 

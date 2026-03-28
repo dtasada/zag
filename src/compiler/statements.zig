@@ -155,10 +155,15 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
         .struct_declaration => |sd| {
             if (sd.generic_types.len > 0) return;
 
+            var registered = false;
             const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
+            defer if (!registered) alloc.free(inner_name);
 
             const members = try alloc.alloc(Type.Struct.Member, sd.members.len);
+            defer if (!registered) alloc.free(members);
+
             const symbols = try alloc.alloc(Symbol, sd.methods.len);
+            defer if (!registered) alloc.free(symbols);
 
             try c.module.register(alloc, .{
                 .name = sd.name,
@@ -178,6 +183,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                 .free_type = true,
                 .free_inner_name = true,
             });
+            registered = true;
 
             try c.module.pushScope(alloc);
             defer c.module.popScope(alloc);
@@ -203,18 +209,25 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             for (sd.methods) |method| {
                 if (method.generic_parameters.len > 0) continue;
 
+                var m_registered = false;
                 const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ inner_name, method.name });
+                defer if (!m_registered) alloc.free(m_inner_name);
+
                 const method_t_ast = try method.getType(alloc);
                 defer method_t_ast.deinit(alloc);
+                const t: Type = try .fromAst(alloc, &method_t_ast, c);
+                defer if (!m_registered) t.deinit(alloc);
+
                 try c.module.register(alloc, .{
                     .name = method.name,
                     .inner_name = m_inner_name,
-                    .type = try .fromAst(alloc, &method_t_ast, c),
+                    .type = t,
                     .binding = .@"const",
                     .is_pub = method.is_pub,
                     .free_type = true,
                     .free_inner_name = true,
                 });
+                m_registered = true;
 
                 const return_t: Type = try .fromAst(alloc, &method.return_type, c);
                 defer return_t.deinit(alloc);

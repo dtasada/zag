@@ -40,13 +40,25 @@ pub const Symbol = struct {
     }
 
     pub fn clone(self: Symbol, alloc: std.mem.Allocator) !Symbol {
+        const name = try alloc.dupe(u8, self.name);
+        errdefer alloc.free(name);
+
+        const inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name;
+        errdefer if (self.free_inner_name) alloc.free(inner_name);
+
+        const t = if (self.free_type) try self.type.clone(alloc) else self.type;
+        errdefer if (self.free_type) t.deinit(alloc);
+
+        const value = if (self.value) |v| try v.clone(alloc) else null;
+        errdefer if (value) |v| v.deinit(alloc);
+
         return .{
-            .name = try alloc.dupe(u8, self.name),
-            .inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name,
-            .type = if (self.free_type) try self.type.clone(alloc) else self.type,
+            .name = name,
+            .inner_name = inner_name,
+            .type = t,
             .binding = self.binding,
             .is_pub = self.is_pub,
-            .value = if (self.value) |v| try v.clone(alloc) else null,
+            .value = value,
             .free_type = self.free_type,
             .free_inner_name = self.free_inner_name,
         };

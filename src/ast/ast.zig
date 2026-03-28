@@ -83,10 +83,16 @@ pub const VariableSignature = struct {
     type: Type,
 
     pub fn clone(self: VariableSignature, alloc: std.mem.Allocator) !VariableSignature {
+        const name = try alloc.dupe(u8, self.name);
+        errdefer alloc.free(name);
+
+        const t = try self.type.clone(alloc);
+        errdefer t.deinit(alloc);
+
         return .{
             .is_mut = self.is_mut,
-            .name = try alloc.dupe(u8, self.name),
-            .type = try self.type.clone(alloc),
+            .name = name,
+            .type = t,
         };
     }
 

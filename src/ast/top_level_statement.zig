@@ -25,20 +25,36 @@ pub const TopLevelStatement = union(enum) {
                     .pos = import.pos,
                     .module_name = b: {
                         const mn = try alloc.alloc([]const u8, import.module_name.len);
-                        for (import.module_name, 0..) |name, i| mn[i] = try alloc.dupe(u8, name);
+                        for (import.module_name, 0..) |name, i|
+                            mn[i] = alloc.dupe(u8, name) catch |err| {
+                                for (mn[0..i]) |n| alloc.free(n);
+                                alloc.free(mn);
+                                return err;
+                            };
                         break :b mn;
                     },
                     .alias = if (import.alias) |a| try alloc.dupe(u8, a) else null,
                 },
             },
-            .binding_function_declaration => |bfd| .{
-                .binding_function_declaration = .{
-                    .pos = bfd.pos,
-                    .is_pub = bfd.is_pub,
-                    .name = try alloc.dupe(u8, bfd.name),
-                    .parameters = try utils.cloneSlice(ast.VariableSignature, bfd.parameters, alloc),
-                    .return_type = try bfd.return_type.clone(alloc),
-                },
+            .binding_function_declaration => |bfd| {
+                const name = try alloc.dupe(u8, bfd.name);
+                errdefer alloc.free(name);
+
+                const parameters = try utils.cloneSlice(ast.VariableSignature, bfd.parameters, alloc);
+                errdefer utils.deinitSlice(ast.VariableSignature, parameters, alloc);
+
+                const return_type = try bfd.return_type.clone(alloc);
+                errdefer return_type.deinit(alloc);
+
+                return .{
+                    .binding_function_declaration = .{
+                        .pos = bfd.pos,
+                        .is_pub = bfd.is_pub,
+                        .name = name,
+                        .parameters = parameters,
+                        .return_type = return_type,
+                    },
+                };
             },
             .binding_type_declaration => |btd| .{
                 .binding_type_declaration = .{
@@ -64,13 +80,16 @@ pub const TopLevelStatement = union(enum) {
                 type: if (T == .@"struct") Type else ?Type,
 
                 pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
+                    const name = try alloc.dupe(u8, self.name);
+                    errdefer alloc.free(name);
+
                     return switch (T) {
                         .@"struct" => .{
-                            .name = try alloc.dupe(u8, self.name),
+                            .name = name,
                             .type = try self.type.clone(alloc),
                         },
                         .@"union" => .{
-                            .name = try alloc.dupe(u8, self.name),
+                            .name = name,
                             .type = if (self.type) |t| try t.clone(alloc) else null,
                         },
                     };
@@ -94,15 +113,33 @@ pub const TopLevelStatement = union(enum) {
             methods: []const FunctionDefinition,
 
             pub fn clone(self: *const CompoundTypeDeclaration(T), alloc: std.mem.Allocator) std.mem.Allocator.Error!CompoundTypeDeclaration(T) {
+                const name = try alloc.dupe(u8, self.name);
+                errdefer alloc.free(name);
+
+                const generic_types = try utils.cloneSlice(ast.VariableSignature, self.generic_types, alloc);
+                errdefer utils.deinitSlice(ast.ParameterGroup, generic_types, alloc);
+
+                const variables = try utils.cloneSlice(Statement.VariableDefinition, self.variables, alloc);
+                errdefer utils.deinitSlice(Statement.VariableDefinition, variables, alloc);
+
+                const subtypes = try utils.cloneSlice(Subtype, self.subtypes, alloc);
+                errdefer utils.deinitSlice(Subtype, subtypes, alloc);
+
+                const members = try utils.cloneSlice(Member, self.members, alloc);
+                errdefer utils.deinitSlice(Member, members, alloc);
+
+                const methods = try utils.cloneSlice(Statement.FunctionDefinition, self.methods, alloc);
+                errdefer utils.deinitSlice(Statement.FunctionDefinition, methods, alloc);
+
                 return .{
                     .pos = self.pos,
                     .is_pub = self.is_pub,
-                    .name = try alloc.dupe(u8, self.name),
-                    .generic_types = try utils.cloneSlice(ast.VariableSignature, self.generic_types, alloc),
-                    .variables = try utils.cloneSlice(Statement.VariableDefinition, self.variables, alloc),
-                    .subtypes = try utils.cloneSlice(Subtype, self.subtypes, alloc),
-                    .members = try utils.cloneSlice(Member, self.members, alloc),
-                    .methods = try utils.cloneSlice(Statement.FunctionDefinition, self.methods, alloc),
+                    .name = name,
+                    .generic_types = generic_types,
+                    .variables = variables,
+                    .subtypes = subtypes,
+                    .members = members,
+                    .methods = methods,
                 };
             }
 
@@ -126,9 +163,15 @@ pub const TopLevelStatement = union(enum) {
             value: ?Expression = null,
 
             pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
+                const name = try alloc.dupe(u8, self.name);
+                errdefer alloc.free(name);
+
+                const value = if (self.value) |v| try v.clone(alloc) else null;
+                errdefer if (value) |v| v.deinit(alloc);
+
                 return .{
-                    .name = try alloc.dupe(u8, self.name),
-                    .value = if (self.value) |v| try v.clone(alloc) else null,
+                    .name = name,
+                    .value = value,
                 };
             }
 
@@ -147,14 +190,29 @@ pub const TopLevelStatement = union(enum) {
         methods: []const FunctionDefinition,
 
         pub fn clone(self: *const EnumDeclaration, alloc: std.mem.Allocator) !EnumDeclaration {
+            const name = try alloc.dupe(u8, self.name);
+            errdefer alloc.free(name);
+
+            const variables = try utils.cloneSlice(Statement.VariableDefinition, self.variables, alloc);
+            errdefer utils.deinitSlice(Statement.VariableDefinition, variables, alloc);
+
+            const subtypes = try utils.cloneSlice(Subtype, self.subtypes, alloc);
+            errdefer utils.deinitSlice(Subtype, subtypes, alloc);
+
+            const members = try utils.cloneSlice(Member, self.members, alloc);
+            errdefer utils.deinitSlice(Member, members, alloc);
+
+            const methods = try utils.cloneSlice(FunctionDefinition, self.methods, alloc);
+            errdefer utils.deinitSlice(FunctionDefinition, methods, alloc);
+
             return .{
                 .pos = self.pos,
                 .is_pub = self.is_pub,
-                .name = try alloc.dupe(u8, self.name),
-                .variables = try utils.cloneSlice(Statement.VariableDefinition, self.variables, alloc),
-                .subtypes = try utils.cloneSlice(Subtype, self.subtypes, alloc),
-                .members = try utils.cloneSlice(Member, self.members, alloc),
-                .methods = try utils.cloneSlice(Statement.FunctionDefinition, self.methods, alloc),
+                .name = name,
+                .variables = variables,
+                .subtypes = subtypes,
+                .members = members,
+                .methods = methods,
             };
         }
 
@@ -249,14 +307,29 @@ pub const TopLevelStatement = union(enum) {
         }
 
         pub fn clone(self: FunctionDefinition, alloc: std.mem.Allocator) !FunctionDefinition {
+            const name = try alloc.dupe(u8, self.name);
+            errdefer alloc.free(name);
+
+            const generic_parameters = try utils.cloneSlice(ast.ParameterGroup, self.generic_parameters, alloc);
+            errdefer utils.deinitSlice(ast.ParameterGroup, generic_parameters, alloc);
+
+            const parameters = try utils.cloneSlice(ast.ParameterGroup, self.parameters, alloc);
+            errdefer utils.deinitSlice(ast.ParameterGroup, parameters, alloc);
+
+            const return_type = try self.return_type.clone(alloc);
+            errdefer return_type.deinit(alloc);
+
+            const body = try utils.cloneSlice(Statement, self.body, alloc);
+            errdefer utils.deinitSlice(Statement, body, alloc);
+
             return .{
                 .pos = self.pos,
                 .is_pub = self.is_pub,
-                .name = try alloc.dupe(u8, self.name),
-                .generic_parameters = try utils.cloneSlice(ast.VariableSignature, self.generic_parameters, alloc),
-                .parameters = try utils.cloneSlice(ast.VariableSignature, self.parameters, alloc),
-                .return_type = try self.return_type.clone(alloc),
-                .body = try utils.cloneSlice(Statement, self.body, alloc),
+                .name = name,
+                .generic_parameters = generic_parameters,
+                .parameters = parameters,
+                .return_type = return_type,
+                .body = body,
             };
         }
 

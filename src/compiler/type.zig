@@ -87,9 +87,15 @@ pub const Type = union(enum) {
                         lhs.value == rhs.value;
                 }
                 pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
+                    const name = try alloc.dupe(u8, self.name);
+                    errdefer alloc.free(name);
+
+                    const inner_name = try alloc.dupe(u8, self.inner_name);
+                    errdefer alloc.free(inner_name);
+
                     return .{
-                        .name = try alloc.dupe(u8, self.name),
-                        .inner_name = try alloc.dupe(u8, self.inner_name),
+                        .name = name,
+                        .inner_name = inner_name,
                         .value = self.value,
                     };
                 }
@@ -108,10 +114,19 @@ pub const Type = union(enum) {
                         lhs.type.eql(rhs.type);
                 }
                 pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
+                    const name = try alloc.dupe(u8, self.name);
+                    errdefer alloc.free(name);
+
+                    const inner_name = try alloc.dupe(u8, self.inner_name);
+                    errdefer alloc.free(inner_name);
+
+                    const t = try self.type.clone(alloc);
+                    errdefer t.deinit(alloc);
+
                     return .{
-                        .name = try alloc.dupe(u8, self.name),
-                        .inner_name = try alloc.dupe(u8, self.inner_name),
-                        .type = try self.type.clone(alloc),
+                        .name = name,
+                        .inner_name = inner_name,
+                        .type = t,
                     };
                 }
             };
@@ -647,23 +662,50 @@ pub const Type = union(enum) {
                     .len = array.len,
                 },
             },
-            .error_union => |eu| .{
-                .error_union = .{
-                    .failure = try eu.failure.clonePtr(alloc),
-                    .success = try eu.success.clonePtr(alloc),
-                },
+            .error_union => |eu| {
+                const failure = try eu.failure.clonePtr(alloc);
+                errdefer failure.deinitPtr(alloc);
+
+                const success = try eu.success.clonePtr(alloc);
+                errdefer success.deinitPtr(alloc);
+
+                return .{
+                    .error_union = .{
+                        .failure = failure,
+                        .success = success,
+                    },
+                };
             },
-            .function => |f| .{
-                .function = .{
-                    .parameters = try utils.cloneSlice(Type, f.parameters, alloc),
-                    .return_type = try f.return_type.clonePtr(alloc),
-                },
+            .function => |f| {
+                const parameters = try utils.cloneSlice(Type, f.parameters, alloc);
+                errdefer utils.deinitSlice(Type, parameters, alloc);
+
+                const return_type = try f.return_type.clonePtr(alloc);
+                errdefer return_type.deinitPtr(alloc);
+
+                return .{
+                    .function = .{
+                        .parameters = parameters,
+                        .return_type = return_type,
+                    },
+                };
             },
-            inline .@"struct", .@"enum", .@"union" => |ct, tag| @unionInit(Type, @tagName(tag), .{
-                .name = try alloc.dupe(u8, ct.name),
-                .members = try utils.cloneSlice(@TypeOf(ct).Member, ct.members, alloc),
-                .symbols = try utils.cloneSlice(Symbol, ct.symbols, alloc),
-            }),
+            inline .@"struct", .@"enum", .@"union" => |ct, tag| {
+                const name = try alloc.dupe(u8, ct.name);
+                errdefer alloc.free(name);
+
+                const members = try utils.cloneSlice(@TypeOf(ct).Member, ct.members, alloc);
+                errdefer utils.deinitSlice(@TypeOf(ct).Member, members, alloc);
+
+                const symbols = try utils.cloneSlice(Symbol, ct.symbols, alloc);
+                errdefer utils.deinitSlice(Symbol, symbols, alloc);
+
+                return @unionInit(Type, @tagName(tag), .{
+                    .name = name,
+                    .members = members,
+                    .symbols = symbols,
+                });
+            },
             else => self,
         };
     }

@@ -87,47 +87,90 @@ pub const Type = union(enum) {
                 .inner = try n.inner.clonePtr(alloc),
                 .is_mut = n.is_mut,
             }),
-            .array => |n| .{
-                .array = .{
-                    .pos = n.pos,
-                    .inner = try n.inner.clonePtr(alloc),
-                    .size = try n.size.clonePtr(alloc),
-                },
+            .array => |n| {
+                const inner = try n.inner.clonePtr(alloc);
+                errdefer inner.deinitPtr(alloc);
+
+                const size = try n.size.clonePtr(alloc);
+                errdefer size.deinitPtr(alloc);
+
+                return .{
+                    .array = .{
+                        .pos = n.pos,
+                        .inner = inner,
+                        .size = size,
+                    },
+                };
             },
-            .error_union => |n| .{
-                .error_union = .{
-                    .pos = n.pos,
-                    .failure = try n.failure.clonePtr(alloc),
-                    .success = try n.success.clonePtr(alloc),
-                },
+            .error_union => |n| {
+                const failure = try n.failure.clonePtr(alloc);
+                errdefer failure.deinitPtr(alloc);
+
+                const success = try n.success.clonePtr(alloc);
+                errdefer success.deinitPtr(alloc);
+
+                return .{
+                    .error_union = .{
+                        .pos = n.pos,
+                        .failure = failure,
+                        .success = success,
+                    },
+                };
             },
-            .function => |n| .{
-                .function = .{
-                    .pos = n.pos,
-                    .parameters = try utils.cloneSlice(Type, n.parameters, alloc),
-                    .generic_parameters = try utils.cloneSlice(Type, n.generic_parameters, alloc),
-                    .return_type = try n.return_type.clonePtr(alloc),
-                },
+            .function => |n| {
+                const parameters = try utils.cloneSlice(Type, n.parameters, alloc);
+                errdefer utils.deinitSlice(Type, parameters, alloc);
+
+                const generic_parameters = try utils.cloneSlice(Type, n.generic_parameters, alloc);
+                errdefer utils.deinitSlice(Type, generic_parameters, alloc);
+
+                const return_type = try n.return_type.clonePtr(alloc);
+                errdefer return_type.deinitPtr(alloc);
+
+                return .{
+                    .function = .{
+                        .pos = n.pos,
+                        .parameters = parameters,
+                        .generic_parameters = generic_parameters,
+                        .return_type = return_type,
+                    },
+                };
             },
-            .generic => |n| .{
-                .generic = .{
-                    .pos = n.pos,
-                    .lhs = try n.lhs.clonePtr(alloc),
-                    .arguments = try utils.cloneSlice(ast.Expression, n.arguments, alloc),
-                },
+            .generic => |n| {
+                const lhs = try n.lhs.clonePtr(alloc);
+                errdefer lhs.deinit(alloc);
+
+                const arguments = try utils.cloneSlice(ast.Expression, n.arguments, alloc);
+                errdefer utils.deinitSlice(ast.Expression, arguments, alloc);
+
+                return .{
+                    .generic = .{
+                        .pos = n.pos,
+                        .lhs = lhs,
+                        .arguments = arguments,
+                    },
+                };
             },
             .variadic => |n| .{ .variadic = .{ .pos = n.pos } },
-            .member => |n| .{
-                .member = .{
-                    .pos = n.pos,
-                    .parent = try n.parent.clonePtr(alloc),
-                    .member_name = try alloc.dupe(u8, n.member_name),
-                },
+            .member => |n| {
+                const parent = try n.parent.clonePtr(alloc);
+                errdefer parent.deinitPtr(alloc);
+
+                const member_name = try alloc.dupe(u8, n.member_name);
+                errdefer alloc.free(member_name);
+
+                return .{
+                    .member = .{
+                        .pos = n.pos,
+                        .parent = parent,
+                        .member_name = member_name,
+                    },
+                };
             },
         };
     }
 
-    fn deinitPtr(self: *const Type, alloc: std.mem.Allocator) void {
+    pub fn deinitPtr(self: *const Type, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
         alloc.destroy(self);
     }
