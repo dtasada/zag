@@ -155,19 +155,19 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
         .struct_declaration => |sd| {
             if (sd.generic_types.len > 0) return;
 
-            var registered = false;
-            const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
-            defer if (!registered) alloc.free(inner_name);
+            var inner_name: ?[]const u8 = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
+            defer if (inner_name) |in| alloc.free(in);
 
-            const members = try alloc.alloc(Type.Struct.Member, sd.members.len);
-            defer if (!registered) alloc.free(members);
+            var members: ?std.ArrayList(Type.Struct.Member) = try .initCapacity(alloc, sd.members.len);
+            defer if (members) |*m| utils.deinitArrayList(Type.Struct.Member, m, alloc);
 
-            const symbols = try alloc.alloc(Symbol, sd.methods.len);
-            defer if (!registered) alloc.free(symbols);
+            var symbols: ?std.ArrayList(Symbol) = try .initCapacity(alloc, sd.methods.len);
+            defer if (symbols) |*s| utils.deinitArrayList(Symbol, s, alloc);
 
-            try c.module.register(alloc, .{
+            const symbol = try alloc.create(Symbol);
+            symbol.* = .{
                 .name = sd.name,
-                .inner_name = inner_name,
+                .inner_name = inner_name.?,
                 .type = .type,
                 .binding = .@"const",
                 .is_pub = sd.is_pub,
@@ -175,62 +175,82 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                     .type = .{
                         .@"struct" = .{
                             .name = try alloc.dupe(u8, sd.name),
-                            .members = members,
-                            .symbols = symbols,
+                            .members = &.{},
+                            .symbols = &.{},
                         },
                     },
                 },
                 .free_type = true,
                 .free_inner_name = true,
-            });
-            registered = true;
+            };
+            inner_name = null;
+            try c.module.registerPtr(alloc, symbol);
 
             try c.module.pushScope(alloc);
             defer c.module.popScope(alloc);
 
             var typedef: std.ArrayList(u8) = .empty;
             defer typedef.deinit(alloc);
-            try typedef.print(alloc, "typedef struct {s} {{", .{inner_name});
-            for (sd.members, 0..) |member, i| {
+            try typedef.print(alloc, "typedef struct {s} {{", .{symbol.inner_name});
+            for (sd.members) |member| {
                 const member_t: Type = try .fromAst(alloc, &member.type, c);
-                members[i] = .{
+                try members.?.append(alloc, .{
                     .name = try alloc.dupe(u8, member.name),
                     .inner_name = try alloc.dupe(u8, member.name),
                     .type = member_t,
-                };
+                });
+                symbol.value.?.type.@"struct".members = members.?.items;
 
                 const t_comp = try c.compileType(alloc, &member_t, member.type.pos());
                 defer alloc.free(t_comp);
 
                 try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
             }
-            try typedef.print(alloc, "}} {s};\n", .{inner_name});
+            symbol.value.?.type.@"struct".members = try members.?.toOwnedSlice(alloc);
+            members = null;
+            try typedef.print(alloc, "}} {s};\n", .{symbol.inner_name});
 
             for (sd.methods) |method| {
                 if (method.generic_parameters.len > 0) continue;
 
-                var m_registered = false;
-                const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ inner_name, method.name });
-                defer if (!m_registered) alloc.free(m_inner_name);
+                var m_inner_name: ?[]const u8 = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
+                    symbol.inner_name,
+                    method.name,
+                });
+                errdefer if (m_inner_name) |min| alloc.free(min);
 
                 const method_t_ast = try method.getType(alloc);
                 defer method_t_ast.deinit(alloc);
                 const t: Type = try .fromAst(alloc, &method_t_ast, c);
-                defer if (!m_registered) t.deinit(alloc);
-
-                try c.module.register(alloc, .{
+                const m_symbol = try alloc.create(Symbol);
+                m_symbol.* = .{
                     .name = method.name,
-                    .inner_name = m_inner_name,
+                    .inner_name = m_inner_name.?,
                     .type = t,
                     .binding = .@"const",
                     .is_pub = method.is_pub,
                     .free_type = true,
                     .free_inner_name = true,
+                };
+                m_inner_name = null;
+                try c.module.registerPtr(alloc, m_symbol);
+
+                try symbols.?.append(alloc, .{
+                    .name = method.name,
+                    .inner_name = m_symbol.inner_name,
+                    .type = t,
+                    .binding = .@"const",
+                    .is_pub = method.is_pub,
+                    .free_type = false,
+                    .free_inner_name = false,
                 });
-                m_registered = true;
+                symbol.value.?.type.@"struct".symbols = symbols.?.items;
 
                 const return_t: Type = try .fromAst(alloc, &method.return_type, c);
-                defer return_t.deinit(alloc);
+                defer {
+                    std.debug.print("deinitting return type of {s}\n", .{m_symbol.inner_name});
+                    return_t.deinit(alloc);
+                }
 
                 const return_comp = try c.compileType(alloc, &return_t, method.return_type.pos());
                 defer alloc.free(return_comp);
@@ -243,17 +263,19 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
 
                 try c.header.function_decls.print(alloc, "{s} {s}{s};", .{
                     return_comp,
-                    m_inner_name,
+                    m_symbol.inner_name,
                     params_comp,
                 });
 
                 try c.source.function_impls.print(alloc, "{s} {s}{s} {s}", .{
                     return_comp,
-                    m_inner_name,
+                    m_symbol.inner_name,
                     params_comp,
                     body_comp,
                 });
             }
+            symbol.value.?.type.@"struct".symbols = try symbols.?.toOwnedSlice(alloc);
+            symbols = null;
 
             try c.header.typedefs.appendSlice(alloc, typedef.items);
         },

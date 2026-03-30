@@ -242,7 +242,10 @@ pub const Type = union(enum) {
                     return errors.typeMismatch(.bool, condition_t, c.source_map[cond.condition.pos()]);
 
                 const lhs_t = try infer(alloc, cond.body, c);
+                defer lhs_t.deinit(alloc);
+
                 const rhs_t = try infer(alloc, cond.@"else", c);
+                defer rhs_t.deinit(alloc);
 
                 const lhs_check_rhs = lhs_t.check(rhs_t);
                 const rhs_check_lhs = rhs_t.check(lhs_t);
@@ -384,8 +387,11 @@ pub const Type = union(enum) {
                 defer t.deinit(alloc);
 
                 return switch (t) {
-                    inline .@"struct", .@"union" => |ct| ct.getMemberType(member.member_name) orelse
-                        errors.unknownMember(t, member.member_name, c.source_map[member.pos]),
+                    inline .@"struct", .@"union" => |ct| {
+                        const member_t = ct.getMemberType(member.member_name) orelse
+                            return errors.unknownMember(t, member.member_name, c.source_map[member.pos]);
+                        return try member_t.clone(alloc);
+                    },
                     .@"enum" => .usize,
                     .slice => |slc| if (std.mem.eql(u8, member.member_name, "ptr")) .{
                         .reference = .{
@@ -502,6 +508,7 @@ pub const Type = union(enum) {
             .function => |f| f.deinit(alloc),
             inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
             inline .@"struct", .@"enum", .@"union" => |ct| {
+                std.debug.print("ct.name: {s}\n", .{ct.name});
                 alloc.free(ct.name);
                 utils.deinitSlice(@TypeOf(ct).Member, ct.members, alloc);
                 utils.deinitSlice(Symbol, ct.symbols, alloc);

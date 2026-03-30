@@ -140,7 +140,7 @@ pub fn compile(
                 // ensures that only idempotent lhs can be assigned.
                 try std.fmt.allocPrint(alloc, "{s} = pow({s}, {s});", .{ lhs, lhs, rhs })
             else
-                try std.fmt.allocPrint(alloc, "{s} {s} {s}];", .{ lhs, @tagName(assignment.op), rhs });
+                try std.fmt.allocPrint(alloc, "{s} {s} {s};", .{ lhs, @tagName(assignment.op), rhs });
         },
         .reference => |ref| {
             const child = try compile(alloc, ref.inner, c, .{});

@@ -11,7 +11,7 @@ const Compiler = compiler.Compiler;
 
 const Module = @This();
 
-const Scope = std.ArrayList(Symbol);
+const Scope = std.ArrayList(*Symbol);
 
 name: []const u8,
 scopes: std.ArrayList(*Scope) = .empty,
@@ -72,8 +72,8 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
     try self.registerBuiltin(alloc, "c_double", "double", .{ .type = .c_double });
 
     try self.registerBuiltin(alloc, "c_null", "NULL", .{ .type = .{ .reference = .{ .is_mut = false, .inner = try Type.clonePtr(.void, alloc) } } });
-    try self.registerBuiltin(alloc, "nil", "nil", .{ .type = .@"typeof(nil)" });
-    try self.registerBuiltin(alloc, "undefined", "undefined", .{ .type = .@"typeof(undefined)" });
+    try self.registerBuiltin(alloc, "nil", "nil", .nil);
+    try self.registerBuiltin(alloc, "undefined", "undefined", .undefined);
 
     return self;
 }
@@ -84,6 +84,12 @@ pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
 }
 
 pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
+    const symbol_ptr = try alloc.create(Symbol);
+    symbol_ptr.* = symbol;
+    try self.scopes.getLast().append(alloc, symbol_ptr);
+}
+
+pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !void {
     try self.scopes.getLast().append(alloc, symbol);
 }
 
@@ -95,12 +101,15 @@ pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
 
 pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
     const last_scope = self.scopes.pop().?;
-    for (last_scope.items) |symbol| symbol.deinit(alloc);
+    for (last_scope.items) |symbol| {
+        symbol.deinit(alloc);
+        alloc.destroy(symbol);
+    }
     last_scope.deinit(alloc);
     alloc.destroy(last_scope);
 }
 
-pub fn getSymbol(self: *const Module, name: []const u8) ?Symbol {
+pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
         for (scope.items) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol;
@@ -127,7 +136,7 @@ pub fn getExpressionMutability(
             if (t != .reference and t != .array)
                 return errors.illegalIndex(t, c.source_map[index.pos]);
 
-            const i_t: Type = try .infer(alloc, index.lhs, c);
+            const i_t: Type = try .infer(alloc, index.index, c);
             defer i_t.deinit(alloc);
             if (!i_t.isInteger())
                 return errors.illegalIndexType(i_t, c.source_map[index.pos]);
@@ -164,7 +173,7 @@ pub fn getSymbolFromExpression(
     self: *const Module,
     expr: *const ast.Expression,
 ) ?union(enum) {
-    success: Symbol,
+    success: *Symbol,
     failure: []const u8,
 } {
     return switch (expr.*) {
@@ -183,7 +192,7 @@ pub fn getSymbolFromExpression(
     };
 }
 
-pub fn findSymbolByType(self: *const Module, t: Type) ?Symbol {
+pub fn findSymbolByType(self: *const Module, t: Type) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
         for (scope.items) |symbol| {
