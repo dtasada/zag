@@ -508,7 +508,6 @@ pub const Type = union(enum) {
             .function => |f| f.deinit(alloc),
             inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
             inline .@"struct", .@"enum", .@"union" => |ct| {
-                std.debug.print("ct.name: {s}\n", .{ct.name});
                 alloc.free(ct.name);
                 utils.deinitSlice(@TypeOf(ct).Member, ct.members, alloc);
                 utils.deinitSlice(Symbol, ct.symbols, alloc);

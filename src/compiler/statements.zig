@@ -247,10 +247,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                 symbol.value.?.type.@"struct".symbols = symbols.?.items;
 
                 const return_t: Type = try .fromAst(alloc, &method.return_type, c);
-                defer {
-                    std.debug.print("deinitting return type of {s}\n", .{m_symbol.inner_name});
-                    return_t.deinit(alloc);
-                }
+                defer return_t.deinit(alloc);
 
                 const return_comp = try c.compileType(alloc, &return_t, method.return_type.pos());
                 defer alloc.free(return_comp);

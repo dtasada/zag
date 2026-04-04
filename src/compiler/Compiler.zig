@@ -40,9 +40,6 @@ pub const Symbol = struct {
     }
 
     pub fn clone(self: Symbol, alloc: std.mem.Allocator) !Symbol {
-        const name = try alloc.dupe(u8, self.name);
-        errdefer alloc.free(name);
-
         const inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name;
         errdefer if (self.free_inner_name) alloc.free(inner_name);
 
@@ -53,7 +50,7 @@ pub const Symbol = struct {
         errdefer if (value) |v| v.deinit(alloc);
 
         return .{
-            .name = name,
+            .name = self.name,
             .inner_name = inner_name,
             .type = t,
             .binding = self.binding,
