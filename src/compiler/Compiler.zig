@@ -148,11 +148,13 @@ pub const Compiler = struct {
     primitives: std.BufSet,
     module: Module,
     source_map: []const utils.Position,
+    pending_defers: std.ArrayList(ast.Statement),
 
     fn deinit(self: *Compiler, alloc: std.mem.Allocator) void {
         self.source.deinit(alloc);
         self.header.deinit(alloc);
         self.module.deinit(alloc);
+        self.pending_defers.deinit(alloc);
     }
 
     /// Caller owns memory
@@ -209,6 +211,7 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
         .module = try .init(alloc, module_name),
         .source_map = source_map,
         .primitives = .init(alloc),
+        .pending_defers = .empty,
     };
     defer compiler.deinit(alloc);
 

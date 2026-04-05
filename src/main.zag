@@ -6,7 +6,7 @@ struct Vector2 {
     x, y: f32,
 
     fn init(x, y: f32) Vector2 {
-
+        return Vector2 { x: x, y: y };
     }
 }
 
@@ -14,5 +14,5 @@ fn main() void {
     let sixnine = 69;
     printf("hello world %d, %d\n", some_global, sixnine);
 
-    // let v2 = Vector2 { x: 1, y: 2 };
+    let v2 = Vector2 { x: 1, y: 2 };
 }

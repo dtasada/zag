@@ -36,7 +36,7 @@ pub fn compile(
             return std.fmt.allocPrint(alloc, "({s}) ? {s} : {s}", .{ condition, a, b });
         },
         .block => |block| {
-            const block_comp = try statements.block(alloc, block.payload, c);
+            const block_comp = try statements.block(alloc, block.payload, c, .{});
             defer alloc.free(block_comp);
             return try std.fmt.allocPrint(alloc, "({{{s}}})", .{block_comp});
         },
@@ -326,11 +326,4 @@ pub fn compile(
         },
         else => std.debug.panic("{}", .{expr.*}),
     };
-}
-
-pub fn @"return"(alloc: std.mem.Allocator, ret: ast.Statement.Return, c: *Compiler) ![]const u8 {
-    _ = alloc;
-    _ = ret;
-    _ = c;
-    unreachable;
 }

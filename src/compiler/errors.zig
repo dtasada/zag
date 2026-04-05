@@ -14,6 +14,7 @@ pub const Error = error{
     CannotDereference,
     DoubleReturn,
     ExpressionNotCallable,
+    IllegalReturn,
     IllegalOperator,
     MissingMembers,
     TypeMismatch,
@@ -245,5 +246,13 @@ pub fn unionMemberCount(t: Type, received: usize, pos: utils.Position) Error {
         error.MissingMembers,
         "Compiler error: Instantiation of union type '{f}': union instantiation must include exactly one member, but received {} ({f}).\n",
         .{ t, received, pos },
+    );
+}
+
+pub fn illegalReturn(pos: utils.Position) Error {
+    return utils.printErr(
+        error.IllegalReturn,
+        "Compiler error: Return statement outside of function ({f}).\n",
+        .{pos},
     );
 }
