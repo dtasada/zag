@@ -17,16 +17,19 @@ pub fn compile(alloc: std.mem.Allocator, statement: ast.Statement, c: *Compiler)
         .@"for" => |cond| try conditional(alloc, .@"for", cond, c),
         .@"while" => |cond| try conditional(alloc, .@"while", cond, c),
         .@"if" => |cond| try conditional(alloc, .@"if", cond, c),
-        .@"return" => |ret| return errors.illegalReturn(c.source_map[ret.pos]),
         .expression => |*expr| {
             const expr_comp = try expressions.compile(alloc, expr, c, .{});
             defer alloc.free(expr_comp);
             return try std.fmt.allocPrint(alloc, "{s};", .{expr_comp});
         },
-        .block_eval => |*eval| try expressions.compile(alloc, eval, c, .{}),
         .block => |b| block(alloc, b.payload, c, .{}),
         .variable_definition => |vd| try variableDefinition(alloc, vd, c),
-        else => unreachable,
+        .block_eval => |eval| return errors.illegalReturn(c.source_map[eval.pos()]),
+        .@"return" => |ret| return errors.illegalReturn(c.source_map[ret.pos]),
+        .@"defer" => |def| {
+            try c.pending_defers.append(alloc, def.payload.*);
+            return alloc.dupe(u8, "");
+        },
     };
 }
 
@@ -161,12 +164,16 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             defer if (inner_name) |in| alloc.free(in);
 
             var members: ?std.ArrayList(Type.Struct.Member) = try .initCapacity(alloc, sd.members.len);
-            defer if (members) |*m| utils.deinitArrayList(Type.Struct.Member, m, alloc);
+            var symbols: ?std.ArrayList(Symbol) = std.ArrayList(Symbol).initCapacity(alloc, sd.methods.len) catch |err| {
+                members.?.deinit(alloc);
+                return err;
+            };
 
-            var symbols: ?std.ArrayList(Symbol) = try .initCapacity(alloc, sd.methods.len);
-            defer if (symbols) |*s| utils.deinitArrayList(Symbol, s, alloc);
-
-            const symbol = try alloc.create(Symbol);
+            const symbol = alloc.create(Symbol) catch |err| {
+                members.?.deinit(alloc);
+                symbols.?.deinit(alloc);
+                return err;
+            };
             symbol.* = .{
                 .name = sd.name,
                 .inner_name = inner_name.?,
@@ -177,8 +184,8 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                     .type = .{
                         .@"struct" = .{
                             .name = try alloc.dupe(u8, sd.name),
-                            .members = &.{},
-                            .symbols = &.{},
+                            .members = members.?.items,
+                            .symbols = symbols.?.items,
                         },
                     },
                 },
@@ -196,7 +203,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
             try typedef.print(alloc, "typedef struct {s} {{", .{symbol.inner_name});
             for (sd.members) |member| {
                 const member_t: Type = try .fromAst(alloc, &member.type, c);
-                try members.?.append(alloc, .{
+                members.?.appendAssumeCapacity(.{
                     .name = try alloc.dupe(u8, member.name),
                     .inner_name = try alloc.dupe(u8, member.name),
                     .type = member_t,
@@ -237,7 +244,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                 m_inner_name = null;
                 try c.module.registerPtr(alloc, m_symbol);
 
-                try symbols.?.append(alloc, try m_symbol.clone(alloc));
+                symbols.?.appendAssumeCapacity(try m_symbol.clone(alloc));
                 symbol.value.?.type.@"struct".symbols = symbols.?.items;
 
                 const return_t: Type = try .fromAst(alloc, &method.return_type, c);
@@ -249,7 +256,11 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatemen
                 const params_comp = try parameterList(alloc, method.parameters, c);
                 defer alloc.free(params_comp);
 
-                const body_comp = try block(alloc, method.body, c, .{ .return_type = return_t });
+                const body_comp = if (method.body.len == 1 and method.body[0] == .block_eval) b: {
+                    const expr_comp = try expressions.compile(alloc, &method.body[0].block_eval, c, .{ .expected_type = return_t });
+                    defer alloc.free(expr_comp);
+                    break :b try std.fmt.allocPrint(alloc, "{{ return {s}; }}", .{expr_comp});
+                } else try block(alloc, method.body, c, .{ .return_type = return_t });
                 defer alloc.free(body_comp);
 
                 try c.header.function_decls.print(alloc, "{s} {s}{s};", .{
@@ -319,26 +330,49 @@ pub fn block(
     c: *Compiler,
     opts: struct {
         return_type: ?Type = null,
+        eval_type: ?Type = null,
     },
 ) Error![]const u8 {
+    // return_type and eval_type may not both be non-null at once.
+    std.debug.assert(opts.return_type == null and opts.eval_type == null or
+        opts.return_type == null and opts.eval_type != null or
+        opts.eval_type == null and opts.return_type != null);
+
     var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
 
     try buf.append(alloc, '{');
     try c.module.pushScope(alloc);
     defer c.module.popScope(alloc);
+    var returned = false;
     for (b) |statement| switch (statement) {
         .@"return" => |r| {
             const ret_comp = try @"return"(alloc, r, c, opts.return_type orelse
                 return errors.illegalReturn(c.source_map[r.pos]));
             defer alloc.free(ret_comp);
             try buf.appendSlice(alloc, ret_comp);
+            returned = true;
+        },
+        .block_eval => |*be| {
+            const ret_comp = try expressions.compile(alloc, be, c, .{
+                .expected_type = opts.eval_type orelse
+                    return errors.illegalReturn(c.source_map[be.pos()]),
+            });
+            defer alloc.free(ret_comp);
+            try buf.print(alloc, "{s};", .{ret_comp});
+            returned = true;
+            // TODO: warn user of double returns
         },
         else => {
             const statement_comp = try compile(alloc, statement, c);
             defer alloc.free(statement_comp);
             try buf.appendSlice(alloc, statement_comp);
         },
+    };
+    if (!returned) for (c.pending_defers.items) |pd| {
+        const st = try compile(alloc, pd, c);
+        defer alloc.free(st);
+        try buf.appendSlice(alloc, st);
     };
     try buf.append(alloc, '}');
 
@@ -405,6 +439,12 @@ pub fn @"return"(
     c: *Compiler,
     expected_type: Type,
 ) ![]const u8 {
+    const received: Type = if (ret.@"return") |*r| try .infer(alloc, r, c) else .void;
+    defer received.deinit(alloc);
+
+    if (!received.check(expected_type))
+        return errors.typeMismatch(expected_type, received, c.source_map[ret.pos]);
+
     const expr_comp = if (ret.@"return") |*r|
         try expressions.compile(alloc, r, c, .{ .expected_type = expected_type })
     else
@@ -417,19 +457,22 @@ pub fn @"return"(
             std.fmt.allocPrint(alloc, "return;", .{});
 
     var block_return: std.ArrayList(u8) = .empty;
-    if (expr_comp) |_| try block_return.appendSlice(alloc, "({");
+    if (expr_comp) |_| try block_return.appendSlice(alloc, "return ({");
+    var ret_name: ?u64 = null;
     if (ret.@"return") |*r| {
         const return_type: Type = try .infer(alloc, r, c);
         defer return_type.deinit(alloc);
         const return_type_comp = try c.compileType(alloc, &return_type, r.pos());
-        try block_return.print(alloc, "{s} {s};", .{ return_type_comp, expr_comp.? });
+        defer alloc.free(return_type_comp);
+        ret_name = std.hash.Wyhash.hash(0, expr_comp.?);
+        try block_return.print(alloc, "{s} _{x} = {s};", .{ return_type_comp, ret_name.?, expr_comp.? });
     }
     for (c.pending_defers.items) |pd| {
         const st = try compile(alloc, pd, c);
         defer alloc.free(st);
         try block_return.appendSlice(alloc, st);
     }
-    if (expr_comp) |ec| try block_return.print(alloc, "{s};}})", .{ec});
+    if (ret_name) |rn| try block_return.print(alloc, "_{x};}});", .{rn});
 
     return block_return.toOwnedSlice(alloc);
 }

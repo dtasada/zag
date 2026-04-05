@@ -250,6 +250,7 @@ pub fn unionMemberCount(t: Type, received: usize, pos: utils.Position) Error {
 }
 
 pub fn illegalReturn(pos: utils.Position) Error {
+    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.IllegalReturn,
         "Compiler error: Return statement outside of function ({f}).\n",
