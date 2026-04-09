@@ -10,10 +10,7 @@
 
 ; Definitions
 
-(assignment_expression assignee: (expression (ident) @local.definition)
-
-(function_definition name: (ident) @local.definition)
-
-(parameter_list (variable_signature (ident) @local.definition))
-
-[ (ident) ] @local.reference
+; (assignment_expression assignee: (expression (ident) @local.definition)
+; (function_definition name: (ident) @local.definition)
+; (parameter_list (variable_signature (ident) @local.definition))
+; [ (ident) ] @local.reference

@@ -576,6 +576,7 @@ pub const Type = union(enum) {
         if (received.eql(expected)) return true;
 
         const fallback = switch (expected) {
+            .variadic => true,
             .optional => |inner| received.check(inner.*),
             .error_union => |error_union| received.check(error_union.success.*) or
                 received.check(error_union.failure.*),

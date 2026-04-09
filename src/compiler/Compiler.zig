@@ -155,6 +155,7 @@ pub const Compiler = struct {
         self.header.deinit(alloc);
         self.module.deinit(alloc);
         self.pending_defers.deinit(alloc);
+        self.primitives.deinit();
     }
 
     /// Caller owns memory
@@ -163,10 +164,12 @@ pub const Compiler = struct {
             .optional => |optional| {
                 const type_name = try std.fmt.allocPrint(alloc, "__zag_Optional_{x}", .{optional.hash()});
                 if (!self.primitives.contains(type_name)) {
+                    const t_comp = try self.compileType(alloc, optional, pos);
+                    defer alloc.free(t_comp);
                     try self.header.typedefs.print(
                         alloc,
                         "typedef struct {s} {{ bool is_some; {s} payload; }} {0s};",
-                        .{ type_name, try self.compileType(alloc, optional, pos) },
+                        .{ type_name, t_comp },
                     );
 
                     try self.primitives.insert(type_name);
@@ -235,9 +238,11 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     try compiler.source.includes.print(alloc, "#include <{s}>\n", .{header_path});
     try compiler.source.includes.print(alloc, "#include <stddef.h>\n", .{});
     try compiler.source.includes.print(alloc, "#include <stdint.h>\n", .{});
+    try compiler.source.includes.print(alloc, "#include <stdbool.h>\n", .{});
 
     try compiler.header.includes.print(alloc, "#include <stddef.h>\n", .{});
     try compiler.header.includes.print(alloc, "#include <stdint.h>\n", .{});
+    try compiler.header.includes.print(alloc, "#include <stdbool.h>\n", .{});
 
     for (root_node) |statement| try statements.compileTopLevel(alloc, statement, &compiler);
 

@@ -250,10 +250,33 @@ pub fn unionMemberCount(t: Type, received: usize, pos: utils.Position) Error {
 }
 
 pub fn illegalReturn(pos: utils.Position) Error {
-    std.debug.dumpCurrentStackTrace(null);
     return utils.printErr(
         error.IllegalReturn,
         "Compiler error: Return statement outside of function ({f}).\n",
+        .{pos},
+    );
+}
+
+pub fn illegalCondition(received: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Condition must be boolean or optional, received '{f}' ({f}).\n",
+        .{ received, pos },
+    );
+}
+
+pub fn illegalIndexCapture(pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Two captures in non-for statement is illegal ({f}).\n",
+        .{pos},
+    );
+}
+
+pub fn illegalCapture(pos: utils.Position) Error {
+    return utils.printErr(
+        error.TypeMismatch,
+        "Compiler error: Capturing non-optional expression in condition ({f}).\n",
         .{pos},
     );
 }

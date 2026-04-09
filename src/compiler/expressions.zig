@@ -17,6 +17,29 @@ pub fn compile(
         is_variable_decl: bool = false,
     },
 ) ![]const u8 {
+    if (opts.expected_type) |et| {
+        const received: Type = try .infer(alloc, expr, c);
+        defer received.deinit(alloc);
+
+        if (et.eql(received)) return compile(alloc, expr, c, .{ .is_variable_decl = true });
+        if (!received.check(et)) return errors.typeMismatch(et, received, c.source_map[expr.pos()]);
+
+        switch (et) {
+            .optional => {
+                const expected_comp = try c.compileType(alloc, &et, expr.pos());
+                defer alloc.free(expected_comp);
+
+                const base = try compile(alloc, expr, c, .{});
+                defer alloc.free(base);
+                return std.fmt.allocPrint(alloc, "({s}){{ .is_some = true, .payload = {s} }}", .{
+                    expected_comp,
+                    base,
+                });
+            },
+            else => return compile(alloc, expr, c, .{ .is_variable_decl = true }),
+        }
+    }
+
     return switch (expr.*) {
         .bad_node => unreachable,
         .ident => |ident| if (c.module.getSymbol(ident.payload)) |symbol|

@@ -43,10 +43,107 @@ fn conditional(
     },
     c: *Compiler,
 ) ![]const u8 {
-    _ = alloc;
-    _ = statement;
-    _ = c;
-    unreachable;
+    var buf: std.ArrayList(u8) = .empty;
+    errdefer buf.deinit(alloc);
+
+    if (tag != .@"for") {
+        const condition_t: Type = try .infer(alloc, &statement.condition, c);
+        condition_t.deinit(alloc);
+        if (condition_t != .bool and condition_t != .optional)
+            return errors.illegalCondition(condition_t, c.source_map[statement.condition.pos()]);
+
+        const condition_t_comp = try c.compileType(alloc, &condition_t, statement.condition.pos());
+        defer alloc.free(condition_t_comp);
+
+        const condition = try expressions.compile(alloc, &statement.condition, c, .{});
+        defer alloc.free(condition);
+
+        const capture: ?struct {
+            first_eval: []const u8,
+            eval_name: []const u8,
+            capture: []const u8,
+            capture_name: []const u8,
+            capture_t: Type,
+        } =
+            if (statement.capture) |capture| b: {
+                if (condition_t != .optional)
+                    return errors.illegalCapture(c.source_map[statement.pos]);
+
+                if (capture.index) |_|
+                    return errors.illegalIndexCapture(c.source_map[statement.pos]);
+
+                const capture_t: Type = if (statement.capture.?.takes_ref == .some) .{
+                    .reference = .{
+                        .inner = condition_t.optional,
+                        .is_mut = statement.capture.?.takes_ref.some,
+                    },
+                } else condition_t.optional.*;
+                const t_comp = try c.compileType(alloc, &capture_t, statement.condition.pos());
+                defer alloc.free(t_comp);
+
+                const name = try std.fmt.allocPrint(alloc, "{s}_{x}", .{
+                    capture.name,
+                    std.hash.Wyhash.hash(0, condition),
+                });
+
+                const capture_name = try std.fmt.allocPrint(alloc, "{s}_{x}_capture", .{
+                    capture.name,
+                    std.hash.Wyhash.hash(0, condition),
+                });
+                break :b .{
+                    .first_eval = try std.fmt.allocPrint(alloc, "{s} {s} = {s};", .{
+                        condition_t_comp,
+                        name,
+                        condition,
+                    }),
+                    .capture = try std.fmt.allocPrint(alloc, "{s} {s} = {s}{s}.payload;", .{
+                        t_comp,
+                        capture_name,
+                        if (statement.capture.?.takes_ref == .some) "&" else "",
+                        condition,
+                    }),
+                    .eval_name = name,
+                    .capture_name = capture_name,
+                    .capture_t = capture_t,
+                };
+            } else null;
+
+        defer if (capture) |cap| {
+            alloc.free(cap.first_eval);
+            alloc.free(cap.capture);
+            alloc.free(cap.eval_name);
+            alloc.free(cap.capture_name);
+        };
+
+        if (capture) |cap| {
+            try buf.appendSlice(alloc, cap.first_eval);
+            try buf.appendSlice(alloc, cap.capture);
+            try buf.print(alloc, "{s} ({s}.is_some)", .{ @tagName(tag), cap.eval_name });
+
+            const capture_t = try c.compileType(alloc, condition_t.optional, statement.pos);
+            defer alloc.free(capture_t);
+
+            try c.module.register(alloc, .{
+                .name = statement.capture.?.name,
+                .type = cap.capture_t,
+                .inner_name = cap.capture_name,
+                .binding = .let,
+                .free_inner_name = false,
+                .free_type = false,
+            });
+
+            const body = try block(alloc, &.{statement.body.*}, c, .{});
+            defer alloc.free(body);
+            try buf.appendSlice(alloc, body);
+        } else {
+            try buf.print(alloc, "{s} ({s})", .{ @tagName(tag), condition });
+            const body = try block(alloc, &.{statement.body.*}, c, .{});
+            defer alloc.free(body);
+            try buf.appendSlice(alloc, body);
+        }
+    } else {}
+
+    return buf.toOwnedSlice(alloc);
 }
 
 pub fn compileTopLevel(alloc: std.mem.Allocator, statement: ast.TopLevelStatement, c: *Compiler) !void {
@@ -344,24 +441,42 @@ pub fn block(
     try buf.append(alloc, '{');
     try c.module.pushScope(alloc);
     defer c.module.popScope(alloc);
-    var returned = false;
+    var returned: ?u64 = null;
     for (b) |statement| switch (statement) {
         .@"return" => |r| {
+            if (returned) |p| return errors.doubleReturn(c.source_map[p], c.source_map[r.pos]);
             const ret_comp = try @"return"(alloc, r, c, opts.return_type orelse
                 return errors.illegalReturn(c.source_map[r.pos]));
             defer alloc.free(ret_comp);
             try buf.appendSlice(alloc, ret_comp);
-            returned = true;
+            returned = r.pos;
         },
         .block_eval => |*be| {
-            const ret_comp = try expressions.compile(alloc, be, c, .{
-                .expected_type = opts.eval_type orelse
-                    return errors.illegalReturn(c.source_map[be.pos()]),
-            });
+            if (returned) |p| return errors.doubleReturn(c.source_map[p], c.source_map[be.pos()]);
+
+            const expected = opts.eval_type orelse
+                return errors.illegalReturn(c.source_map[be.pos()]);
+            const received: Type = try .infer(alloc, be, c);
+            defer received.deinit(alloc);
+
+            if (!received.check(expected))
+                return errors.typeMismatch(expected, received, c.source_map[be.pos()]);
+
+            const t_comp = try c.compileType(alloc, &expected, be.pos());
+            defer alloc.free(t_comp);
+
+            const ret_comp = try expressions.compile(alloc, be, c, .{ .expected_type = expected });
             defer alloc.free(ret_comp);
-            try buf.print(alloc, "{s};", .{ret_comp});
-            returned = true;
-            // TODO: warn user of double returns
+
+            const ret_name = std.hash.Wyhash.hash(0, ret_comp);
+            try buf.print(alloc, "{s} _{x} = {s};", .{ t_comp, ret_name, ret_comp });
+            for (c.pending_defers.items) |pd| {
+                const st = try compile(alloc, pd, c);
+                defer alloc.free(st);
+                try buf.appendSlice(alloc, st);
+            }
+            try buf.print(alloc, "_{x};", .{ret_name});
+            returned = be.pos();
         },
         else => {
             const statement_comp = try compile(alloc, statement, c);
@@ -369,7 +484,7 @@ pub fn block(
             try buf.appendSlice(alloc, statement_comp);
         },
     };
-    if (!returned) for (c.pending_defers.items) |pd| {
+    if (returned == null) for (c.pending_defers.items) |pd| {
         const st = try compile(alloc, pd, c);
         defer alloc.free(st);
         try buf.appendSlice(alloc, st);
