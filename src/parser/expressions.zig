@@ -226,7 +226,7 @@ pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
         return .{
             .type = .{
                 .pos = pos,
-                .payload = try self.type_parser.parseType(self.alloc, .primary),
+                .payload = try self.type_parser.parseType(self.alloc, self.io, .primary),
             },
         };
     }
@@ -240,7 +240,7 @@ pub fn arrayInstantiation(self: *Parser) Error!ast.Expression {
     return .{
         .array_instantiation = .{
             .pos = pos,
-            .type = try self.type_parser.parseType(self.alloc, .default),
+            .type = try self.type_parser.parseType(self.alloc, self.io, .default),
             .length = length,
             .contents = b: {
                 var contents: std.ArrayList(ast.Expression) = .empty;
@@ -513,7 +513,7 @@ pub fn @"try"(self: *Parser) Error!ast.Expression {
 
 pub fn functionType(self: *Parser) !ast.Expression {
     const pos = self.pos;
-    const type_node = try self.type_parser.parseType(self.alloc, .primary);
+    const type_node = try self.type_parser.parseType(self.alloc, self.io, .primary);
     return .{ .type = .{ .pos = pos, .payload = type_node } };
 }
 

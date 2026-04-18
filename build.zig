@@ -75,15 +75,6 @@ pub fn build(b: *std.Build) void {
 
     compiler_mod.addImport(&parser_mod);
 
-    const cli = b.dependency("cli", .{});
-    const cli_mod = cli.module("cli");
-    exe.root_module.addImport("cli", cli_mod);
-
-    const pretty = b.dependency("pretty", .{});
-    const pretty_mod = pretty.module("pretty");
-    exe.root_module.addImport("pretty", pretty_mod);
-    compiler_mod.mod.addImport("pretty", pretty_mod);
-
     const install_bin = b.step("install-bin", "Install the zag compiler to the system bin directory");
     const install_exe = b.addInstallArtifact(exe, .{});
     install_bin.dependOn(&install_exe.step);

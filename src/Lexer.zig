@@ -168,7 +168,7 @@ const Lexer = struct {
         _ = self.advance();
     }
 
-    fn parseNumber(self: *Lexer, alloc: std.mem.Allocator, start_pos: usize) !void {
+    fn parseNumber(self: *Lexer, alloc: std.mem.Allocator, io: std.Io, start_pos: usize) !void {
         // Check for 0x prefix for hex literals
         if (self.currentChar() == '0' and self.pos + 1 < self.input.len and (self.input[self.pos + 1] == 'x' or self.input[self.pos + 1] == 'X')) {
             self.advanceN(2); // consume "0x"
@@ -178,15 +178,14 @@ const Lexer = struct {
             }
 
             if (self.pos == hex_start_pos) { // "0x" with no digits
-                try self.appendToken(alloc, Token{ .bad_token = Error.BadNumber });
+                try self.appendToken(alloc, .{ .bad_token = Error.BadNumber });
                 return;
             }
 
             const number_str = self.input[hex_start_pos..self.pos];
             const value = std.fmt.parseInt(u64, number_str, 16) catch |err| {
-                utils.print("Couldn't lex hex integer: {}", .{err}, .red);
-                try self.appendToken(alloc, Token{ .bad_token = Error.BadNumber });
-                return;
+                try self.appendToken(alloc, .{ .bad_token = Error.BadNumber });
+                return utils.printErr(io, error.BadNumber, "Lexer error: Couldn't lex hex integer: {}", .{err});
             };
 
             try self.appendToken(alloc, .{ .int = value });
@@ -252,17 +251,13 @@ const Lexer = struct {
 
         try self.appendToken(alloc, if (is_float) blk: {
             break :blk .{
-                .float = std.fmt.parseFloat(f64, number_str) catch |err| {
-                    utils.print("Couldn't lex float: {}\n", .{err}, .red);
-                    break :blk .{ .bad_token = Error.BadNumber };
-                },
+                .float = std.fmt.parseFloat(f64, number_str) catch |err|
+                    return utils.printErr(io, error.BadNumber, "Lexer error: Couldn't lex float: {}\n", .{err}),
             };
         } else blk: {
             break :blk .{
-                .int = std.fmt.parseInt(u64, number_str, 10) catch |err| {
-                    utils.print("Couldn't lex integer: {}", .{err}, .red);
-                    break :blk .{ .bad_token = Error.BadNumber };
-                },
+                .int = std.fmt.parseInt(u64, number_str, 10) catch |err|
+                    return utils.printErr(io, error.BadNumber, "Lexer error: Couldn't lex float: {}\n", .{err}),
             };
         });
     }
@@ -428,12 +423,13 @@ const keywords: std.StaticStringMap(Token) = .initComptime(.{
 /// Initializes and runs tokenizer. Populates `tokens`. User owns return values.
 pub fn tokenize(
     alloc: std.mem.Allocator,
+    io: std.Io,
     file_path: []const u8,
 ) !struct {
     []Token,
     []utils.Position,
 } {
-    const input = try std.fs.cwd().readFileAlloc(alloc, file_path, 1 << 20);
+    const input = try std.Io.Dir.cwd().readFileAlloc(io, file_path, alloc, .unlimited);
     defer alloc.free(input);
 
     var self: Lexer = .{
@@ -481,19 +477,10 @@ pub fn tokenize(
             if (keyword) |_| alloc.free(word);
             try self.appendToken(alloc, keyword orelse .{ .ident = word });
         } else if (std.ascii.isDigit(self.currentChar())) {
-            try self.parseNumber(alloc, start_pos);
+            try self.parseNumber(alloc, io, start_pos);
         } else switch (self.currentChar()) {
             '+', '-', '*', '/', '%', '=', '!', '>', '<', '&', '|', '^', '.' => try self.parseBinaryOperator(alloc),
-            '(' => try self.appendAndNext(alloc, .@"("),
-            ')' => try self.appendAndNext(alloc, .@")"),
-            '[' => try self.appendAndNext(alloc, .@"["),
-            ']' => try self.appendAndNext(alloc, .@"]"),
-            '{' => try self.appendAndNext(alloc, .@"{"),
-            '}' => try self.appendAndNext(alloc, .@"}"),
-            ';' => try self.appendAndNext(alloc, .@";"),
-            ':' => try self.appendAndNext(alloc, .@":"),
-            ',' => try self.appendAndNext(alloc, .@","),
-            '?' => try self.appendAndNext(alloc, .@"?"),
+            inline '(', ')', '[', ']', '{', '}', ';', ':', ',', '?' => |c| try self.appendAndNext(alloc, @unionInit(Token, &.{c}, {})),
             '\'' => {
                 _ = self.advance();
                 try self.appendAndNext(alloc, .{ .char = self.advance() });

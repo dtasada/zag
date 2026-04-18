@@ -58,6 +58,7 @@ pub const Parser = struct {
     source_map: []utils.Position,
 
     alloc: std.mem.Allocator,
+    io: std.Io,
 
     /// Parser output: the root AST object.
     output: ast.RootNode = &.{},
@@ -111,6 +112,7 @@ pub const Parser = struct {
         actual: lexer.Token,
     ) error{UnexpectedToken} {
         return utils.printErr(
+            self.io,
             error.UnexpectedToken,
             "Unexpected token '{f}' in {s} at {f}. Expected '{s}'\n",
             .{ actual, environment, self.source_map[self.pos - 1], expected_token },
@@ -131,6 +133,7 @@ pub const Parser = struct {
         return if (std.meta.activeTag(actual) == expected)
             @field(actual, @tagName(expected))
         else if (expected == .@";") utils.printErr(
+            self.io,
             error.SyntaxError,
             "Parser error: expected semicolon after {s}, received '{f}' ({f}).\n",
             .{ context, actual, self.source_map[self.pos] },
@@ -170,6 +173,7 @@ pub const Parser = struct {
             error.HandlerDoesNotExist
         else
             return utils.printErr(
+                self.io,
                 error.HandlerDoesNotExist,
                 "Parser error: Syntax error at {f}.\n",
                 .{self.source_map[self.pos]},
@@ -208,7 +212,7 @@ pub const Parser = struct {
             try args.append(self.alloc, if (is_generic) b: {
                 const backup_pos = self.pos;
                 const current_pos = self.pos;
-                if (self.type_parser.parseType(self.alloc, .default)) |t| {
+                if (self.type_parser.parseType(self.alloc, self.io, .default)) |t| {
                     break :b .{ .type = .{ .pos = current_pos, .payload = t } };
                 } else |_| {
                     self.pos = backup_pos;
@@ -250,6 +254,7 @@ pub const Parser = struct {
 
         if (self.currentToken() == closing_token) {
             if (is_generic) return utils.printErr(
+                self.io,
                 error.UnexpectedToken,
                 "Parser error: empty generic parameter list at {f}.\n",
                 .{self.source_map[self.pos]},
@@ -285,19 +290,20 @@ pub const Parser = struct {
 
                 const param_type: ast.Type = if (is_generic and self.currentToken() == .@":") b: {
                     _ = self.advance();
-                    break :b try self.type_parser.parseType(self.alloc, .default);
+                    break :b try self.type_parser.parseType(self.alloc, self.io, .default);
                 } else if (is_generic) .{
                     .symbol = .{
                         .inner = try self.alloc.dupe(u8, "type"),
                         .pos = first_pos,
                     },
                 } else switch (self.advance()) {
-                    .@":" => try self.type_parser.parseType(self.alloc, .default),
+                    .@":" => try self.type_parser.parseType(self.alloc, self.io, .default),
                     .@"..." => b: {
                         last_arg = true;
                         break :b .{ .variadic = .{ .pos = first_pos } };
                     },
                     else => |actual| return utils.printErr(
+                        self.io,
                         error.UnexpectedToken,
                         "Unexpected token '{f}' in " ++ context ++ " at {f}. Expected a type.\n",
                         .{ actual, self.source_map[self.pos - 1] },
@@ -331,6 +337,7 @@ pub const Parser = struct {
 
         if (self.currentToken() == closing_token) {
             if (is_generic) return utils.printErr(
+                self.io,
                 error.UnexpectedToken,
                 "Parser error: empty generic parameter list at {f}.\n",
                 .{self.source_map[self.pos]},
@@ -339,7 +346,7 @@ pub const Parser = struct {
             _ = self.advance();
         } else while (true) {
             if (self.currentToken() == closing_token) break;
-            try params.append(self.alloc, try self.type_parser.parseType(self.alloc, .default));
+            try params.append(self.alloc, try self.type_parser.parseType(self.alloc, self.io, .default));
             if (self.currentToken() == .@",") _ = self.advance() else break;
         }
 
@@ -391,6 +398,7 @@ pub const Parser = struct {
 /// Parses `input` and returns an AST. Takes ownership and frees `input`, but *not* `source_map`.
 pub fn parse(
     alloc: std.mem.Allocator,
+    io: std.Io,
     input: []lexer.Token,
     source_map: []utils.Position,
 ) !ast.RootNode {
@@ -564,6 +572,7 @@ pub fn parse(
         }),
         .type_parser = try .init(&self),
         .alloc = alloc,
+        .io = io,
         .expect_semicolon = true,
     };
 

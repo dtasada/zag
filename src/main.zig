@@ -1,5 +1,4 @@
 const std = @import("std");
-const cli = @import("cli");
 const builtin = @import("builtin");
 
 const utils = @import("utils");
@@ -9,38 +8,30 @@ const Compiler = @import("Compiler");
 
 const build = @import("build.zig");
 
+const help =
+    \\Usage: zag [command]
+    \\Commands:
+    \\  build
+    \\  run
+    \\
+;
+
+const Command = enum {
+    build,
+    run,
+};
+
 /// program entry point. sets up the cli app.
-pub fn main() void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.gpa;
+    const io = init.io;
 
-    var r = try cli.AppRunner.init(alloc);
-    const app: cli.App = .{
-        .author = "Dani Tasada",
-        .version = "0.1.0",
-        .command = .{
-            .name = "zag",
-            .target = .{
-                .subcommands = &.{
-                    .{
-                        .name = "build",
-                        .description = .{ .one_line = "Build project" },
-                        .target = .{ .action = .{ .exec = build.build } },
-                    },
-                    .{
-                        .name = "run",
-                        .description = .{ .one_line = "Build and run the project" },
-                        .target = .{ .action = .{ .exec = build.run } },
-                    },
-                },
-            },
-        },
-    };
-
-    return r.run(&app) catch |err| utils.print(
-        "Error: {}.\n",
-        .{err},
-        .red,
-    );
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    if (args.len != 2) return utils.printErr(io, error.MissingCommand, help, .{});
+    const command = std.meta.stringToEnum(Command, args[1]) orelse
+        return utils.printErr(io, error.UnknownCommand, help, .{});
+    switch (command) {
+        .build => try build.build(alloc, io),
+        .run => try build.run(alloc, io),
+    }
 }

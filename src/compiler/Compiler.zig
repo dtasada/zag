@@ -159,12 +159,18 @@ pub const Compiler = struct {
     }
 
     /// Caller owns memory
-    pub fn compileType(self: *Compiler, alloc: std.mem.Allocator, t: *const Type, pos: usize) ![]const u8 {
+    pub fn compileType(
+        self: *Compiler,
+        alloc: std.mem.Allocator,
+        io: std.Io,
+        t: *const Type,
+        pos: usize,
+    ) ![]const u8 {
         return switch (t.*) {
             .optional => |optional| {
                 const type_name = try std.fmt.allocPrint(alloc, "__zag_Optional_{x}", .{optional.hash()});
                 if (!self.primitives.contains(type_name)) {
-                    const t_comp = try self.compileType(alloc, optional, pos);
+                    const t_comp = try self.compileType(alloc, io, optional, pos);
                     defer alloc.free(t_comp);
                     try self.header.typedefs.print(
                         alloc,
@@ -178,7 +184,7 @@ pub const Compiler = struct {
                 return type_name;
             },
             .reference => |ref| {
-                const inner = try self.compileType(alloc, ref.inner, pos);
+                const inner = try self.compileType(alloc, io, ref.inner, pos);
                 defer alloc.free(inner);
                 return try std.fmt.allocPrint(alloc, "{s}{s}*", .{
                     if (!ref.is_mut) "const " else "",
@@ -193,16 +199,16 @@ pub const Compiler = struct {
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else
-                errors.unknownSymbol(@tagName(tag), self.source_map[pos]),
+                errors.unknownSymbol(io, @tagName(tag), self.source_map[pos]),
         };
     }
 };
 
-pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
-    const tokens, const source_map = try lexer.tokenize(alloc, file_path);
+pub fn emit(alloc: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
+    const tokens, const source_map = try lexer.tokenize(alloc, io, file_path);
     defer alloc.free(source_map);
 
-    const root_node = try parser.parse(alloc, tokens, source_map);
+    const root_node = try parser.parse(alloc, io, tokens, source_map);
     defer utils.deinitSlice(ast.TopLevelStatement, root_node, alloc);
 
     std.debug.assert(std.mem.eql(u8, file_path[file_path.len - 4 ..], ".zag"));
@@ -218,8 +224,8 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     };
     defer compiler.deinit(alloc);
 
-    var @".zag-out" = try std.fs.cwd().makeOpenPath(".zag-out", .{});
-    defer @".zag-out".close();
+    var @".zag-out" = try std.Io.Dir.cwd().createDirPathOpen(io, ".zag-out", .{});
+    defer @".zag-out".close(io);
 
     const relative_path = if (std.mem.startsWith(u8, file_path, build_options.stdlib_path))
         try std.fmt.allocPrint(alloc, "lib/{s}", .{file_path[build_options.stdlib_path.len + 1 ..]})
@@ -233,7 +239,7 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     const header_path = try std.fmt.allocPrint(alloc, "{s}.h", .{relative_path});
     defer alloc.free(header_path);
 
-    try @".zag-out".makePath(std.fs.path.dirname(relative_path).?);
+    try @".zag-out".createDirPath(io, std.fs.path.dirname(relative_path).?);
 
     try compiler.source.includes.print(alloc, "#include <{s}>\n", .{header_path});
     try compiler.source.includes.print(alloc, "#include <stddef.h>\n", .{});
@@ -244,19 +250,19 @@ pub fn emit(alloc: std.mem.Allocator, file_path: []const u8) !void {
     try compiler.header.includes.print(alloc, "#include <stdint.h>\n", .{});
     try compiler.header.includes.print(alloc, "#include <stdbool.h>\n", .{});
 
-    for (root_node) |statement| try statements.compileTopLevel(alloc, statement, &compiler);
+    for (root_node) |statement| try statements.compileTopLevel(alloc, io, statement, &compiler);
 
     try compiler.source.includes.print(alloc, "int main() {{ {s}_main(); return 0; }}", .{module_name});
 
     var source_writer_buf: [1024]u8 = undefined;
-    var source = try @".zag-out".createFile(source_path, .{});
-    defer source.close();
-    var source_writer = source.writer(&source_writer_buf);
+    var source = try @".zag-out".createFile(io, source_path, .{});
+    defer source.close(io);
+    var source_writer = source.writer(io, &source_writer_buf);
     try compiler.source.write(&source_writer.interface);
 
     var header_writer_buf: [1024]u8 = undefined;
-    var header = try @".zag-out".createFile(header_path, .{});
-    defer header.close();
-    var header_writer = header.writer(&header_writer_buf);
+    var header = try @".zag-out".createFile(io, header_path, .{});
+    defer header.close(io);
+    var header_writer = header.writer(io, &header_writer_buf);
     try compiler.header.write(&header_writer.interface);
 }

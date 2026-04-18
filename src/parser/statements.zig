@@ -48,7 +48,7 @@ fn variableDeclarationGeneric(self: *Parser, comptime is_const: bool) Error!ast.
     errdefer if (@"type") |t| t.deinit(self.alloc);
     if (self.currentToken() == .@":") {
         _ = self.advance(); // consume @":"
-        @"type" = try self.type_parser.parseType(self.alloc, .default);
+        @"type" = try self.type_parser.parseType(self.alloc, self.io, .default);
     }
 
     try self.expect(self.advance(), .@"=", environment, "=");
@@ -217,6 +217,7 @@ pub fn @"pub"(self: *Parser) Error!ast.Statement {
     switch (self.input[self.pos]) {
         .@"enum", .@"struct", .@"union", .@"fn", .bind, .import, .let, .@"const" => {},
         else => |t| return utils.printErr(
+            self.io,
             error.UnexpectedToken,
             "Parser error: expected top level statement after 'pub', found '{f}' ({f}).\n",
             .{ t, self.source_map[self.pos] },

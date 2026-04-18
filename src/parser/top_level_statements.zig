@@ -15,6 +15,7 @@ pub fn parse(self: *Parser) Error!ast.TopLevelStatement {
         return statement_fn(self);
 
     return utils.printErr(
+        self.io,
         error.MustBeTopLevelStatement,
         "Parser error: found {s} but expected a top-level statement ({f}).\n",
         .{ @tagName(self.currentToken()), self.source_map[self.pos] },
@@ -76,6 +77,7 @@ fn compoundTypeDeclaration(
     if (self.currentToken() == .@"<") switch (T) {
         inline .@"struct", .@"union" => compound.generic_types = try self.parseGenericParameters(),
         .@"enum" => return utils.printErr(
+            self.io,
             error.UnexpectedToken,
             "Parser error: enum declaration can't have generic parameters ({f}).\n",
             .{self.source_map[self.pos]},
@@ -107,11 +109,11 @@ fn compoundTypeDeclaration(
                 const member_type: ?ast.Type = switch (T) {
                     .@"struct" => b: {
                         try self.expect(self.advance(), .@":", context, ":");
-                        break :b try self.type_parser.parseType(self.alloc, .default);
+                        break :b try self.type_parser.parseType(self.alloc, self.io, .default);
                     },
                     .@"union" => if (self.currentToken() == .@":") b: {
                         _ = self.advance();
-                        break :b try self.type_parser.parseType(self.alloc, .default);
+                        break :b try self.type_parser.parseType(self.alloc, self.io, .default);
                     } else null,
                     .@"enum" => null,
                 };
@@ -148,6 +150,7 @@ fn compoundTypeDeclaration(
             )),
             .@"pub" => _ = self.advance(),
             else => return utils.printErr(
+                self.io,
                 error.SyntaxError,
                 "Parser error: expected {s} variable definition, member declaration or method definition in {s} '{s}' ({f}).\n",
                 .{ @tagName(T), @tagName(T), name, self.source_map[self.pos] },
@@ -192,8 +195,9 @@ pub fn functionDefinition(self: *Parser) Error!ast.TopLevelStatement {
 
     const parameters = try self.parseParameters();
     errdefer utils.deinitSlice(ast.ParameterGroup, parameters, self.alloc);
-    const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
+    const return_type = self.type_parser.parseType(self.alloc, self.io, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
+            self.io,
             error.MissingReturnType,
             "Parser error: missing return type in function '{s}' at {f}.\n",
             .{ function_name, self.source_map[self.pos] },
@@ -212,6 +216,7 @@ pub fn functionDefinition(self: *Parser) Error!ast.TopLevelStatement {
             break :b block;
         },
         else => return utils.printErr(
+            self.io,
             error.UnexpectedToken,
             "Parser error: expected block after function definition type ({f}).\n",
             .{self.source_map[self.pos]},
@@ -243,8 +248,9 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.TopLevelStatement {
             const function_name = try self.expect(self.advance(), .ident, "binding function declaration", "function name");
             const parameters = try self.parseParameters();
             errdefer utils.deinitSlice(ast.ParameterGroup, parameters, self.alloc);
-            const return_type = self.type_parser.parseType(self.alloc, .default) catch |err| switch (err) {
+            const return_type = self.type_parser.parseType(self.alloc, self.io, .default) catch |err| switch (err) {
                 error.HandlerDoesNotExist => return utils.printErr(
+                    self.io,
                     error.MissingReturnType,
                     "Parser error: missing return type in function '{s}' at {f}.\n",
                     .{ function_name, self.source_map[self.pos] },
@@ -278,6 +284,7 @@ pub fn bindingDeclaration(self: *Parser) Error!ast.TopLevelStatement {
             return type_decl;
         },
         else => |other| return utils.printErr(
+            self.io,
             error.UnexpectedToken,
             "Parser error: expected function, struct, union or enum declaration after 'bind', received '{f}' ({f}).\n",
             .{ other, self.source_map[pos] },
@@ -308,6 +315,7 @@ pub fn import(self: *Parser) Error!ast.TopLevelStatement {
     };
 
     if (module.items.len == 0) return utils.printErr(
+        self.io,
         error.SyntaxError,
         "Parser error: import statement must include a module identifier ({f}).",
         .{self.source_map[self.pos]},
@@ -343,6 +351,7 @@ pub fn @"pub"(self: *Parser) Error!ast.TopLevelStatement {
     switch (self.input[self.pos]) {
         .@"enum", .@"struct", .@"union", .@"fn", .bind, .import, .let, .@"const" => {},
         else => |t| return utils.printErr(
+            self.io,
             error.UnexpectedToken,
             "Parser error: expected top level statement after 'pub', found '{f}' ({f}).\n",
             .{ t, self.source_map[self.pos] },

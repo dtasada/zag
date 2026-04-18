@@ -56,8 +56,8 @@ pub const Position = struct {
 const Color = enum { white, red, green, blue, yellow };
 
 var buf: [1024]u8 = undefined;
-pub fn print(comptime fmt: []const u8, args: anytype, comptime color: Color) void {
-    var stdout_writer = std.fs.File.stdout().writer(&buf);
+pub fn print(io: std.Io, comptime fmt: []const u8, args: anytype, comptime color: Color) void {
+    var stdout_writer = std.Io.File.stdout().writer(io, &buf);
     var stdout = &stdout_writer.interface;
 
     stdout.print(
@@ -75,11 +75,12 @@ pub fn print(comptime fmt: []const u8, args: anytype, comptime color: Color) voi
 }
 
 pub inline fn printErr(
+    io: std.Io,
     comptime err: anytype,
     comptime fmt: []const u8,
     args: anytype,
 ) @TypeOf(err) {
-    print(fmt, args, .red);
+    print(io, fmt, args, .red);
     return err;
 }
 

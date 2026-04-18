@@ -12,8 +12,8 @@ const ast = @import("ast");
 
 const Self = @This();
 
-const NudHandler = *const fn (*Self, std.mem.Allocator) Error!ast.Type;
-const LedHandler = *const fn (*Self, std.mem.Allocator, ast.Type, BindingPower) Error!ast.Type;
+const NudHandler = *const fn (*Self, std.mem.Allocator, std.Io) Error!ast.Type;
+const LedHandler = *const fn (*Self, std.mem.Allocator, std.Io, ast.Type, BindingPower) Error!ast.Type;
 
 parent_parser: *parser.Parser,
 bp_lookup: std.EnumMap(lexer.TokenKind, BindingPower),
@@ -56,17 +56,17 @@ fn getBindingPower(self: *Self, token: lexer.TokenKind) BindingPower {
     return self.bp_lookup.get(token) orelse .default;
 }
 
-pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower) Error!ast.Type {
+pub fn parseType(self: *Self, alloc: std.mem.Allocator, io: std.Io, precedence: BindingPower) Error!ast.Type {
     var token = self.parent_parser.currentToken();
     var left = if (self.nud_lookup.get(std.meta.activeTag(token))) |nud_handler|
-        try nud_handler(self, alloc)
+        try nud_handler(self, alloc, io)
     else
         return error.HandlerDoesNotExist;
 
     while (@intFromEnum(precedence) < @intFromEnum(self.getBindingPower(self.parent_parser.currentToken()))) {
         token = self.parent_parser.advance(); // consume operator
         if (self.led_lookup.get(std.meta.activeTag(token))) |led_handler| {
-            left = try led_handler(self, alloc, left, self.getBindingPower(std.meta.activeTag(token)));
+            left = try led_handler(self, alloc, io, left, self.getBindingPower(std.meta.activeTag(token)));
         } else {
             return left;
         }
@@ -75,7 +75,13 @@ pub fn parseType(self: *Self, alloc: std.mem.Allocator, precedence: BindingPower
     return left;
 }
 
-pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
+pub fn parseGenericType(
+    self: *Self,
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    lhs: ast.Type,
+    _: BindingPower,
+) Error!ast.Type {
     var depth: usize = 1;
     for (self.parent_parser.input[self.parent_parser.pos..], self.parent_parser.pos..) |*token, idx| {
         switch (token.*) {
@@ -112,7 +118,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
             const arg: ast.Expression = b: {
                 const backup_pos = self.parent_parser.pos;
                 const current_pos = self.parent_parser.pos;
-                if (self.parseType(alloc, .default)) |t|
+                if (self.parseType(alloc, io, .default)) |t|
                     break :b .{ .type = .{ .pos = current_pos, .payload = t } }
                 else |_| {
                     self.parent_parser.pos = backup_pos;
@@ -141,7 +147,7 @@ pub fn parseGenericType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _:
     };
 }
 
-pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) Error!ast.Type {
+pub fn parseSymbolType(self: *Self, _: std.mem.Allocator, _: std.Io) Error!ast.Type {
     const pos = self.parent_parser.pos;
     const ident = try self.parent_parser.expect(
         self.parent_parser.advance(),
@@ -153,7 +159,7 @@ pub fn parseSymbolType(self: *Self, _: std.mem.Allocator) Error!ast.Type {
     return .{ .symbol = .{ .inner = try self.parent_parser.alloc.dupe(u8, ident), .pos = pos } };
 }
 
-pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
+pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator, io: std.Io) Error!ast.Type {
     const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '&'
 
@@ -161,7 +167,7 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type 
     if (is_mut) _ = self.parent_parser.advance(); // consume `mut`
 
     const inner = try alloc.create(ast.Type);
-    inner.* = try parseType(self, alloc, .default);
+    inner.* = try parseType(self, alloc, io, .default);
 
     return .{
         .reference = .{
@@ -172,12 +178,12 @@ pub fn parseReferenceType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type 
     };
 }
 
-pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
+pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator, io: std.Io) Error!ast.Type {
     const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '?'
 
     const inner = try alloc.create(ast.Type);
-    inner.* = try parseType(self, alloc, .default);
+    inner.* = try parseType(self, alloc, io, .default);
 
     return .{
         .optional = .{
@@ -187,7 +193,7 @@ pub fn parseOptionalType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     };
 }
 
-pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
+pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator, io: std.Io) Error!ast.Type {
     const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume "fn" keyword
     const generic_parameters: []const ast.Type = switch (self.parent_parser.currentToken()) {
@@ -197,8 +203,9 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     };
     const parameters = try self.parent_parser.parseTypeList(false);
     const return_type = try alloc.create(ast.Type);
-    return_type.* = parseType(self, alloc, .default) catch |err| switch (err) {
+    return_type.* = parseType(self, alloc, io, .default) catch |err| switch (err) {
         error.HandlerDoesNotExist, error.UnexpectedToken => return utils.printErr(
+            io,
             error.MissingReturnType,
             "Parser error: missing return type in function type at {f}.\n",
             .{self.parent_parser.source_map[self.parent_parser.pos]},
@@ -216,14 +223,14 @@ pub fn parseFunctionType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     };
 }
 
-pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
+pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, io: std.Io, lhs: ast.Type, _: BindingPower) Error!ast.Type {
     const pos = self.parent_parser.pos;
 
     const failure = try alloc.create(ast.Type);
     failure.* = lhs;
 
     const success = try alloc.create(ast.Type);
-    success.* = try parseType(self, alloc, .default);
+    success.* = try parseType(self, alloc, io, .default);
 
     return .{
         .error_union = .{
@@ -234,7 +241,7 @@ pub fn parseErrorType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: B
     };
 }
 
-pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
+pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator, io: std.Io) Error!ast.Type {
     const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance(); // consume '['
 
@@ -256,7 +263,7 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
         null;
 
     const inner = try alloc.create(ast.Type);
-    inner.* = try self.parseType(alloc, .default);
+    inner.* = try self.parseType(alloc, io, .default);
 
     return if (size) |s| .{
         .array = .{
@@ -273,21 +280,27 @@ pub fn parseArrayType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
     };
 }
 
-pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator) Error!ast.Type {
+pub fn parseGroupType(self: *Self, alloc: std.mem.Allocator, io: std.Io) Error!ast.Type {
     try self.parent_parser.expect(self.parent_parser.advance(), .@"(", "group expression", "(");
-    const @"type" = try parseType(self, alloc, .default);
+    const @"type" = try parseType(self, alloc, io, .default);
     try self.parent_parser.expect(self.parent_parser.advance(), .@")", "group expression", ")");
 
     return @"type";
 }
 
-pub fn parseVariadic(self: *Self, _: std.mem.Allocator) Error!ast.Type {
+pub fn parseVariadic(self: *Self, _: std.mem.Allocator, _: std.Io) Error!ast.Type {
     const pos = self.parent_parser.pos;
     _ = self.parent_parser.advance();
     return .{ .variadic = .{ .pos = pos } };
 }
 
-pub fn parseMemberType(self: *Self, alloc: std.mem.Allocator, lhs: ast.Type, _: BindingPower) Error!ast.Type {
+pub fn parseMemberType(
+    self: *Self,
+    alloc: std.mem.Allocator,
+    _: std.Io,
+    lhs: ast.Type,
+    _: BindingPower,
+) Error!ast.Type {
     const pos = self.parent_parser.pos;
     const member_name = try self.parent_parser.expect(
         self.parent_parser.advance(),

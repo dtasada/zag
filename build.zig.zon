@@ -2,17 +2,8 @@
     .fingerprint = 0x9179a892ff770a2,
     .name = .zag,
     .version = "0.0.0",
-    .minimum_zig_version = "0.15.1",
-    .dependencies = .{
-        .pretty = .{
-            .url = "https://github.com/timfayz/pretty/archive/refs/heads/main.tar.gz",
-            .hash = "pretty-0.10.6-Tm65r6lPAQCBxgwzehYPeqsCXQDT9kt2ktJuO-2tRfE6",
-        },
-        .cli = .{
-            .url = "git+https://github.com/sam701/zig-cli?ref=zig-0.15#cb44aade25a3c1eddd8b6f990b50c2189442c1e2",
-            .hash = "cli-0.10.0-2eKe_5kEAQBeHqKxUHNTGnETzu81rqKWwT1WPt1jXBt0",
-        },
-    },
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

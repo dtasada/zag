@@ -10,6 +10,7 @@ const Value = compiler.Value;
 
 pub fn compile(
     alloc: std.mem.Allocator,
+    io: std.Io,
     expr: *const ast.Expression,
     c: *Compiler,
     opts: struct {
@@ -18,25 +19,25 @@ pub fn compile(
     },
 ) ![]const u8 {
     if (opts.expected_type) |et| {
-        const received: Type = try .infer(alloc, expr, c);
+        const received: Type = try .infer(alloc, io, expr, c);
         defer received.deinit(alloc);
 
-        if (et.eql(received)) return compile(alloc, expr, c, .{ .is_variable_decl = true });
-        if (!received.check(et)) return errors.typeMismatch(et, received, c.source_map[expr.pos()]);
+        if (et.eql(received)) return compile(alloc, io, expr, c, .{ .is_variable_decl = true });
+        if (!received.check(et)) return errors.typeMismatch(io, et, received, c.source_map[expr.pos()]);
 
         switch (et) {
             .optional => {
-                const expected_comp = try c.compileType(alloc, &et, expr.pos());
+                const expected_comp = try c.compileType(alloc, io, &et, expr.pos());
                 defer alloc.free(expected_comp);
 
-                const base = try compile(alloc, expr, c, .{});
+                const base = try compile(alloc, io, expr, c, .{});
                 defer alloc.free(base);
                 return std.fmt.allocPrint(alloc, "({s}){{ .is_some = true, .payload = {s} }}", .{
                     expected_comp,
                     base,
                 });
             },
-            else => return compile(alloc, expr, c, .{ .is_variable_decl = true }),
+            else => return compile(alloc, io, expr, c, .{ .is_variable_decl = true }),
         }
     }
 
@@ -45,45 +46,45 @@ pub fn compile(
         .ident => |ident| if (c.module.getSymbol(ident.payload)) |symbol|
             try alloc.dupe(u8, symbol.inner_name)
         else
-            errors.unknownSymbol(ident.payload, c.source_map[ident.pos]),
+            errors.unknownSymbol(io, ident.payload, c.source_map[ident.pos]),
         .string => |string| try std.fmt.allocPrint(alloc, "\"{s}\"", .{string.payload}),
         .char => |char| try std.fmt.allocPrint(alloc, "'{c}'", .{char.payload}),
         inline .int, .float => |number| try std.fmt.allocPrint(alloc, "{}", .{number.payload}),
         .@"if" => |cond| {
-            const condition = try compile(alloc, cond.condition, c, .{ .expected_type = .bool });
+            const condition = try compile(alloc, io, cond.condition, c, .{ .expected_type = .bool });
             defer alloc.free(condition);
-            const a = try compile(alloc, cond.body, c, .{});
+            const a = try compile(alloc, io, cond.body, c, .{});
             defer alloc.free(a);
-            const b = try compile(alloc, cond.@"else", c, .{});
+            const b = try compile(alloc, io, cond.@"else", c, .{});
             defer alloc.free(b);
             return std.fmt.allocPrint(alloc, "({s}) ? {s} : {s}", .{ condition, a, b });
         },
         .block => |block| {
-            const block_comp = try statements.block(alloc, block.payload, c, .{});
+            const block_comp = try statements.block(alloc, io, block.payload, c, .{});
             defer alloc.free(block_comp);
             return try std.fmt.allocPrint(alloc, "({{{s}}})", .{block_comp});
         },
         .array_instantiation => |inst| {
-            const inner_ast: Type = try .fromAst(alloc, &inst.type, c);
+            const inner_ast: Type = try .fromAst(alloc, io, &inst.type, c);
             defer inner_ast.deinit(alloc);
 
             var buf: std.ArrayList(u8) = .empty;
             errdefer buf.deinit(alloc);
 
             if (!opts.is_variable_decl) {
-                const inner_t = try c.compileType(alloc, &inner_ast, inst.type.pos());
+                const inner_t = try c.compileType(alloc, io, &inner_ast, inst.type.pos());
                 defer alloc.free(inner_t);
 
                 const len: Value = try .eval(inst.length, c);
                 if (len != .uint)
-                    return errors.arrayLengthMustBeInteger(len.getType(), c.source_map[inst.length.pos()]);
+                    return errors.arrayLengthMustBeInteger(io, len.getType(), c.source_map[inst.length.pos()]);
 
                 try buf.print(alloc, "({s}[{}])", .{ inner_t, len.uint });
             }
 
             try buf.append(alloc, '{');
             for (inst.contents, 0..) |*item, i| {
-                const item_comp = try compile(alloc, item, c, .{});
+                const item_comp = try compile(alloc, io, item, c, .{});
                 defer alloc.free(item_comp);
 
                 try buf.appendSlice(alloc, item_comp);
@@ -93,9 +94,9 @@ pub fn compile(
             return try buf.toOwnedSlice(alloc);
         },
         .call => |call| {
-            const lhs_t: Type = try .infer(alloc, call.callee, c);
+            const lhs_t: Type = try .infer(alloc, io, call.callee, c);
             defer lhs_t.deinit(alloc);
-            if (lhs_t != .function) return errors.expressionNotCallable(lhs_t, c.source_map[call.pos]);
+            if (lhs_t != .function) return errors.expressionNotCallable(io, lhs_t, c.source_map[call.pos]);
 
             const function_t = lhs_t.function;
 
@@ -107,28 +108,28 @@ pub fn compile(
 
             if (is_variadic) |param_index| {
                 if (call.args.len < param_index)
-                    return errors.argumentCount(function_t.parameters.len, call.args.len, c.source_map[call.pos]);
+                    return errors.argumentCount(io, function_t.parameters.len, call.args.len, c.source_map[call.pos]);
             } else if (function_t.parameters.len != call.args.len)
-                return errors.argumentCount(function_t.parameters.len, call.args.len, c.source_map[call.pos]);
+                return errors.argumentCount(io, function_t.parameters.len, call.args.len, c.source_map[call.pos]);
 
             var buf: std.ArrayList(u8) = .empty;
             errdefer buf.deinit(alloc);
 
-            const lhs = try compile(alloc, call.callee, c, .{});
+            const lhs = try compile(alloc, io, call.callee, c, .{});
             defer alloc.free(lhs);
             try buf.appendSlice(alloc, lhs);
 
             for (function_t.parameters[0 .. is_variadic orelse function_t.parameters.len], 0..) |expected, i| {
-                const received: Type = try .infer(alloc, &call.args[i], c);
+                const received: Type = try .infer(alloc, io, &call.args[i], c);
                 defer received.deinit(alloc);
 
                 if (expected != .variadic and !received.check(expected))
-                    return errors.typeMismatch(expected, received, c.source_map[call.args[i].pos()]);
+                    return errors.typeMismatch(io, expected, received, c.source_map[call.args[i].pos()]);
             }
 
             try buf.append(alloc, '(');
             for (call.args, 0..) |*arg, i| {
-                const arg_comp = try compile(alloc, arg, c, .{
+                const arg_comp = try compile(alloc, io, arg, c, .{
                     .expected_type = if (i < function_t.parameters.len) function_t.parameters[i] else null,
                 });
                 defer alloc.free(arg_comp);
@@ -140,22 +141,22 @@ pub fn compile(
             return try buf.toOwnedSlice(alloc);
         },
         .type => |t_ast| {
-            const t: Type = try .fromAst(alloc, &t_ast.payload, c);
+            const t: Type = try .fromAst(alloc, io, &t_ast.payload, c);
             defer t.deinit(alloc);
 
-            return try c.compileType(alloc, &t, t_ast.pos);
+            return try c.compileType(alloc, io, &t, t_ast.pos);
         },
         .assignment => |assignment| {
-            const expected_type: Type = try .infer(alloc, assignment.assignee, c);
+            const expected_type: Type = try .infer(alloc, io, assignment.assignee, c);
             defer expected_type.deinit(alloc);
 
-            if (!try c.module.getExpressionMutability(alloc, assignment.assignee, c))
-                return errors.assignmentOnNonMut(c.source_map[assignment.pos]);
+            if (!try c.module.getExpressionMutability(alloc, io, assignment.assignee, c))
+                return errors.assignmentOnNonMut(io, c.source_map[assignment.pos]);
 
-            const lhs = try compile(alloc, assignment.assignee, c, .{});
+            const lhs = try compile(alloc, io, assignment.assignee, c, .{});
             defer alloc.free(lhs);
 
-            const rhs = try compile(alloc, assignment.value, c, .{ .expected_type = expected_type });
+            const rhs = try compile(alloc, io, assignment.value, c, .{ .expected_type = expected_type });
             defer alloc.free(rhs);
 
             return if (assignment.op == .@"^=")
@@ -166,26 +167,26 @@ pub fn compile(
                 try std.fmt.allocPrint(alloc, "{s} {s} {s};", .{ lhs, @tagName(assignment.op), rhs });
         },
         .reference => |ref| {
-            const child = try compile(alloc, ref.inner, c, .{});
+            const child = try compile(alloc, io, ref.inner, c, .{});
             defer alloc.free(child);
             return try std.fmt.allocPrint(alloc, "&{s}", .{child});
         },
         .dereference => |deref| {
-            const parent = try compile(alloc, deref.parent, c, .{});
+            const parent = try compile(alloc, io, deref.parent, c, .{});
             defer alloc.free(parent);
             return try std.fmt.allocPrint(alloc, "*{s}", .{parent});
         },
         .member => |member| {
-            const parent_t: Type = try .infer(alloc, member.parent, c);
+            const parent_t: Type = try .infer(alloc, io, member.parent, c);
             defer parent_t.deinit(alloc);
 
-            const parent_comp = try compile(alloc, member.parent, c, .{});
+            const parent_comp = try compile(alloc, io, member.parent, c, .{});
             defer alloc.free(parent_comp);
 
             return switch (parent_t) {
                 inline .@"struct", .@"union", .@"enum" => |ct, tag| {
                     if (!ct.hasMember(member.member_name))
-                        return errors.unknownMember(parent_t, member.member_name, c.source_map[member.pos]);
+                        return errors.unknownMember(io, parent_t, member.member_name, c.source_map[member.pos]);
 
                     for (ct.members) |m| if (std.mem.eql(u8, m.name, member.member_name)) {
                         return if (tag == .@"enum")
@@ -203,36 +204,36 @@ pub fn compile(
                     std.mem.eql(u8, member.member_name, "len"))
                     std.fmt.allocPrint(alloc, "{s}.{s}", .{ parent_comp, member.member_name })
                 else
-                    errors.badMemberAccessSlice(parent_t, member.member_name, c.source_map[member.pos]),
-                else => errors.badMemberAccess(parent_t, member.member_name, c.source_map[member.pos]),
+                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.source_map[member.pos]),
+                else => errors.badMemberAccess(io, parent_t, member.member_name, c.source_map[member.pos]),
             };
         },
         .prefix => |prefix| {
-            const rhs_t: Type = try .infer(alloc, prefix.rhs, c);
+            const rhs_t: Type = try .infer(alloc, io, prefix.rhs, c);
             defer rhs_t.deinit(alloc);
 
-            if (rhs_t == .bool and prefix.op != .@"!") return errors.badBangPrefix(rhs_t, c.source_map[prefix.pos]);
+            if (rhs_t == .bool and prefix.op != .@"!") return errors.badBangPrefix(io, rhs_t, c.source_map[prefix.pos]);
             if ((rhs_t.isNumeric() or rhs_t == .reference) and prefix.op != .@"-")
-                return errors.badDashPrefix(rhs_t, c.source_map[prefix.pos]);
+                return errors.badDashPrefix(io, rhs_t, c.source_map[prefix.pos]);
 
-            const rhs_comp = try compile(alloc, prefix.rhs, c, .{});
+            const rhs_comp = try compile(alloc, io, prefix.rhs, c, .{});
             defer alloc.free(rhs_comp);
 
             return std.fmt.allocPrint(alloc, "{s}{s}", .{ @tagName(prefix.op), rhs_comp });
         },
         .index => |index| {
-            const lhs_t: Type = try .infer(alloc, index.lhs, c);
+            const lhs_t: Type = try .infer(alloc, io, index.lhs, c);
             defer lhs_t.deinit(alloc);
-            if (lhs_t != .slice and lhs_t != .array) return errors.illegalIndex(lhs_t, c.source_map[index.pos]);
+            if (lhs_t != .slice and lhs_t != .array) return errors.illegalIndex(io, lhs_t, c.source_map[index.pos]);
 
-            const index_t: Type = try .infer(alloc, index.index, c);
+            const index_t: Type = try .infer(alloc, io, index.index, c);
             defer index_t.deinit(alloc);
-            if (!index_t.isInteger()) return errors.illegalIndexType(index_t, c.source_map[index.index.pos()]);
+            if (!index_t.isInteger()) return errors.illegalIndexType(io, index_t, c.source_map[index.index.pos()]);
 
-            const lhs_comp = try compile(alloc, index.lhs, c, .{});
+            const lhs_comp = try compile(alloc, io, index.lhs, c, .{});
             defer alloc.free(lhs_comp);
 
-            const index_comp = try compile(alloc, index.index, c, .{});
+            const index_comp = try compile(alloc, io, index.index, c, .{});
             defer alloc.free(index_comp);
 
             return try std.fmt.allocPrint(alloc, "{s}{s}[{s}]", .{
@@ -242,27 +243,27 @@ pub fn compile(
             });
         },
         .binary => |binary| {
-            const lhs_t: Type = try .infer(alloc, binary.lhs, c);
+            const lhs_t: Type = try .infer(alloc, io, binary.lhs, c);
             defer lhs_t.deinit(alloc);
 
-            const rhs_t: Type = try .infer(alloc, binary.rhs, c);
+            const rhs_t: Type = try .infer(alloc, io, binary.rhs, c);
             defer rhs_t.deinit(alloc);
 
             if (!lhs_t.eql(rhs_t))
-                return errors.typeMismatchBinExpr(lhs_t, rhs_t, binary.op, c.source_map[binary.pos]);
+                return errors.typeMismatchBinExpr(io, lhs_t, rhs_t, binary.op, c.source_map[binary.pos]);
 
             if (lhs_t.isNumeric() and
                 (binary.op == .@"and" or binary.op == .@"or" or binary.op == .but))
-                return errors.booleanOperatorUsedOnNumerical(lhs_t, binary.op, c.source_map[binary.pos]);
+                return errors.booleanOperatorUsedOnNumerical(io, lhs_t, binary.op, c.source_map[binary.pos]);
 
             if (lhs_t == .bool and
                 (binary.op != .@"and" and binary.op != .@"or" and binary.op != .but))
-                return errors.numericalOperatorUsedOnBoolean(lhs_t, binary.op, c.source_map[binary.pos]);
+                return errors.numericalOperatorUsedOnBoolean(io, lhs_t, binary.op, c.source_map[binary.pos]);
 
-            const lhs_comp = try compile(alloc, binary.lhs, c, .{});
+            const lhs_comp = try compile(alloc, io, binary.lhs, c, .{});
             defer alloc.free(lhs_comp);
 
-            const rhs_comp = try compile(alloc, binary.rhs, c, .{});
+            const rhs_comp = try compile(alloc, io, binary.rhs, c, .{});
             defer alloc.free(rhs_comp);
 
             return if (binary.op == .@"^")
@@ -271,24 +272,24 @@ pub fn compile(
                 try std.fmt.allocPrint(alloc, "{s} {s} {s}", .{ lhs_comp, @tagName(binary.op), rhs_comp });
         },
         .struct_instantiation => |si| {
-            const t: Type = try .infer(alloc, si.type_expr, c);
+            const t: Type = try .infer(alloc, io, si.type_expr, c);
             defer t.deinit(alloc);
-            if (t != .type) return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+            if (t != .type) return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
 
             const result = c.module.getSymbolFromExpression(si.type_expr) orelse
-                return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+                return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
 
             const symbol = if (result == .success)
                 result.success
             else
-                return errors.unknownSymbol(result.failure, c.source_map[si.type_expr.pos()]);
+                return errors.unknownSymbol(io, result.failure, c.source_map[si.type_expr.pos()]);
 
             if (symbol.value == null or symbol.value.? != .type or
                 (symbol.value.?.type != .@"struct" and
                     symbol.value.?.type != .@"union"))
             {
                 std.debug.print("symbol.value: {any}\n", .{symbol.value});
-                return errors.exprIsNotStruct(t, c.source_map[si.pos]);
+                return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
             }
 
             const si_t = symbol.value.?.type;
@@ -306,7 +307,7 @@ pub fn compile(
                     try missing.append(alloc, m.name);
 
                 if (missing.items.len > 0)
-                    return errors.missingStructMembers(si_t, missing.items, c.source_map[si.pos]);
+                    return errors.missingStructMembers(io, si_t, missing.items, c.source_map[si.pos]);
 
                 // check for extraneous members
                 var expected: std.BufSet = .init(alloc);
@@ -321,13 +322,13 @@ pub fn compile(
                     try extraneous.append(alloc, m.name);
 
                 if (extraneous.items.len > 0)
-                    return errors.extraneousStructMembers(si_t, extraneous.items, c.source_map[si.pos]);
-            } else if (si.members.len != 1) return errors.unionMemberCount(si_t, si.members.len, c.source_map[si.pos]);
+                    return errors.extraneousStructMembers(io, si_t, extraneous.items, c.source_map[si.pos]);
+            } else if (si.members.len != 1) return errors.unionMemberCount(io, si_t, si.members.len, c.source_map[si.pos]);
 
             var ret: std.ArrayList(u8) = .empty;
             errdefer ret.deinit(alloc);
 
-            const t_comp = try c.compileType(alloc, &si_t, si.type_expr.pos());
+            const t_comp = try c.compileType(alloc, io, &si_t, si.type_expr.pos());
             defer alloc.free(t_comp);
 
             try ret.print(alloc, "({s}){{", .{t_comp});
@@ -336,7 +337,7 @@ pub fn compile(
                     inline .@"struct", .@"union" => |ct| ct.getMemberType(member.name).?,
                     else => unreachable,
                 };
-                const expr_comp = try compile(alloc, &member.value, c, .{
+                const expr_comp = try compile(alloc, io, &member.value, c, .{
                     .is_variable_decl = true,
                     .expected_type = expected,
                 });

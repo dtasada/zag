@@ -121,6 +121,7 @@ pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
 pub fn getExpressionMutability(
     self: *const Module,
     alloc: std.mem.Allocator,
+    io: std.Io,
     expr: *const ast.Expression,
     c: *Compiler,
 ) errors.Error!bool {
@@ -131,38 +132,38 @@ pub fn getExpressionMutability(
                 (symbol.type == .slice and symbol.type.slice.is_mut);
         },
         .index => |index| {
-            const t: Type = try .infer(alloc, index.lhs, c);
+            const t: Type = try .infer(alloc, io, index.lhs, c);
             defer t.deinit(alloc);
             if (t != .reference and t != .array)
-                return errors.illegalIndex(t, c.source_map[index.pos]);
+                return errors.illegalIndex(io, t, c.source_map[index.pos]);
 
-            const i_t: Type = try .infer(alloc, index.index, c);
+            const i_t: Type = try .infer(alloc, io, index.index, c);
             defer i_t.deinit(alloc);
             if (!i_t.isInteger())
-                return errors.illegalIndexType(i_t, c.source_map[index.pos]);
+                return errors.illegalIndexType(io, i_t, c.source_map[index.pos]);
 
-            return try self.getExpressionMutability(alloc, index.lhs, c);
+            return try self.getExpressionMutability(alloc, io, index.lhs, c);
         },
         .dereference => |deref| {
-            const t: Type = try .infer(alloc, deref.parent, c);
+            const t: Type = try .infer(alloc, io, deref.parent, c);
             defer t.deinit(alloc);
-            if (t != .reference) return errors.derefNonPtr(t, c.source_map[deref.pos]);
+            if (t != .reference) return errors.derefNonPtr(io, t, c.source_map[deref.pos]);
 
             return t.reference.is_mut;
         },
         .member => |member| {
-            const parent_t: Type = try .infer(alloc, member.parent, c);
+            const parent_t: Type = try .infer(alloc, io, member.parent, c);
             defer parent_t.deinit(alloc);
 
             return switch (parent_t) {
-                inline .@"struct", .@"union" => try self.getExpressionMutability(alloc, member.parent, c),
+                inline .@"struct", .@"union" => try self.getExpressionMutability(alloc, io, member.parent, c),
                 .@"enum" => false,
                 .slice => if (std.mem.eql(u8, member.member_name, "ptr") or
                     std.mem.eql(u8, member.member_name, "len"))
                     true
                 else
-                    errors.badMemberAccessSlice(parent_t, member.member_name, c.source_map[member.pos]),
-                else => errors.badMemberAccess(parent_t, member.member_name, c.source_map[member.pos]),
+                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.source_map[member.pos]),
+                else => errors.badMemberAccess(io, parent_t, member.member_name, c.source_map[member.pos]),
             };
         },
         else => false,
