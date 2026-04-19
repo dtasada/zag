@@ -459,19 +459,52 @@ pub fn block(
     try buf.append(alloc, '{');
     try c.module.pushScope(alloc);
     defer c.module.popScope(alloc);
-    var returned: ?u64 = null;
+    var returned: union(enum) {
+        yes: ast.Statement.Return,
+        block_eval: ast.Expression,
+        no,
+        @"continue",
+        @"break",
+    } = .no;
     for (b) |statement| switch (statement) {
         .@"return" => |r| {
-            if (returned) |p| return errors.doubleReturn(io, c.source_map[p], c.source_map[r.pos]);
+            if (returned == .yes)
+                return errors.doubleReturn(io, c.source_map[returned.yes.pos], c.source_map[r.pos]);
+            if (returned == .block_eval)
+                return errors.doubleReturn(io, c.source_map[returned.block_eval.pos()], c.source_map[r.pos]);
+            returned = .{ .yes = r };
+        },
+        .block_eval => |be| {
+            if (returned == .yes)
+                return errors.doubleReturn(io, c.source_map[returned.yes.pos], c.source_map[be.pos()]);
+            if (returned == .block_eval)
+                return errors.doubleReturn(io, c.source_map[returned.block_eval.pos()], c.source_map[be.pos()]);
+
+            if (try Type.infer(alloc, io, &be, c) != .void) {
+                returned = .{ .block_eval = be };
+            } else {
+                const statement_comp = try compile(alloc, io, statement, c);
+                defer alloc.free(statement_comp);
+                try buf.appendSlice(alloc, statement_comp);
+            }
+        },
+        .@"continue" => returned = .@"continue",
+        .@"break" => returned = .@"break",
+        else => {
+            const statement_comp = try compile(alloc, io, statement, c);
+            defer alloc.free(statement_comp);
+            try buf.appendSlice(alloc, statement_comp);
+        },
+    };
+
+    switch (returned) {
+        .yes => |r| {
             const ret_comp = try @"return"(alloc, io, r, c, opts.return_type orelse
                 return errors.illegalReturn(io, c.source_map[r.pos]));
             defer alloc.free(ret_comp);
             try buf.appendSlice(alloc, ret_comp);
-            returned = r.pos;
         },
         .block_eval => |*be| {
-            if (returned) |p| return errors.doubleReturn(io, c.source_map[p], c.source_map[be.pos()]);
-
             const expected = opts.eval_type orelse
                 return errors.illegalReturn(io, c.source_map[be.pos()]);
             const received: Type = try .infer(alloc, io, be, c);
@@ -493,20 +526,23 @@ pub fn block(
                 defer alloc.free(st);
                 try buf.appendSlice(alloc, st);
             }
-            try buf.print(alloc, "_{x};", .{ret_name});
-            returned = be.pos();
+            try buf.print(alloc, "return _{x};", .{ret_name});
         },
-        else => {
-            const statement_comp = try compile(alloc, io, statement, c);
-            defer alloc.free(statement_comp);
-            try buf.appendSlice(alloc, statement_comp);
+        .no => for (c.pending_defers.items) |pd| {
+            const st = try compile(alloc, io, pd, c);
+            defer alloc.free(st);
+            try buf.appendSlice(alloc, st);
         },
-    };
-    if (returned == null) for (c.pending_defers.items) |pd| {
-        const st = try compile(alloc, io, pd, c);
-        defer alloc.free(st);
-        try buf.appendSlice(alloc, st);
-    };
+        inline .@"break", .@"continue" => |_, t| {
+            for (c.pending_defers.items) |pd| {
+                const st = try compile(alloc, io, pd, c);
+                defer alloc.free(st);
+                try buf.appendSlice(alloc, st);
+            }
+            try buf.appendSlice(alloc, @tagName(t));
+        },
+    }
+
     try buf.append(alloc, '}');
 
     return try buf.toOwnedSlice(alloc);

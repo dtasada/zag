@@ -108,13 +108,15 @@ pub fn compile(alloc: std.mem.Allocator, io: std.Io) !void {
     utils.print(io, "\n", .{}, .white);
 
     const cc = try std.process.run(alloc, io, .{ .argv = cmd_args });
+    defer alloc.free(cc.stdout);
+    defer alloc.free(cc.stderr);
     if (cc.stdout.len != 0) utils.print(io, "C compiler output:\n{s}\n", .{cc.stdout}, .white);
     if (cc.stderr.len != 0) utils.print(io, "C compiler error output:\n{s}\n", .{cc.stderr}, .red);
 
     return checkResult(io, error.CompilationError, cc.term);
 }
 
-pub fn run(alloc: std.mem.Allocator, io: std.Io) anyerror!void {
+pub fn run(alloc: std.mem.Allocator, io: std.Io) !void {
     build(alloc, io) catch |err| {
         utils.print(io, "Build failed: {}\n", .{err}, .red);
         return err;
@@ -126,6 +128,8 @@ pub fn run(alloc: std.mem.Allocator, io: std.Io) anyerror!void {
     utils.print(io, "{s}\n", .{exec_path}, .white);
 
     const main = try std.process.run(alloc, io, .{ .argv = &.{exec_path} });
+    defer alloc.free(main.stdout);
+    defer alloc.free(main.stderr);
     if (main.stdout.len != 0) utils.print(io, "{s}{s}", .{ main.stdout, if (main.stdout[main.stdout.len - 1] == '\n') "" else "\n" }, .white);
     if (main.stderr.len != 0) utils.print(io, "{s}{s}", .{ main.stderr, if (main.stdout[main.stdout.len - 1] == '\n') "" else "\n" }, .red);
 
