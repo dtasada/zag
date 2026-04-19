@@ -11,7 +11,10 @@ const Compiler = compiler.Compiler;
 
 const Module = @This();
 
-const Scope = std.ArrayList(*Symbol);
+const Scope = struct {
+    symbols: std.ArrayList(*Symbol),
+    defers: std.ArrayList(ast.Statement),
+};
 
 name: []const u8,
 scopes: std.ArrayList(*Scope) = .empty,
@@ -79,40 +82,42 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
 }
 
 pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
-    for (0..self.scopes.items.len) |_| self.popScope(alloc);
+    for (self.scopes.items) |_| self.popScope(alloc);
     self.scopes.deinit(alloc);
 }
 
 pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
     const symbol_ptr = try alloc.create(Symbol);
     symbol_ptr.* = symbol;
-    try self.scopes.getLast().append(alloc, symbol_ptr);
+    try self.scopes.getLast().symbols.append(alloc, symbol_ptr);
 }
 
 pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !void {
-    try self.scopes.getLast().append(alloc, symbol);
+    try self.scopes.getLast().symbols.append(alloc, symbol);
 }
 
 pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
     const new_scope = try alloc.create(Scope);
-    new_scope.* = .empty;
+    new_scope.defers = .empty;
+    new_scope.symbols = .empty;
     try self.scopes.append(alloc, new_scope);
 }
 
 pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
     const last_scope = self.scopes.pop().?;
-    for (last_scope.items) |symbol| {
+    for (last_scope.symbols.items) |symbol| {
         symbol.deinit(alloc);
         alloc.destroy(symbol);
     }
-    last_scope.deinit(alloc);
+    last_scope.symbols.deinit(alloc);
+    last_scope.defers.deinit(alloc);
     alloc.destroy(last_scope);
 }
 
 pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
-        for (scope.items) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol;
+        for (scope.symbols.items) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol;
     }
 
     return null;
@@ -196,7 +201,7 @@ pub fn getSymbolFromExpression(
 pub fn findSymbolByType(self: *const Module, t: Type) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
-        for (scope.items) |symbol| {
+        for (scope.symbols.items) |symbol| {
             if (symbol.type == .type and
                 symbol.value != null and
                 symbol.value.? == .type and

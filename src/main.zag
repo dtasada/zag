@@ -10,8 +10,8 @@ struct Vector2 {
 
 fn main() void {
     let sixnine = 69;
-    printf("hello world %d, %d\n", some_global, sixnine);
     defer printf("hello again\n");
+    printf("hello world %d, %d\n", some_global, sixnine);
 
     let v2 = Vector2 { x: 1, y: 2 };
 

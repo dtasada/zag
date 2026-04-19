@@ -36,7 +36,7 @@ pub fn compile(
         .block_eval => |eval| return errors.illegalReturn(io, c.source_map[eval.pos()]),
         .@"return" => |ret| return errors.illegalReturn(io, c.source_map[ret.pos]),
         .@"defer" => |def| {
-            try c.pending_defers.append(alloc, def.payload.*);
+            try c.module.scopes.getLast().defers.append(alloc, def.payload.*);
             return alloc.dupe(u8, "");
         },
     };
@@ -521,21 +521,24 @@ pub fn block(
 
             const ret_name = std.hash.Wyhash.hash(0, ret_comp);
             try buf.print(alloc, "{s} _{x} = {s};", .{ t_comp, ret_name, ret_comp });
-            for (c.pending_defers.items) |pd| {
-                const st = try compile(alloc, io, pd, c);
-                defer alloc.free(st);
-                try buf.appendSlice(alloc, st);
+            for (1..c.module.scopes.items.len + 1) |j| {
+                const scope = c.module.scopes.items[c.module.scopes.items.len - j];
+                for (scope.defers.items) |d| {
+                    const st = try compile(alloc, io, d, c);
+                    defer alloc.free(st);
+                    try buf.appendSlice(alloc, st);
+                }
             }
             try buf.print(alloc, "return _{x};", .{ret_name});
         },
-        .no => for (c.pending_defers.items) |pd| {
-            const st = try compile(alloc, io, pd, c);
+        .no => for (c.module.scopes.getLast().defers.items) |d| {
+            const st = try compile(alloc, io, d, c);
             defer alloc.free(st);
             try buf.appendSlice(alloc, st);
         },
         inline .@"break", .@"continue" => |_, t| {
-            for (c.pending_defers.items) |pd| {
-                const st = try compile(alloc, io, pd, c);
+            for (c.module.scopes.getLast().defers.items) |d| {
+                const st = try compile(alloc, io, d, c);
                 defer alloc.free(st);
                 try buf.appendSlice(alloc, st);
             }
@@ -625,11 +628,6 @@ pub fn @"return"(
     else
         null;
     defer if (expr_comp) |ec| alloc.free(ec);
-    if (c.pending_defers.items.len == 0)
-        return if (expr_comp) |ec|
-            std.fmt.allocPrint(alloc, "return {s};", .{ec})
-        else
-            std.fmt.allocPrint(alloc, "return;", .{});
 
     var block_return: std.ArrayList(u8) = .empty;
     if (expr_comp) |_| try block_return.appendSlice(alloc, "return ({");
@@ -642,10 +640,13 @@ pub fn @"return"(
         ret_name = std.hash.Wyhash.hash(0, expr_comp.?);
         try block_return.print(alloc, "{s} _{x} = {s};", .{ return_type_comp, ret_name.?, expr_comp.? });
     }
-    for (c.pending_defers.items) |pd| {
-        const st = try compile(alloc, io, pd, c);
-        defer alloc.free(st);
-        try block_return.appendSlice(alloc, st);
+    for (1..c.module.scopes.items.len + 1) |j| {
+        const scope = c.module.scopes.items[c.module.scopes.items.len - j];
+        for (scope.defers.items) |d| {
+            const st = try compile(alloc, io, d, c);
+            defer alloc.free(st);
+            try block_return.appendSlice(alloc, st);
+        }
     }
     if (ret_name) |rn| try block_return.print(alloc, "_{x};}});", .{rn});
 
