@@ -16,6 +16,7 @@ pub const Type = union(enum) {
     bool,
     type,
     variadic,
+    range,
 
     i8,
     i16,
@@ -285,11 +286,17 @@ pub const Type = union(enum) {
                 const inner = try fromAstPtr(alloc, io, &ai.type, c);
                 errdefer inner.deinitPtr(alloc);
 
-                const len: Value = try .eval(ai.length, c);
+                const len: Value = if (ai.length.* == .ident and std.mem.eql(u8, ai.length.ident.payload, "_"))
+                    .{ .uint = ai.contents.len }
+                else
+                    try .eval(ai.length, c);
                 errdefer len.deinit(alloc);
 
                 if (len != .uint)
                     return errors.arrayLengthMustBeInteger(io, len.getType(), c.source_map[ai.length.pos()]);
+
+                if (len.uint != ai.contents.len)
+                    return errors.arrayInstantiationSizeMismatch(io, len.uint, ai.contents.len, c.source_map[ai.pos]);
 
                 return .{
                     .array = .{

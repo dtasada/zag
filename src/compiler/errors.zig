@@ -295,6 +295,15 @@ pub fn illegalCondition(io: std.Io, received: Type, pos: utils.Position) Error {
     );
 }
 
+pub fn illegalIterator(io: std.Io, received: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.TypeMismatch,
+        "Compiler error: Iterator must be a range, array or slice, received '{f}' ({f}).\n",
+        .{ received, pos },
+    );
+}
+
 pub fn illegalIndexCapture(io: std.Io, pos: utils.Position) Error {
     return utils.printErr(
         io,
@@ -310,5 +319,23 @@ pub fn illegalCapture(io: std.Io, pos: utils.Position) Error {
         error.TypeMismatch,
         "Compiler error: Capturing non-optional expression in condition ({f}).\n",
         .{pos},
+    );
+}
+
+pub fn illegalReferenceOfCapture(io: std.Io, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.TypeMismatch,
+        "Compiler error: Cannot capture reference of range in for loop ({f}).\n",
+        .{pos},
+    );
+}
+
+pub fn arrayInstantiationSizeMismatch(io: std.Io, expected: usize, received: usize, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.TypeMismatch,
+        "Compiler error: Size mismatch in array instantiation: expected {} items, received {} ({f}).\n",
+        .{ expected, received, pos },
     );
 }

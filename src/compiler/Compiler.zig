@@ -194,6 +194,22 @@ pub const Compiler = struct {
                 const symbol = self.module.findSymbolByType(t.*).?;
                 return try alloc.dupe(u8, symbol.inner_name);
             },
+            .array => |array| {
+                const type_name = try std.fmt.allocPrint(alloc, "__zag_Array_{x}", .{t.hash()});
+                if (!self.primitives.contains(type_name)) {
+                    const t_comp = try self.compileType(alloc, io, array.inner, pos);
+                    defer alloc.free(t_comp);
+                    try self.header.typedefs.print(
+                        alloc,
+                        "typedef struct {s} {{ {s} items[{}]; }} {0s};",
+                        .{ type_name, t_comp, array.len },
+                    );
+
+                    try self.primitives.insert(type_name);
+                }
+
+                return type_name;
+            },
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else

@@ -15,14 +15,13 @@ pub fn compile(
     c: *Compiler,
     opts: struct {
         expected_type: ?Type = null,
-        is_variable_decl: bool = false,
     },
 ) ![]const u8 {
     if (opts.expected_type) |et| {
         const received: Type = try .infer(alloc, io, expr, c);
         defer received.deinit(alloc);
 
-        if (et.eql(received)) return compile(alloc, io, expr, c, .{ .is_variable_decl = true });
+        if (et.eql(received)) return compile(alloc, io, expr, c, .{});
         if (!received.check(et)) return errors.typeMismatch(io, et, received, c.source_map[expr.pos()]);
 
         switch (et) {
@@ -37,7 +36,7 @@ pub fn compile(
                     base,
                 });
             },
-            else => return compile(alloc, io, expr, c, .{ .is_variable_decl = true }),
+            else => return compile(alloc, io, expr, c, .{}),
         }
     }
 
@@ -71,16 +70,25 @@ pub fn compile(
             var buf: std.ArrayList(u8) = .empty;
             errdefer buf.deinit(alloc);
 
-            if (!opts.is_variable_decl) {
-                const inner_t = try c.compileType(alloc, io, &inner_ast, inst.type.pos());
-                defer alloc.free(inner_t);
+            const inner_t = try c.compileType(alloc, io, &inner_ast, inst.type.pos());
+            defer alloc.free(inner_t);
 
-                const len: Value = try .eval(inst.length, c);
-                if (len != .uint)
-                    return errors.arrayLengthMustBeInteger(io, len.getType(), c.source_map[inst.length.pos()]);
+            const len: Value = if (inst.length.* == .ident and std.mem.eql(u8, inst.length.ident.payload, "_"))
+                .{ .uint = inst.contents.len }
+            else
+                try .eval(inst.length, c);
 
-                try buf.print(alloc, "({s}[{}])", .{ inner_t, len.uint });
-            }
+            if (len != .uint)
+                return errors.arrayLengthMustBeInteger(io, len.getType(), c.source_map[inst.length.pos()]);
+
+            if (len.uint != inst.contents.len)
+                return errors.arrayInstantiationSizeMismatch(io, len.uint, inst.contents.len, c.source_map[inst.length.pos()]);
+
+            const t: Type = .{ .array = .{ .inner = &inner_ast, .len = len.uint } };
+            const t_comp = try c.compileType(alloc, io, &t, inst.pos);
+            defer alloc.free(t_comp);
+
+            try buf.print(alloc, "({s})", .{t_comp});
 
             try buf.append(alloc, '{');
             for (inst.contents, 0..) |*item, i| {
@@ -238,7 +246,7 @@ pub fn compile(
 
             return try std.fmt.allocPrint(alloc, "{s}{s}[{s}]", .{
                 lhs_comp,
-                if (index_t == .slice) ".ptr" else "",
+                if (lhs_t == .slice) ".ptr" else if (lhs_t == .array) ".items" else "",
                 index_comp,
             });
         },
@@ -338,7 +346,6 @@ pub fn compile(
                     else => unreachable,
                 };
                 const expr_comp = try compile(alloc, io, &member.value, c, .{
-                    .is_variable_decl = true,
                     .expected_type = expected,
                 });
                 defer alloc.free(expr_comp);

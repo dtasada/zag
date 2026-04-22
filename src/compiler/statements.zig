@@ -56,102 +56,132 @@ fn conditional(
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
 
-    if (tag != .@"for") {
-        const condition_t: Type = try .infer(alloc, io, &statement.condition, c);
-        condition_t.deinit(alloc);
-        if (condition_t != .bool and condition_t != .optional)
-            return errors.illegalCondition(io, condition_t, c.source_map[statement.condition.pos()]);
+    const condition_expr = if (tag == .@"for") statement.iterator else statement.condition;
+    const condition_t: Type = try .infer(alloc, io, &condition_expr, c);
+    condition_t.deinit(alloc);
+    if (tag != .@"for" and condition_t != .bool and condition_t != .optional)
+        return errors.illegalCondition(io, condition_t, c.source_map[condition_expr.pos()]);
 
-        const condition_t_comp = try c.compileType(alloc, io, &condition_t, statement.condition.pos());
-        defer alloc.free(condition_t_comp);
+    if (tag == .@"for" and condition_t != .range and condition_t != .slice and condition_t != .array)
+        return errors.illegalIterator(io, condition_t, c.source_map[condition_expr.pos()]);
 
-        const condition = try expressions.compile(alloc, io, &statement.condition, c, .{});
-        defer alloc.free(condition);
+    if (condition_t == .bool and statement.capture != null)
+        return errors.illegalCapture(io, c.source_map[statement.pos]);
 
-        const capture: ?struct {
-            first_eval: []const u8,
-            eval_name: []const u8,
-            capture: []const u8,
-            capture_name: []const u8,
-            capture_t: Type,
-        } =
-            if (statement.capture) |capture| b: {
-                if (condition_t != .optional)
-                    return errors.illegalCapture(io, c.source_map[statement.pos]);
+    const condition_t_comp = try c.compileType(alloc, io, &condition_t, condition_expr.pos());
+    defer alloc.free(condition_t_comp);
 
-                if (capture.index) |_|
-                    return errors.illegalIndexCapture(io, c.source_map[statement.pos]);
+    const condition = try expressions.compile(alloc, io, &condition_expr, c, .{});
+    defer alloc.free(condition);
 
-                const capture_t: Type = if (statement.capture.?.takes_ref == .some) .{
-                    .reference = .{
-                        .inner = condition_t.optional,
-                        .is_mut = statement.capture.?.takes_ref.some,
-                    },
-                } else condition_t.optional.*;
-                const t_comp = try c.compileType(alloc, io, &capture_t, statement.condition.pos());
-                defer alloc.free(t_comp);
+    if (statement.capture) |capture| {
+        if (capture.index) |_|
+            return errors.illegalIndexCapture(io, c.source_map[statement.pos]);
 
-                const name = try std.fmt.allocPrint(alloc, "{s}_{x}", .{
-                    capture.name,
-                    std.hash.Wyhash.hash(0, condition),
-                });
-
-                const capture_name = try std.fmt.allocPrint(alloc, "{s}_{x}_capture", .{
-                    capture.name,
-                    std.hash.Wyhash.hash(0, condition),
-                });
-                break :b .{
-                    .first_eval = try std.fmt.allocPrint(alloc, "{s} {s} = {s};", .{
-                        condition_t_comp,
-                        name,
-                        condition,
-                    }),
-                    .capture = try std.fmt.allocPrint(alloc, "{s} {s} = {s}{s}.payload;", .{
-                        t_comp,
-                        capture_name,
-                        if (statement.capture.?.takes_ref == .some) "&" else "",
-                        condition,
-                    }),
-                    .eval_name = name,
-                    .capture_name = capture_name,
-                    .capture_t = capture_t,
-                };
-            } else null;
-
-        defer if (capture) |cap| {
-            alloc.free(cap.first_eval);
-            alloc.free(cap.capture);
-            alloc.free(cap.eval_name);
-            alloc.free(cap.capture_name);
+        const capture_root_t: Type = switch (condition_t) {
+            .optional => |o| o.*,
+            .array => |array| array.inner.*,
+            .slice => |slice| slice.inner.*,
+            .range => try .infer(alloc, io, condition_expr.range.start, c),
+            else => unreachable,
         };
+        defer if (capture_root_t == .range) capture_root_t.deinit(alloc);
 
-        if (capture) |cap| {
-            try buf.appendSlice(alloc, cap.first_eval);
-            try buf.appendSlice(alloc, cap.capture);
-            try buf.print(alloc, "{s} ({s}.is_some)", .{ @tagName(tag), cap.eval_name });
+        if (capture_root_t == .range and statement.capture.?.takes_ref == .some)
+            return errors.illegalReferenceOfCapture(io, c.source_map[statement.pos]);
 
-            const capture_t = try c.compileType(alloc, io, condition_t.optional, statement.pos);
-            defer alloc.free(capture_t);
+        const capture_t: Type = if (statement.capture.?.takes_ref == .some) .{
+            .reference = .{
+                .inner = &capture_root_t,
+                .is_mut = statement.capture.?.takes_ref.some,
+            },
+        } else capture_root_t;
 
-            try c.module.register(alloc, .{
-                .name = statement.capture.?.name,
-                .type = cap.capture_t,
-                .inner_name = cap.capture_name,
-                .binding = .let,
-                .free_inner_name = false,
-                .free_type = false,
-            });
+        const t_comp = try c.compileType(alloc, io, &capture_t, condition_expr.pos());
+        defer alloc.free(t_comp);
 
-            const body = try block(alloc, io, &.{statement.body.*}, c, .{});
-            defer alloc.free(body);
-            try buf.appendSlice(alloc, body);
-        } else {
-            try buf.print(alloc, "{s} ({s})", .{ @tagName(tag), condition });
-            const body = try block(alloc, io, &.{statement.body.*}, c, .{});
-            defer alloc.free(body);
-            try buf.appendSlice(alloc, body);
+        const name = try std.fmt.allocPrint(alloc, "{s}_{x}", .{
+            capture.name,
+            std.hash.Wyhash.hash(0, condition),
+        });
+        defer alloc.free(name);
+
+        const capture_name = try std.fmt.allocPrint(alloc, "{s}_{x}_capture", .{
+            capture.name,
+            std.hash.Wyhash.hash(0, condition),
+        });
+        defer alloc.free(capture_name);
+
+        const reeval = try std.fmt.allocPrint(alloc, "{s} = {s};", .{
+            name,
+            condition,
+        });
+        defer alloc.free(reeval);
+
+        try buf.print(alloc, "{s} {s}", .{ condition_t_comp, reeval });
+        switch (condition_t) {
+            .range => {
+                const start_comp = try expressions.compile(alloc, io, condition_expr.range.start, c, .{});
+                defer alloc.free(start_comp);
+                const end_comp = try expressions.compile(
+                    alloc,
+                    io,
+                    condition_expr.range.start,
+                    c,
+                    .{ .expected_type = capture_t },
+                );
+                defer alloc.free(end_comp);
+                try buf.print(alloc, "for ({[t]s} {[name]s} = {[start]s}; {[name]s} < {[end]s}; {[name]s}++) {{", .{
+                    .t = t_comp,
+                    .start = start_comp,
+                    .end = end_comp,
+                    .name = capture_name,
+                });
+            },
+            .slice => {
+                try buf.print(alloc, "for (size_t {0s}_index = 0; {0s}_index < {0s}.len; {0s}_index++) {{", .{capture_name});
+                try buf.print(alloc, "{s} {s} = {2s}[{1s}_index];", .{ t_comp, capture_name, name });
+            },
+            .array => |array_t| {
+                try buf.print(alloc, "for (size_t {0s}_index = 0; {0s}_index < {1d}; {0s}_index++) {{", .{ capture_name, array_t.len });
+                try buf.print(alloc, "{s} {s} = {2s}.items[{1s}_index];", .{ t_comp, capture_name, name });
+            },
+            .optional => {
+                try buf.print(alloc, "{s} ({s}.is_some) {{", .{ @tagName(tag), name });
+                try buf.print(alloc, "{s} {s} = {s}{s}.payload;", .{
+                    t_comp,
+                    capture_name,
+                    if (statement.capture.?.takes_ref == .some) "&" else "",
+                    name,
+                });
+            },
+            else => unreachable,
         }
-    } else {}
+
+        try c.module.pushScope(alloc);
+
+        try c.module.register(alloc, .{
+            .name = statement.capture.?.name,
+            .type = capture_t,
+            .inner_name = capture_name,
+            .binding = .let,
+            .free_inner_name = false,
+            .free_type = false,
+        });
+
+        const body = try block(alloc, io, &.{statement.body.*}, c, .{ .create_scope = false });
+        defer alloc.free(body);
+        try buf.appendSlice(alloc, body);
+        try buf.appendSlice(alloc, reeval);
+
+        c.module.popScope(alloc);
+        try buf.append(alloc, '}');
+    } else {
+        try buf.print(alloc, "{s} ({s})", .{ @tagName(tag), condition });
+        const body = try block(alloc, io, &.{statement.body.*}, c, .{});
+        defer alloc.free(body);
+        try buf.appendSlice(alloc, body);
+    }
 
     return buf.toOwnedSlice(alloc);
 }
@@ -426,7 +456,6 @@ fn variableDefinition(
         return try std.fmt.allocPrint(alloc, "{s} {s};", .{ t_comp, vd.variable_name });
 
     const expr_comp = try expressions.compile(alloc, io, &vd.assigned_value, c, .{
-        .is_variable_decl = true,
         .expected_type = if (vd.type) |_| t else null,
     });
     defer alloc.free(expr_comp);
@@ -446,6 +475,7 @@ pub fn block(
     opts: struct {
         return_type: ?Type = null,
         eval_type: ?Type = null,
+        create_scope: bool = true,
     },
 ) Error![]const u8 {
     // return_type and eval_type may not both be non-null at once.
@@ -456,9 +486,11 @@ pub fn block(
     var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
 
-    try buf.append(alloc, '{');
-    try c.module.pushScope(alloc);
-    defer c.module.popScope(alloc);
+    if (opts.create_scope) {
+        try buf.append(alloc, '{');
+        try c.module.pushScope(alloc);
+    }
+    defer if (opts.create_scope) c.module.popScope(alloc);
     var returned: union(enum) {
         yes: ast.Statement.Return,
         block_eval: ast.Expression,
@@ -529,7 +561,6 @@ pub fn block(
                     try buf.appendSlice(alloc, st);
                 }
             }
-            try buf.print(alloc, "return _{x};", .{ret_name});
         },
         .no => for (c.module.scopes.getLast().defers.items) |d| {
             const st = try compile(alloc, io, d, c);
@@ -546,7 +577,7 @@ pub fn block(
         },
     }
 
-    try buf.append(alloc, '}');
+    if (opts.create_scope) try buf.append(alloc, '}');
 
     return try buf.toOwnedSlice(alloc);
 }
@@ -633,9 +664,7 @@ pub fn @"return"(
     if (expr_comp) |_| try block_return.appendSlice(alloc, "return ({");
     var ret_name: ?u64 = null;
     if (ret.@"return") |*r| {
-        const return_type: Type = try .infer(alloc, io, r, c);
-        defer return_type.deinit(alloc);
-        const return_type_comp = try c.compileType(alloc, io, &return_type, r.pos());
+        const return_type_comp = try c.compileType(alloc, io, &expected_type, r.pos());
         defer alloc.free(return_type_comp);
         ret_name = std.hash.Wyhash.hash(0, expr_comp.?);
         try block_return.print(alloc, "{s} _{x} = {s};", .{ return_type_comp, ret_name.?, expr_comp.? });
