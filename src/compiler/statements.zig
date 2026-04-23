@@ -187,7 +187,12 @@ fn conditional(
     return buf.toOwnedSlice(alloc);
 }
 
-pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopLevelStatement, c: *Compiler) !void {
+pub fn compileTopLevel(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    statement: ast.TopLevelStatement,
+    c: *Compiler,
+) !void {
     switch (statement) {
         .import => |s| try import(alloc, s, c),
         .binding_function_declaration => |bfd| {
@@ -245,6 +250,17 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
             });
         },
         .function_definition => |fd| {
+            if (fd.generic_parameters.len > 0)
+                return try c.module.register(alloc, .{
+                    .name = fd.name,
+                    .inner_name = fd.name,
+                    .type = .{ .template = .{ .function_definition = fd } },
+                    .binding = .@"const",
+                    .is_pub = fd.is_pub,
+                    .free_type = true,
+                    .free_inner_name = false,
+                });
+
             const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, fd.name });
             const function_type_ast = try fd.getType(alloc);
             defer function_type_ast.deinit(alloc);
@@ -297,7 +313,16 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
             try c.source.variables.appendSlice(alloc, def_comp);
         },
         inline .struct_declaration, .enum_declaration, .union_declaration => |sd, tag| {
-            if (tag != .enum_declaration and sd.generic_types.len > 0) return;
+            if (tag != .enum_declaration and sd.generic_types.len > 0)
+                return try c.module.register(alloc, .{
+                    .name = sd.name,
+                    .inner_name = sd.name,
+                    .type = .{ .template = @unionInit(Type.Template, @tagName(tag), sd) },
+                    .binding = .@"const",
+                    .is_pub = sd.is_pub,
+                    .free_type = true,
+                    .free_inner_name = false,
+                });
 
             var members_set: std.StringHashMap(usize) = .init(alloc);
             defer members_set.deinit();

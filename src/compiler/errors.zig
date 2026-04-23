@@ -16,6 +16,7 @@ pub const Error = error{
     DuplicateStructMember,
     EnumMemberMustBeInteger,
     ExpressionNotCallable,
+    ExpressionNotGeneric,
     IllegalOperator,
     IllegalReturn,
     MissingMembers,
@@ -357,5 +358,14 @@ pub fn duplicateStructMember(io: std.Io, name: []const u8, pa: utils.Position, p
         error.DuplicateStructMember,
         "Compiler error: Duplicate type member '{s}'. Defined at {f} and again at {f}.\n",
         .{ name, pa, pb },
+    );
+}
+
+pub fn expressionNotGeneric(io: std.Io, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.ExpressionNotGeneric,
+        "Compiler error: Expression is not generic but found generic arguments ({f}).\n",
+        .{pos},
     );
 }

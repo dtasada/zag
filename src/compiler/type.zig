@@ -62,7 +62,13 @@ pub const Type = union(enum) {
     @"union": Union,
 
     module: Module,
+    template: Template,
 
+    pub const Template = union(enum) {
+        function_definition: ast.TopLevelStatement.FunctionDefinition,
+        struct_declaration: ast.TopLevelStatement.StructDeclaration,
+        union_declaration: ast.TopLevelStatement.UnionDeclaration,
+    };
     const Reference = struct { inner: *const Type, is_mut: bool };
     const Slice = struct { inner: *const Type, is_mut: bool };
     const Array = struct { inner: *const Type, len: usize };
@@ -461,6 +467,10 @@ pub const Type = union(enum) {
                 return try symbol.value.?.type.clone(alloc);
             },
             .type => .type,
+            .generic => |generic| {
+                _ = generic;
+                @panic("unimplemented");
+            },
             else => unreachable,
         };
     }
