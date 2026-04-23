@@ -10,6 +10,7 @@ const Error = errors.Error;
 const Compiler = compiler.Compiler;
 const Symbol = compiler.Symbol;
 const Type = @import("type.zig").Type;
+const Value = @import("value.zig").Value;
 
 pub fn compile(
     alloc: std.mem.Allocator,
@@ -294,13 +295,21 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
 
             try c.source.variables.appendSlice(alloc, def_comp);
         },
-        .struct_declaration => |sd| {
-            if (sd.generic_types.len > 0) return;
+        inline .struct_declaration, .enum_declaration, .union_declaration => |sd, tag| {
+            if (tag != .enum_declaration and sd.generic_types.len > 0) return;
+
+            const CompoundType = switch (tag) {
+                .struct_declaration => Type.Struct,
+                .enum_declaration => Type.Enum,
+                .union_declaration => Type.Union,
+                else => unreachable,
+            };
+            const t_tag = comptime @tagName(tag)[0..std.mem.findScalar(u8, @tagName(tag), '_').?];
 
             var inner_name: ?[]const u8 = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
             defer if (inner_name) |in| alloc.free(in);
 
-            var members: ?std.ArrayList(Type.Struct.Member) = try .initCapacity(alloc, sd.members.len);
+            var members: ?std.ArrayList(CompoundType.Member) = try .initCapacity(alloc, sd.members.len);
             var symbols: ?std.ArrayList(Symbol) = std.ArrayList(Symbol).initCapacity(alloc, sd.methods.len) catch |err| {
                 members.?.deinit(alloc);
                 return err;
@@ -318,13 +327,11 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
                 .binding = .@"const",
                 .is_pub = sd.is_pub,
                 .value = .{
-                    .type = .{
-                        .@"struct" = .{
-                            .name = try alloc.dupe(u8, sd.name),
-                            .members = members.?.items,
-                            .symbols = symbols.?.items,
-                        },
-                    },
+                    .type = @unionInit(Type, t_tag, .{
+                        .name = try alloc.dupe(u8, sd.name),
+                        .members = members.?.items,
+                        .symbols = symbols.?.items,
+                    }),
                 },
                 .free_type = true,
                 .free_inner_name = true,
@@ -337,24 +344,59 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
 
             var typedef: std.ArrayList(u8) = .empty;
             defer typedef.deinit(alloc);
-            try typedef.print(alloc, "typedef struct {s} {{", .{symbol.inner_name});
-            for (sd.members) |member| {
-                const member_t: Type = try .fromAst(alloc, io, &member.type, c);
-                members.?.appendAssumeCapacity(.{
-                    .name = try alloc.dupe(u8, member.name),
-                    .inner_name = try alloc.dupe(u8, member.name),
-                    .type = member_t,
-                });
-                symbol.value.?.type.@"struct".members = members.?.items;
 
-                const t_comp = try c.compileType(alloc, io, &member_t, member.type.pos());
-                defer alloc.free(t_comp);
+            switch (tag) {
+                .struct_declaration => {
+                    try typedef.print(alloc, "typedef struct {s} {{", .{symbol.inner_name});
+                    for (sd.members) |member| {
+                        const member_t: Type = try .fromAst(alloc, io, &member.type, c);
+                        members.?.appendAssumeCapacity(.{
+                            .name = try alloc.dupe(u8, member.name),
+                            .inner_name = try alloc.dupe(u8, member.name),
+                            .type = member_t,
+                        });
+                        symbol.value.?.type.@"struct".members = members.?.items;
 
-                try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
+                        const t_comp = try c.compileType(alloc, io, &member_t, member.type.pos());
+                        defer alloc.free(t_comp);
+
+                        try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
+                    }
+                    symbol.value.?.type.@"struct".members = try members.?.toOwnedSlice(alloc);
+                    members = null;
+                    try typedef.print(alloc, "}} {s};\n", .{symbol.inner_name});
+                },
+                .enum_declaration => {
+                    try typedef.print(alloc, "typedef enum {s} {{", .{symbol.inner_name});
+                    for (sd.members, 0..) |member, i| {
+                        const value: Value = if (member.value) |*v|
+                            try .eval(v, c)
+                        else
+                            .{ .uint = if (i == 0) 0 else members.?.items[i - 1].value + 1 };
+
+                        if (value != .uint)
+                            return errors.enumMemberMustBeInteger(io, value.getType(), c.source_map[sd.pos]);
+
+                        const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
+                            symbol.inner_name,
+                            member.name,
+                        });
+                        members.?.appendAssumeCapacity(.{
+                            .name = try alloc.dupe(u8, member.name),
+                            .inner_name = m_inner_name,
+                            .value = value.uint,
+                        });
+                        symbol.value.?.type.@"enum".members = members.?.items;
+
+                        try typedef.print(alloc, "{s} = {},\n", .{ m_inner_name, value.uint });
+                    }
+                    symbol.value.?.type.@"enum".members = try members.?.toOwnedSlice(alloc);
+                    members = null;
+                    try typedef.print(alloc, "}} {s};\n", .{symbol.inner_name});
+                },
+                .union_declaration => {},
+                else => unreachable,
             }
-            symbol.value.?.type.@"struct".members = try members.?.toOwnedSlice(alloc);
-            members = null;
-            try typedef.print(alloc, "}} {s};\n", .{symbol.inner_name});
 
             for (sd.methods) |method| {
                 if (method.generic_parameters.len > 0) continue;
@@ -419,12 +461,11 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
                     body_comp,
                 });
             }
-            symbol.value.?.type.@"struct".symbols = try symbols.?.toOwnedSlice(alloc);
+            @field(symbol.value.?.type, t_tag).symbols = try symbols.?.toOwnedSlice(alloc);
             symbols = null;
 
             try c.header.typedefs.appendSlice(alloc, typedef.items);
         },
-        else => {},
     }
 }
 

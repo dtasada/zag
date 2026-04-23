@@ -9,6 +9,7 @@ const Type = compiler.Type;
 pub const Error = error{
     ArgumentCount,
     ArrayLengthMustBeInteger,
+    EnumMemberMustBeInteger,
     BadMemberAccess,
     BadMutability,
     CannotDereference,
@@ -35,6 +36,15 @@ pub fn arrayLengthMustBeInteger(io: std.Io, received: Type, pos: utils.Position)
         io,
         error.ArrayLengthMustBeInteger,
         "Compiler error: array length must be 'usize', received expression of type '{f}' ({f}).\n",
+        .{ received, pos },
+    );
+}
+
+pub fn enumMemberMustBeInteger(io: std.Io, received: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.EnumMemberMustBeInteger,
+        "Compiler error: Enum members must be 'usize', received expression of type '{f}' ({f}).\n",
         .{ received, pos },
     );
 }
