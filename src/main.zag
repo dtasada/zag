@@ -9,7 +9,7 @@ struct Vector2 {
 }
 
 enum MyEnum {
-    a, b, c = 5
+    a, b, c = 5, c
 }
 
 fn optfunc() ?i32 {

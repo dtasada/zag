@@ -89,21 +89,24 @@ fn compoundTypeDeclaration(
     while (self.currentToken() != .eof and self.currentToken() != .@"}") {
         switch (self.currentToken()) {
             .ident => {
-                var member_names: std.ArrayList([]const u8) = .empty;
+                var member_names: std.ArrayList(struct { name: []const u8, pos: usize }) = .empty;
                 defer member_names.deinit(self.alloc);
 
                 const first_name = try self.expect(self.advance(), .ident, context, "member name");
-                try member_names.append(self.alloc, first_name);
+                try member_names.append(self.alloc, .{ .name = first_name, .pos = self.pos });
 
                 if (T != .@"enum") while (self.currentToken() == .@",") {
                     _ = self.advance();
                     if (self.currentToken() == .@"}") break;
-                    try member_names.append(self.alloc, try self.expect(
-                        self.advance(),
-                        .ident,
-                        @tagName(T) ++ " member",
-                        "member name",
-                    ));
+                    try member_names.append(self.alloc, .{
+                        .name = try self.expect(
+                            self.advance(),
+                            .ident,
+                            @tagName(T) ++ " member",
+                            "member name",
+                        ),
+                        .pos = self.pos,
+                    });
                 };
 
                 const member_type: ?ast.Type = switch (T) {
@@ -129,13 +132,19 @@ fn compoundTypeDeclaration(
 
                 for (member_names.items) |i| try members.append(self.alloc, switch (T) {
                     .@"struct" => .{
-                        .name = try self.alloc.dupe(u8, i),
+                        .name = try self.alloc.dupe(u8, i.name),
                         .type = try member_type.?.clone(self.alloc),
+                        .pos = i.pos,
                     },
-                    .@"enum" => .{ .name = try self.alloc.dupe(u8, i), .value = value },
+                    .@"enum" => .{
+                        .name = try self.alloc.dupe(u8, i.name),
+                        .value = value,
+                        .pos = i.pos,
+                    },
                     .@"union" => .{
-                        .name = try self.alloc.dupe(u8, i),
+                        .name = try self.alloc.dupe(u8, i.name),
                         .type = if (member_type) |mt| try mt.clone(self.alloc) else null,
+                        .pos = i.pos,
                     },
                 });
 

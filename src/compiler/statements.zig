@@ -232,6 +232,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
                             .name = btd.name,
                             .members = &.{},
                             .symbols = &.{},
+                            .tag_type = undefined, // todo: binding unions might need a specified tag_type
                         }),
                     },
                 },
@@ -298,6 +299,24 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
         inline .struct_declaration, .enum_declaration, .union_declaration => |sd, tag| {
             if (tag != .enum_declaration and sd.generic_types.len > 0) return;
 
+            var members_set: std.StringHashMap(usize) = .init(alloc);
+            defer members_set.deinit();
+            for (sd.members) |m| {
+                if (members_set.get(m.name)) |pos|
+                    return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                try members_set.put(m.name, m.pos);
+            }
+            for (sd.variables) |vd| {
+                if (members_set.get(vd.variable_name)) |pos|
+                    return errors.duplicateStructMember(io, vd.variable_name, c.source_map[pos], c.source_map[vd.pos]);
+                try members_set.put(vd.variable_name, vd.pos);
+            }
+            for (sd.methods) |m| {
+                if (members_set.get(m.name)) |pos|
+                    return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                try members_set.put(m.name, m.pos);
+            }
+
             const CompoundType = switch (tag) {
                 .struct_declaration => Type.Struct,
                 .enum_declaration => Type.Enum,
@@ -315,6 +334,12 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
                 return err;
             };
 
+            var tag_type: ?*Type = null;
+            if (tag != .struct_declaration) {
+                tag_type = try alloc.create(Type);
+                tag_type.?.* = .smallestIntegerFor(sd.members.len);
+            }
+
             const symbol = alloc.create(Symbol) catch |err| {
                 members.?.deinit(alloc);
                 symbols.?.deinit(alloc);
@@ -331,6 +356,7 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
                         .name = try alloc.dupe(u8, sd.name),
                         .members = members.?.items,
                         .symbols = symbols.?.items,
+                        .tag_type = tag_type,
                     }),
                 },
                 .free_type = true,
@@ -394,7 +420,32 @@ pub fn compileTopLevel(alloc: std.mem.Allocator, io: std.Io, statement: ast.TopL
                     members = null;
                     try typedef.print(alloc, "}} {s};\n", .{symbol.inner_name});
                 },
-                .union_declaration => {},
+                .union_declaration => {
+                    const tag_type_comp = try c.compileType(alloc, io, symbol.value.?.type.@"union".tag_type.?, sd.pos);
+                    defer alloc.free(tag_type_comp);
+
+                    try typedef.print(alloc, "typedef struct {s} {{", .{symbol.inner_name});
+                    try typedef.print(alloc, "{s} tag;\n", .{tag_type_comp});
+                    try typedef.print(alloc, "union {{\n", .{});
+                    for (sd.members) |member| {
+                        const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c) else .u8;
+                        members.?.appendAssumeCapacity(.{
+                            .name = try alloc.dupe(u8, member.name),
+                            .inner_name = try alloc.dupe(u8, member.name),
+                            .type = member_t,
+                        });
+                        symbol.value.?.type.@"union".members = members.?.items;
+
+                        const t_comp = try c.compileType(alloc, io, &member_t, if (member.type) |t| t.pos() else 0);
+                        defer alloc.free(t_comp);
+
+                        try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
+                    }
+                    symbol.value.?.type.@"union".members = try members.?.toOwnedSlice(alloc);
+                    members = null;
+                    try typedef.print(alloc, "}} payload;\n", .{});
+                    try typedef.print(alloc, "}} {s};\n", .{symbol.inner_name});
+                },
                 else => unreachable,
             }
 

@@ -135,6 +135,7 @@ pub const Type = union(enum) {
             name: []const u8,
             members: []const Member,
             symbols: []const Symbol,
+            tag_type: ?*const Type,
 
             pub fn getMemberType(self: CompoundType(tag), name: []const u8) ?Type {
                 for (self.members) |member| if (std.mem.eql(u8, member.name, name)) return member.type;
@@ -519,6 +520,20 @@ pub const Type = union(enum) {
         };
     }
 
+    pub fn smallestIntegerFor(n: usize) Type {
+        const log2 = std.math.log2_int_ceil(usize, n);
+        return if (log2 <= 8)
+            .u8
+        else if (log2 <= 16)
+            .u16
+        else if (log2 <= 32)
+            .u32
+        else if (log2 <= 64)
+            .u64
+        else
+            unreachable;
+    }
+
     pub fn deinitPtr(self: *const Type, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
         alloc.destroy(self);
@@ -537,6 +552,7 @@ pub const Type = union(enum) {
                 alloc.free(ct.name);
                 utils.deinitSlice(@TypeOf(ct).Member, ct.members, alloc);
                 utils.deinitSlice(Symbol, ct.symbols, alloc);
+                if (ct.tag_type) |tt| tt.deinitPtr(alloc);
             },
             else => {},
         }
@@ -733,10 +749,14 @@ pub const Type = union(enum) {
                 const symbols = try utils.cloneSlice(Symbol, ct.symbols, alloc);
                 errdefer utils.deinitSlice(Symbol, symbols, alloc);
 
+                const tag_type = if (ct.tag_type) |tt| try tt.clonePtr(alloc) else null;
+                errdefer if (tag_type) |tt| tt.deinitPtr(alloc);
+
                 return @unionInit(Type, @tagName(tag), .{
                     .name = name,
                     .members = members,
                     .symbols = symbols,
+                    .tag_type = tag_type,
                 });
             },
             else => self,

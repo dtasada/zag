@@ -9,14 +9,15 @@ const Type = compiler.Type;
 pub const Error = error{
     ArgumentCount,
     ArrayLengthMustBeInteger,
-    EnumMemberMustBeInteger,
     BadMemberAccess,
     BadMutability,
     CannotDereference,
     DoubleReturn,
+    DuplicateStructMember,
+    EnumMemberMustBeInteger,
     ExpressionNotCallable,
-    IllegalReturn,
     IllegalOperator,
+    IllegalReturn,
     MissingMembers,
     TypeMismatch,
     UnknownSymbol,
@@ -347,5 +348,14 @@ pub fn arrayInstantiationSizeMismatch(io: std.Io, expected: usize, received: usi
         error.TypeMismatch,
         "Compiler error: Size mismatch in array instantiation: expected {} items, received {} ({f}).\n",
         .{ expected, received, pos },
+    );
+}
+
+pub fn duplicateStructMember(io: std.Io, name: []const u8, pa: utils.Position, pb: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.DuplicateStructMember,
+        "Compiler error: Duplicate type member '{s}'. Defined at {f} and again at {f}.\n",
+        .{ name, pa, pb },
     );
 }

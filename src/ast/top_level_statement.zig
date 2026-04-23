@@ -78,6 +78,7 @@ pub const TopLevelStatement = union(enum) {
             pub const Member = struct {
                 name: []const u8,
                 type: if (T == .@"struct") Type else ?Type,
+                pos: usize,
 
                 pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
                     const name = try alloc.dupe(u8, self.name);
@@ -161,6 +162,7 @@ pub const TopLevelStatement = union(enum) {
         pub const Member = struct {
             name: []const u8,
             value: ?Expression = null,
+            pos: usize,
 
             pub fn clone(self: Member, alloc: std.mem.Allocator) !Member {
                 const name = try alloc.dupe(u8, self.name);
