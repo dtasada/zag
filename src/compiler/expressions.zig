@@ -65,23 +65,21 @@ pub fn compile(
             return try std.fmt.allocPrint(alloc, "({{{s}}})", .{block_comp});
         },
         .generic => |generic| {
-            const t = try Type.infer(alloc, io, expr, c);
+            const t: Type = try .infer(alloc, io, expr, c);
             defer t.deinit(alloc);
 
             // This is a bit hacky, but we can reconstruct the mangled name
             // or just use Type.instantiate to get the type and then find the symbol.
             // Since we know it's a function and it's in the module.
 
-            const lhs_t = try Type.infer(alloc, io, generic.lhs, c);
+            const lhs_t: Type = try .infer(alloc, io, generic.lhs, c);
             defer lhs_t.deinit(alloc);
 
             const template_name = switch (lhs_t.template) {
-                .function_definition => |fd| fd.name,
-                .struct_declaration => |sd| sd.name,
-                .union_declaration => |ud| ud.name,
+                inline else => |d| d.name,
             };
 
-            const mangled_name = try Type.getMangledName(alloc, template_name, generic.arguments, c);
+            const mangled_name = try Type.getMangledName(alloc, io, template_name, generic.arguments, c);
             defer alloc.free(mangled_name);
 
             const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
@@ -100,7 +98,7 @@ pub fn compile(
             const len: Value = if (inst.length.* == .ident and std.mem.eql(u8, inst.length.ident.payload, "_"))
                 .{ .uint = inst.contents.len }
             else
-                try .eval(inst.length, c);
+                try .eval(alloc, io, inst.length, c);
 
             if (len != .uint)
                 return errors.arrayLengthMustBeInteger(io, len.getType(), c.source_map[inst.length.pos()]);
@@ -317,7 +315,7 @@ pub fn compile(
             defer t.deinit(alloc);
             if (t != .type) return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
 
-            const symbol = c.module.getSymbolFromExpression(alloc, si.type_expr, c) orelse
+            const symbol = c.module.getSymbolFromExpression(alloc, io, si.type_expr, c) orelse
                 return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
 
             if (symbol.value == null or symbol.value.? != .type or

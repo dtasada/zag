@@ -70,24 +70,13 @@ pub const TopLevelStatement = union(enum) {
                     },
                 };
             },
-            .function_definition => |fd| .{ .function_definition = try fd.clone(alloc) },
-            .variable_definition => |vd| .{ .variable_definition = try vd.clone(alloc) },
-            .enum_declaration => |ed| .{ .enum_declaration = try ed.clone(alloc) },
-            .struct_declaration => |sd| .{ .struct_declaration = try sd.clone(alloc) },
-            .union_declaration => |ud| .{ .union_declaration = try ud.clone(alloc) },
+            inline else => |d, t| @unionInit(TopLevelStatement, @tagName(t), d),
         };
     }
 
     pub fn deinit(self: TopLevelStatement, alloc: std.mem.Allocator) void {
         switch (self) {
-            .import => |s| s.deinit(alloc),
-            .binding_function_declaration => |s| s.deinit(alloc),
-            .binding_type_declaration => |s| alloc.free(s.name),
-            .function_definition => |s| s.deinit(alloc),
-            .variable_definition => |s| s.deinit(alloc),
-            .enum_declaration => |s| s.deinit(alloc),
-            .struct_declaration => |s| s.deinit(alloc),
-            .union_declaration => |s| s.deinit(alloc),
+            inline else => |s| s.deinit(alloc),
         }
     }
 

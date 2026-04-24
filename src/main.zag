@@ -29,4 +29,9 @@ fn test_generic() void {
 fn main() void {
     print_value<i32>(32);
     test_generic();
+
+    let i = 2;
+    if (i > 0) {
+        test_generic();
+    }
 }

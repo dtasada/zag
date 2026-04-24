@@ -42,21 +42,15 @@ pub const Symbol = struct {
                 (lhs.value != null and rhs.value != null and lhs.value.?.eql(rhs.value.?)));
     }
 
-    pub const TypeCloneMode = enum { clone, shallow };
-
     pub fn clone(self: Symbol, alloc: std.mem.Allocator) Error!Symbol {
-        return self.cloneWithMode(alloc, .clone);
-    }
-
-    pub fn cloneWithMode(self: Symbol, alloc: std.mem.Allocator, mode: TypeCloneMode) Error!Symbol {
         const name = if (self.free_name) try alloc.dupe(u8, self.name) else self.name;
         errdefer if (self.free_name) alloc.free(name);
 
         const inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name;
         errdefer if (self.free_inner_name) alloc.free(inner_name);
 
-        const t = if (self.free_type and mode == .clone) try self.type.clone(alloc) else self.type;
-        errdefer if (self.free_type and mode == .clone) t.deinit(alloc);
+        const t = if (self.free_type) try self.type.clone(alloc) else self.type;
+        errdefer if (self.free_type) t.deinit(alloc);
 
         const value = if (self.value) |v| try v.clone(alloc) else null;
         errdefer if (value) |v| v.deinit(alloc);
@@ -161,8 +155,6 @@ pub const Compiler = struct {
     primitives: std.BufSet,
     module: Module,
     source_map: []const utils.Position,
-    alloc: std.mem.Allocator,
-    io: std.Io,
 
     fn deinit(self: *Compiler, alloc: std.mem.Allocator) void {
         self.source.deinit(alloc);
@@ -249,8 +241,6 @@ pub fn emit(alloc: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
         .module = try .init(alloc, module_name),
         .source_map = source_map,
         .primitives = .init(alloc),
-        .alloc = alloc,
-        .io = io,
     };
     defer compiler.deinit(alloc);
 

@@ -68,6 +68,7 @@ pub const Type = union(enum) {
 
     pub fn getMangledName(
         alloc: std.mem.Allocator,
+        io: std.Io,
         template_name: []const u8,
         args: []const ast.Expression,
         c: *Compiler,
@@ -79,7 +80,7 @@ pub const Type = union(enum) {
         try mangled_name.append(alloc, '_');
 
         for (args) |arg| {
-            const val = try Value.eval(&arg, c);
+            const val: Value = try .eval(alloc, io, &arg, c);
             defer val.deinit(alloc);
 
             switch (val) {
@@ -87,9 +88,7 @@ pub const Type = union(enum) {
                 .int => |i| try mangled_name.print(alloc, "i{}", .{i}),
                 .float => |f| try mangled_name.print(alloc, "f{}", .{@as(u64, @bitCast(f))}),
                 .bool => |b| try mangled_name.appendSlice(alloc, if (b) "true" else "false"),
-                .type => |t| {
-                    try mangled_name.print(alloc, "{x}", .{t.hash()});
-                },
+                .type => |t| try mangled_name.print(alloc, "{x}", .{t.hash()}),
                 else => try mangled_name.appendSlice(alloc, "unknown"),
             }
             try mangled_name.append(alloc, '_');
@@ -110,12 +109,10 @@ pub const Type = union(enum) {
 
         const template = self.template;
         const template_name = switch (template) {
-            .function_definition => |fd| fd.name,
-            .struct_declaration => |sd| sd.name,
-            .union_declaration => |ud| ud.name,
+            inline else => |d| d.name,
         };
 
-        const mangled_name = try getMangledName(alloc, template_name, args, c);
+        const mangled_name = try getMangledName(alloc, io, template_name, args, c);
         defer alloc.free(mangled_name);
 
         if (c.module.instantiations.get(mangled_name)) |t| return try t.clone(alloc);
@@ -377,7 +374,7 @@ pub const Type = union(enum) {
             .array => |array| .{
                 .array = .{
                     .inner = try fromAstPtr(alloc, io, array.inner, c),
-                    .len = switch (try Value.eval(array.size, c)) {
+                    .len = switch (try Value.eval(alloc, io, array.size, c)) {
                         .uint => |uint| uint,
                         else => |val| return errors.arrayLengthMustBeInteger(
                             io,
@@ -437,7 +434,6 @@ pub const Type = union(enum) {
         };
     }
 
-
     // User owns memory
     pub fn infer(
         alloc: std.mem.Allocator,
@@ -491,7 +487,7 @@ pub const Type = union(enum) {
                 const len: Value = if (ai.length.* == .ident and std.mem.eql(u8, ai.length.ident.payload, "_"))
                     .{ .uint = ai.contents.len }
                 else
-                    try .eval(ai.length, c);
+                    try .eval(alloc, io, ai.length, c);
                 errdefer len.deinit(alloc);
 
                 if (len != .uint)
@@ -669,7 +665,7 @@ pub const Type = union(enum) {
                 defer st.deinit(alloc);
                 if (st != .type) return errors.exprIsNotStruct(io, st, c.source_map[si.pos]);
 
-                const symbol = c.module.getSymbolFromExpression(alloc, si.type_expr, c) orelse
+                const symbol = c.module.getSymbolFromExpression(alloc, io, si.type_expr, c) orelse
                     return errors.exprIsNotStruct(io, st, c.source_map[si.pos]);
 
                 return try symbol.value.?.type.clone(alloc);
@@ -844,9 +840,7 @@ pub const Type = union(enum) {
                 }
             },
             .template => |t| switch (t) {
-                .function_definition => |fd| h.update(fd.name),
-                .struct_declaration => |sd| h.update(sd.name),
-                .union_declaration => |ud| h.update(ud.name),
+                inline else => |d| h.update(d.name),
             },
             else => {},
         }

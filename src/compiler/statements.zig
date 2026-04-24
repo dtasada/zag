@@ -64,7 +64,7 @@ pub fn compileTopLevel(
     c: *Compiler,
 ) Error!void {
     switch (statement) {
-        .import => |s| try import(alloc, s, c),
+        .import => |s| try import(alloc, io, s, c),
         .binding_function_declaration => |bfd| {
             const function_type_ast = try bfd.getType(alloc);
             defer function_type_ast.deinit(alloc);
@@ -195,10 +195,16 @@ pub fn compileTopLevel(
         },
         inline .struct_declaration, .enum_declaration, .union_declaration => |sd, tag| {
             if (tag != .enum_declaration and sd.generic_types.len > 0) {
-                const symbol = Symbol{
+                const symbol: Symbol = .{
                     .name = sd.name,
                     .inner_name = sd.name,
-                    .type = .{ .template = @unionInit(Type.Template, @tagName(tag), try sd.clone(alloc)) },
+                    .type = .{
+                        .template = @unionInit(
+                            Type.Template,
+                            @tagName(tag),
+                            try sd.clone(alloc),
+                        ),
+                    },
                     .binding = .@"const",
                     .is_pub = sd.is_pub,
                     .free_name = false,
@@ -237,7 +243,7 @@ pub fn compileTopLevel(
             var tag_type: ?*Type = null;
             if (tag == .union_declaration) {
                 tag_type = try alloc.create(Type);
-                tag_type.?.* = .u8; // todo: smallest int for
+                tag_type.?.* = .smallestIntegerFor(sd.members.len);
             }
 
             const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
@@ -346,7 +352,7 @@ pub fn compileTopLevel(
                     try typedef.print(alloc, "typedef enum {s} {{", .{symbol.inner_name});
                     for (sd.members, 0..) |member, i| {
                         const value: Value = if (member.value) |*v|
-                            try .eval(v, c)
+                            try .eval(alloc, io, v, c)
                         else
                             .{ .uint = if (i == 0) 0 else members.items[i - 1].value + 1 };
 
@@ -436,7 +442,13 @@ pub fn compileTopLevel(
     }
 }
 
-fn import(alloc: std.mem.Allocator, s: ast.TopLevelStatement.Import, c: *Compiler) Error!void {
+fn import(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    s: ast.TopLevelStatement.Import,
+    c: *Compiler,
+) Error!void {
+    _ = c;
     var path_buf: [1024]u8 = undefined;
     var path: []const u8 = "";
     for (s.module_name) |name| {
@@ -447,7 +459,7 @@ fn import(alloc: std.mem.Allocator, s: ast.TopLevelStatement.Import, c: *Compile
     const full_path = try std.fmt.allocPrint(alloc, "{s}.zag", .{path[1..]});
     defer alloc.free(full_path);
 
-    compiler.emit(alloc, c.io, full_path) catch |err| switch (err) {
+    compiler.emit(alloc, io, full_path) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.UnknownSymbol, // todo: better error for emit failure
     };
@@ -541,9 +553,9 @@ pub fn @"if"(
     cond: ast.Statement.If,
     c: *Compiler,
 ) Error![]const u8 {
-    const cond_t = try Type.infer(alloc, io, &cond.condition, c);
+    const cond_t: Type = try .infer(alloc, io, &cond.condition, c);
     defer cond_t.deinit(alloc);
-    if (cond_t != .bool)
+    if (cond_t != .bool and cond_t != .optional)
         return errors.typeMismatch(io, .bool, cond_t, c.source_map[cond.condition.pos()]);
 
     const cond_comp = try expressions.compile(alloc, io, &cond.condition, c, .{});
@@ -553,11 +565,24 @@ pub fn @"if"(
     defer c.module.popScope(alloc);
 
     if (cond.capture) |cap| {
-        const symbol = Symbol{
+        if (cond_t != .optional)
+            return errors.illegalCapture(io, c.source_map[cond.condition.pos()]);
+
+        const capture_t: Type = switch (cap.takes_ref) {
+            .some => |is_mut| .{
+                .reference = .{
+                    .inner = try cond_t.optional.clone(alloc),
+                    .is_mut = is_mut,
+                },
+            },
+            .none => try cond_t.optional.clone(alloc),
+        };
+
+        const symbol: Symbol = .{
             .name = cap.name,
             .inner_name = cap.name,
-            .type = .bool, // todo: actual type of capture
-            .binding = if (cap.takes_ref != .none) .let_mut else .let,
+            .type = capture_t,
+            .binding = .let,
             .free_name = false,
             .free_inner_name = false,
             .free_type = false,
@@ -584,9 +609,9 @@ pub fn @"while"(
     cond: ast.Statement.While,
     c: *Compiler,
 ) Error![]const u8 {
-    const cond_t = try Type.infer(alloc, io, &cond.condition, c);
+    const cond_t: Type = try .infer(alloc, io, &cond.condition, c);
     defer cond_t.deinit(alloc);
-    if (cond_t != .bool)
+    if (cond_t != .bool and cond_t != .optional)
         return errors.typeMismatch(io, .bool, cond_t, c.source_map[cond.condition.pos()]);
 
     const cond_comp = try expressions.compile(alloc, io, &cond.condition, c, .{});
@@ -596,14 +621,27 @@ pub fn @"while"(
     defer c.module.popScope(alloc);
 
     if (cond.capture) |cap| {
-        const symbol = Symbol{
+        if (cond_t != .optional)
+            return errors.illegalCapture(io, c.source_map[cond.condition.pos()]);
+
+        const capture_t: Type = switch (cap.takes_ref) {
+            .some => |is_mut| .{
+                .reference = .{
+                    .inner = try cond_t.optional.clone(alloc),
+                    .is_mut = is_mut,
+                },
+            },
+            .none => try cond_t.optional.clone(alloc),
+        };
+
+        const symbol: Symbol = .{
             .name = cap.name,
             .inner_name = cap.name,
-            .type = .bool, // todo: actual type of capture
-            .binding = if (cap.takes_ref != .none) .let_mut else .let,
+            .type = capture_t,
+            .binding = .let,
             .free_name = false,
             .free_inner_name = false,
-            .free_type = false,
+            .free_type = true,
         };
         errdefer symbol.deinit(alloc);
         try c.module.register(alloc, symbol);
@@ -621,7 +659,7 @@ pub fn @"for"(
     cond: ast.Statement.For,
     c: *Compiler,
 ) Error![]const u8 {
-    const iter_t = try Type.infer(alloc, io, &cond.iterator, c);
+    const iter_t: Type = try .infer(alloc, io, &cond.iterator, c);
     defer iter_t.deinit(alloc);
 
     const iter_comp = try expressions.compile(alloc, io, &cond.iterator, c, .{});
@@ -639,7 +677,7 @@ pub fn @"for"(
     switch (iter_t) {
         .slice => |s| {
             if (cond.capture) |cap| {
-                const symbol = Symbol{
+                const symbol: Symbol = .{
                     .name = cap.name,
                     .inner_name = try std.fmt.allocPrint(alloc, "{s}[{s}]", .{ iter_comp, i_name }),
                     .type = s.inner.*,
@@ -760,11 +798,10 @@ pub fn block(
             defer alloc.free(expr_comp);
             try block_return.print(alloc, "_{x} = {s}; ", .{ ret_name.?, expr_comp });
         } else if (opts.return_type != null and i == b.len - 1 and statement == .block_eval) {
-            const ret = ast.Statement.Return{
+            const st = try @"return"(alloc, io, .{
                 .pos = statement.pos(),
                 .@"return" = statement.block_eval,
-            };
-            const st = try @"return"(alloc, io, ret, c, opts.return_type.?);
+            }, c, opts.return_type.?);
             defer alloc.free(st);
             try block_return.appendSlice(alloc, st);
         } else {

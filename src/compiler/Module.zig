@@ -135,11 +135,9 @@ pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
     new_scope.defers = .empty;
     new_scope.symbols = .empty;
     try self.scopes.append(alloc, new_scope);
-
 }
 
 pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
-
     const last_scope = self.scopes.pop().?;
     for (last_scope.symbols.items) |symbol| {
         symbol.deinit(alloc);
@@ -152,14 +150,12 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
 
 pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
-    var i: usize = self.scopes.items.len;
     while (it.next()) |scope| {
         for (scope.symbols.items) |symbol| {
             if (std.mem.eql(u8, symbol.name, name)) {
                 return symbol;
             }
         }
-        i -= 1;
     }
 
     return null;
@@ -220,6 +216,7 @@ pub fn getExpressionMutability(
 pub fn getSymbolFromExpression(
     self: *const Module,
     alloc: std.mem.Allocator,
+    io: std.Io,
     expr: *const ast.Expression,
     c: *Compiler,
 ) ?*Symbol {
@@ -230,25 +227,17 @@ pub fn getSymbolFromExpression(
             else => null,
         },
         .generic => |generic| {
-            const lhs_t = Type.infer(alloc, c.io, generic.lhs, c) catch {
-                return null;
-            };
+            const lhs_t: Type = .infer(alloc, io, generic.lhs, c) catch return null;
             defer lhs_t.deinit(alloc);
 
             const template_name = switch (lhs_t) {
                 .template => |t| switch (t) {
-                    .function_definition => |fd| fd.name,
-                    .struct_declaration => |sd| sd.name,
-                    .union_declaration => |ud| ud.name,
+                    inline else => |d| d.name,
                 },
-                else => {
-                    return null;
-                },
+                else => return null,
             };
 
-            const mangled_name = Type.getMangledName(alloc, template_name, generic.arguments, c) catch {
-                return null;
-            };
+            const mangled_name = Type.getMangledName(alloc, io, template_name, generic.arguments, c) catch return null;
             defer alloc.free(mangled_name);
 
             return self.getSymbol(mangled_name);

@@ -111,6 +111,7 @@ pub const ParameterGroup = struct {
         const names = try alloc.alloc([]const u8, self.names.len);
         errdefer alloc.free(names);
         for (self.names, 0..) |n, i| {
+            errdefer for (names[0..i]) |n_| alloc.free(n_);
             names[i] = try alloc.dupe(u8, n);
         }
         errdefer for (names) |n| alloc.free(n);

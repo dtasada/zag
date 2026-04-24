@@ -207,9 +207,7 @@ pub const Statement = union(enum) {
     pub fn pos(self: Statement) usize {
         return switch (self) {
             inline else => |s| s.pos,
-            .block => |s| s.pos,
-            .expression => |s| s.pos(),
-            .block_eval => |s| s.pos(),
+            .expression, .block_eval => |s| s.pos(),
         };
     }
 };

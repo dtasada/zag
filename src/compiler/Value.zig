@@ -18,18 +18,23 @@ pub const Value = union(enum) {
     nil,
     undefined,
 
-    pub fn eval(expr: *const ast.Expression, c: *Compiler) Error!Value {
+    pub fn eval(
+        alloc: std.mem.Allocator,
+        io: std.Io,
+        expr: *const ast.Expression,
+        c: *Compiler,
+    ) Error!Value {
         return switch (expr.*) {
             .int => |int| .{ .uint = int.payload },
             .ident => |ident| {
-                const symbol = c.module.getSymbol(ident.payload) orelse return errors.unknownSymbol(c.io, ident.payload, c.source_map[ident.pos]);
-                if (symbol.type == .type) {
-                    return .{ .type = try symbol.value.?.type.clone(c.alloc) };
-                }
-                if (symbol.value) |v| return try v.clone(c.alloc);
+                const symbol = c.module.getSymbol(ident.payload) orelse
+                    return errors.unknownSymbol(io, ident.payload, c.source_map[ident.pos]);
+                if (symbol.type == .type)
+                    return .{ .type = try symbol.value.?.type.clone(alloc) };
+                if (symbol.value) |v| return try v.clone(alloc);
                 return error.UnknownSymbol; // Should probably have a better error for this
             },
-            .type => |t| .{ .type = try Type.fromAst(c.alloc, c.io, &t.payload, c) },
+            .type => |t| .{ .type = try Type.fromAst(alloc, io, &t.payload, c) },
             else => @panic("unimplemented"),
         };
     }
