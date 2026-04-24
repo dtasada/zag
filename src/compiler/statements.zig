@@ -31,8 +31,8 @@ pub fn compile(
             return try std.fmt.allocPrint(alloc, "{s};", .{comp});
         },
         .variable_definition => |vd| try variableDefinition(alloc, io, vd, c),
-        .@"if" => |cond| try @"if"(alloc, io, cond, c),
-        .@"while" => |cond| try @"while"(alloc, io, cond, c),
+        .@"if" => |cond| try conditional(alloc, io, .@"if", cond, c),
+        .@"while" => |cond| try conditional(alloc, io, .@"while", cond, c),
         .@"for" => |cond| try @"for"(alloc, io, cond, c),
         .@"break" => try alloc.dupe(u8, "break;"),
         .@"continue" => try alloc.dupe(u8, "continue;"),
@@ -547,10 +547,11 @@ pub fn variableDefinition(
     return try std.fmt.allocPrint(alloc, "{s} {s} = {s};", .{ t_comp, vd.variable_name, expr_comp });
 }
 
-pub fn @"if"(
+pub fn conditional(
     alloc: std.mem.Allocator,
     io: std.Io,
-    cond: ast.Statement.If,
+    comptime T: enum { @"while", @"if" },
+    cond: if (T == .@"while") ast.Statement.While else ast.Statement.If,
     c: *Compiler,
 ) Error![]const u8 {
     const cond_t: Type = try .infer(alloc, io, &cond.condition, c);
@@ -571,63 +572,7 @@ pub fn @"if"(
         const capture_t: Type = switch (cap.takes_ref) {
             .some => |is_mut| .{
                 .reference = .{
-                    .inner = try cond_t.optional.clone(alloc),
-                    .is_mut = is_mut,
-                },
-            },
-            .none => try cond_t.optional.clone(alloc),
-        };
-
-        const symbol: Symbol = .{
-            .name = cap.name,
-            .inner_name = cap.name,
-            .type = capture_t,
-            .binding = .let,
-            .free_name = false,
-            .free_inner_name = false,
-            .free_type = false,
-        };
-        errdefer symbol.deinit(alloc);
-        try c.module.register(alloc, symbol);
-    }
-
-    const body_comp = try compile(alloc, io, cond.body, c);
-    defer alloc.free(body_comp);
-
-    if (cond.@"else") |e| {
-        const else_comp = try compile(alloc, io, e, c);
-        defer alloc.free(else_comp);
-        return try std.fmt.allocPrint(alloc, "if ({s}) {s} else {s}", .{ cond_comp, body_comp, else_comp });
-    }
-
-    return try std.fmt.allocPrint(alloc, "if ({s}) {s}", .{ cond_comp, body_comp });
-}
-
-pub fn @"while"(
-    alloc: std.mem.Allocator,
-    io: std.Io,
-    cond: ast.Statement.While,
-    c: *Compiler,
-) Error![]const u8 {
-    const cond_t: Type = try .infer(alloc, io, &cond.condition, c);
-    defer cond_t.deinit(alloc);
-    if (cond_t != .bool and cond_t != .optional)
-        return errors.typeMismatch(io, .bool, cond_t, c.source_map[cond.condition.pos()]);
-
-    const cond_comp = try expressions.compile(alloc, io, &cond.condition, c, .{});
-    defer alloc.free(cond_comp);
-
-    try c.module.pushScope(alloc);
-    defer c.module.popScope(alloc);
-
-    if (cond.capture) |cap| {
-        if (cond_t != .optional)
-            return errors.illegalCapture(io, c.source_map[cond.condition.pos()]);
-
-        const capture_t: Type = switch (cap.takes_ref) {
-            .some => |is_mut| .{
-                .reference = .{
-                    .inner = try cond_t.optional.clone(alloc),
+                    .inner = try cond_t.optional.clonePtr(alloc),
                     .is_mut = is_mut,
                 },
             },
@@ -650,7 +595,13 @@ pub fn @"while"(
     const body_comp = try compile(alloc, io, cond.body, c);
     defer alloc.free(body_comp);
 
-    return try std.fmt.allocPrint(alloc, "while ({s}) {s}", .{ cond_comp, body_comp });
+    if (T == .@"if") if (cond.@"else") |e| {
+        const else_comp = try compile(alloc, io, e, c);
+        defer alloc.free(else_comp);
+        return try std.fmt.allocPrint(alloc, "if ({s}) {s} else {s}", .{ cond_comp, body_comp, else_comp });
+    };
+
+    return try std.fmt.allocPrint(alloc, "{s} ({s}) {s}", .{ @tagName(T), cond_comp, body_comp });
 }
 
 pub fn @"for"(

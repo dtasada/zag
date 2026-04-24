@@ -227,7 +227,7 @@ pub fn getSymbolFromExpression(
             else => null,
         },
         .generic => |generic| {
-            const lhs_t: Type = .infer(alloc, io, generic.lhs, c) catch return null;
+            const lhs_t = Type.infer(alloc, io, generic.lhs, c) catch return null;
             defer lhs_t.deinit(alloc);
 
             const template_name = switch (lhs_t) {
