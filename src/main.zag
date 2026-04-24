@@ -12,6 +12,21 @@ fn print_value<T>(val: T) void {
     printf("T: %d\n", val);
 }
 
+struct Foo<T> {
+    val: T,
+}
+
+fn get_val<T>(f: &Foo<T>) T {
+    return f.val;
+}
+
+fn test_generic() void {
+    let f = Foo<i32>{ val: 42 };
+    let v = get_val<i32>(&f);
+    printf("test_generic result: %d\n", v);
+}
+
 fn main() void {
     print_value<i32>(32);
+    test_generic();
 }

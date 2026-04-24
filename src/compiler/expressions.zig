@@ -7,6 +7,7 @@ const compiler = @import("compiler.zig");
 const Compiler = compiler.Compiler;
 const Type = compiler.Type;
 const Value = compiler.Value;
+const Error = errors.Error;
 
 pub fn compile(
     alloc: std.mem.Allocator,
@@ -16,7 +17,7 @@ pub fn compile(
     opts: struct {
         expected_type: ?Type = null,
     },
-) ![]const u8 {
+) Error![]const u8 {
     if (opts.expected_type) |et| {
         const received: Type = try .infer(alloc, io, expr, c);
         defer received.deinit(alloc);
@@ -62,6 +63,29 @@ pub fn compile(
             const block_comp = try statements.block(alloc, io, block.payload, c, .{});
             defer alloc.free(block_comp);
             return try std.fmt.allocPrint(alloc, "({{{s}}})", .{block_comp});
+        },
+        .generic => |generic| {
+            const t = try Type.infer(alloc, io, expr, c);
+            defer t.deinit(alloc);
+
+            // This is a bit hacky, but we can reconstruct the mangled name
+            // or just use Type.instantiate to get the type and then find the symbol.
+            // Since we know it's a function and it's in the module.
+
+            const lhs_t = try Type.infer(alloc, io, generic.lhs, c);
+            defer lhs_t.deinit(alloc);
+
+            const template_name = switch (lhs_t.template) {
+                .function_definition => |fd| fd.name,
+                .struct_declaration => |sd| sd.name,
+                .union_declaration => |ud| ud.name,
+            };
+
+            const mangled_name = try Type.getMangledName(alloc, template_name, generic.arguments, c);
+            defer alloc.free(mangled_name);
+
+            const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
+            return try alloc.dupe(u8, symbol.inner_name);
         },
         .array_instantiation => |inst| {
             const inner_ast: Type = try .fromAst(alloc, io, &inst.type, c);
@@ -185,11 +209,20 @@ pub fn compile(
             return try std.fmt.allocPrint(alloc, "*{s}", .{parent});
         },
         .member => |member| {
-            const parent_t: Type = try .infer(alloc, io, member.parent, c);
+            var parent_t: Type = try .infer(alloc, io, member.parent, c);
+            var is_ref = false;
+            while (parent_t == .reference) {
+                is_ref = true;
+                const next_t = try parent_t.reference.inner.clone(alloc);
+                parent_t.deinit(alloc);
+                parent_t = next_t;
+            }
             defer parent_t.deinit(alloc);
 
             const parent_comp = try compile(alloc, io, member.parent, c, .{});
             defer alloc.free(parent_comp);
+
+            const op = if (is_ref) "->" else ".";
 
             return switch (parent_t) {
                 inline .@"struct", .@"union", .@"enum" => |ct, tag| {
@@ -200,7 +233,7 @@ pub fn compile(
                         return if (tag == .@"enum")
                             try alloc.dupe(u8, m.inner_name)
                         else
-                            try std.fmt.allocPrint(alloc, "{s}.{s}", .{ parent_comp, m.inner_name });
+                            try std.fmt.allocPrint(alloc, "{s}{s}{s}", .{ parent_comp, op, m.inner_name });
                     };
 
                     for (ct.symbols) |s| if (std.mem.eql(u8, s.name, member.member_name))
@@ -284,19 +317,13 @@ pub fn compile(
             defer t.deinit(alloc);
             if (t != .type) return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
 
-            const result = c.module.getSymbolFromExpression(si.type_expr) orelse
+            const symbol = c.module.getSymbolFromExpression(alloc, si.type_expr, c) orelse
                 return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
-
-            const symbol = if (result == .success)
-                result.success
-            else
-                return errors.unknownSymbol(io, result.failure, c.source_map[si.type_expr.pos()]);
 
             if (symbol.value == null or symbol.value.? != .type or
                 (symbol.value.?.type != .@"struct" and
                     symbol.value.?.type != .@"union"))
             {
-                std.debug.print("symbol.value: {any}\n", .{symbol.value});
                 return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
             }
 

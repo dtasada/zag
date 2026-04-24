@@ -86,10 +86,12 @@ pub const TopLevelStatement = union(enum) {
 
                     return switch (T) {
                         .@"struct" => .{
+                            .pos = self.pos,
                             .name = name,
                             .type = try self.type.clone(alloc),
                         },
                         .@"union" => .{
+                            .pos = self.pos,
                             .name = name,
                             .type = if (self.type) |t| try t.clone(alloc) else null,
                         },
@@ -117,7 +119,7 @@ pub const TopLevelStatement = union(enum) {
                 const name = try alloc.dupe(u8, self.name);
                 errdefer alloc.free(name);
 
-                const generic_types = try utils.cloneSlice(ast.VariableSignature, self.generic_types, alloc);
+                const generic_types = try utils.cloneSlice(ast.ParameterGroup, self.generic_types, alloc);
                 errdefer utils.deinitSlice(ast.ParameterGroup, generic_types, alloc);
 
                 const variables = try utils.cloneSlice(Statement.VariableDefinition, self.variables, alloc);
@@ -129,8 +131,8 @@ pub const TopLevelStatement = union(enum) {
                 const members = try utils.cloneSlice(Member, self.members, alloc);
                 errdefer utils.deinitSlice(Member, members, alloc);
 
-                const methods = try utils.cloneSlice(Statement.FunctionDefinition, self.methods, alloc);
-                errdefer utils.deinitSlice(Statement.FunctionDefinition, methods, alloc);
+                const methods = try utils.cloneSlice(FunctionDefinition, self.methods, alloc);
+                errdefer utils.deinitSlice(FunctionDefinition, methods, alloc);
 
                 return .{
                     .pos = self.pos,
@@ -172,6 +174,7 @@ pub const TopLevelStatement = union(enum) {
                 errdefer if (value) |v| v.deinit(alloc);
 
                 return .{
+                    .pos = self.pos,
                     .name = name,
                     .value = value,
                 };

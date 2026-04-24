@@ -18,6 +18,7 @@ const Scope = struct {
 
 name: []const u8,
 scopes: std.ArrayList(*Scope) = .empty,
+instantiations: std.StringHashMap(Type),
 
 fn registerBuiltin(
     self: *Module,
@@ -32,13 +33,14 @@ fn registerBuiltin(
         .type = .type,
         .binding = .@"const",
         .value = value,
+        .free_name = false,
         .free_inner_name = false,
         .free_type = true,
     });
 }
 
 pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
-    var self: Module = .{ .name = name };
+    var self: Module = .{ .name = name, .instantiations = std.StringHashMap(Type).init(alloc) };
 
     try self.pushScope(alloc);
 
@@ -84,15 +86,32 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
 pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
     for (self.scopes.items) |_| self.popScope(alloc);
     self.scopes.deinit(alloc);
+
+    var iter = self.instantiations.iterator();
+    while (iter.next()) |entry| {
+        alloc.free(entry.key_ptr.*);
+        entry.value_ptr.deinit(alloc);
+    }
+    self.instantiations.deinit();
 }
 
 pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
+    var new_symbol = try symbol.clone(alloc);
+    if (!new_symbol.free_name) {
+        new_symbol.name = try alloc.dupe(u8, symbol.name);
+        new_symbol.free_name = true;
+    }
     const symbol_ptr = try alloc.create(Symbol);
-    symbol_ptr.* = symbol;
+    symbol_ptr.* = new_symbol;
     try self.scopes.getLast().symbols.append(alloc, symbol_ptr);
 }
 
 pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !void {
+    if (!symbol.free_name) {
+        const old_name = symbol.name;
+        symbol.name = try alloc.dupe(u8, old_name);
+        symbol.free_name = true;
+    }
     try self.scopes.getLast().symbols.append(alloc, symbol);
 }
 
@@ -101,9 +120,11 @@ pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
     new_scope.defers = .empty;
     new_scope.symbols = .empty;
     try self.scopes.append(alloc, new_scope);
+
 }
 
 pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
+
     const last_scope = self.scopes.pop().?;
     for (last_scope.symbols.items) |symbol| {
         symbol.deinit(alloc);
@@ -116,8 +137,14 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
 
 pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
+    var i: usize = self.scopes.items.len;
     while (it.next()) |scope| {
-        for (scope.symbols.items) |symbol| if (std.mem.eql(u8, symbol.name, name)) return symbol;
+        for (scope.symbols.items) |symbol| {
+            if (std.mem.eql(u8, symbol.name, name)) {
+                return symbol;
+            }
+        }
+        i -= 1;
     }
 
     return null;
@@ -177,22 +204,39 @@ pub fn getExpressionMutability(
 
 pub fn getSymbolFromExpression(
     self: *const Module,
+    alloc: std.mem.Allocator,
     expr: *const ast.Expression,
-) ?union(enum) {
-    success: *Symbol,
-    failure: []const u8,
-} {
+    c: *Compiler,
+) ?*Symbol {
     return switch (expr.*) {
-        .ident => |ident| if (self.getSymbol(ident.payload)) |symbol|
-            .{ .success = symbol }
-        else
-            .{ .failure = ident.payload },
+        .ident => |ident| self.getSymbol(ident.payload),
         .type => |t| switch (t.payload) {
-            .symbol => |symbol| if (self.getSymbol(symbol.inner)) |s|
-                .{ .success = s }
-            else
-                .{ .failure = symbol.inner },
+            .symbol => |symbol| self.getSymbol(symbol.inner),
             else => null,
+        },
+        .generic => |generic| {
+            const lhs_t = Type.infer(alloc, c.io, generic.lhs, c) catch {
+                return null;
+            };
+            defer lhs_t.deinit(alloc);
+
+            const template_name = switch (lhs_t) {
+                .template => |t| switch (t) {
+                    .function_definition => |fd| fd.name,
+                    .struct_declaration => |sd| sd.name,
+                    .union_declaration => |ud| ud.name,
+                },
+                else => {
+                    return null;
+                },
+            };
+
+            const mangled_name = Type.getMangledName(alloc, template_name, generic.arguments, c) catch {
+                return null;
+            };
+            defer alloc.free(mangled_name);
+
+            return self.getSymbol(mangled_name);
         },
         else => null,
     };

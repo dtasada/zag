@@ -107,6 +107,27 @@ pub const ParameterGroup = struct {
     is_mut: []const bool,
     type: Type,
 
+    pub fn clone(self: ParameterGroup, alloc: std.mem.Allocator) !ParameterGroup {
+        const names = try alloc.alloc([]const u8, self.names.len);
+        errdefer alloc.free(names);
+        for (self.names, 0..) |n, i| {
+            names[i] = try alloc.dupe(u8, n);
+        }
+        errdefer for (names) |n| alloc.free(n);
+
+        const is_mut = try alloc.dupe(bool, self.is_mut);
+        errdefer alloc.free(is_mut);
+
+        const t = try self.type.clone(alloc);
+        errdefer t.deinit(alloc);
+
+        return .{
+            .names = names,
+            .is_mut = is_mut,
+            .type = t,
+        };
+    }
+
     pub fn deinit(self: ParameterGroup, alloc: std.mem.Allocator) void {
         self.type.deinit(alloc);
         alloc.free(self.is_mut);

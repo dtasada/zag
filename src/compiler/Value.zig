@@ -2,9 +2,11 @@ const std = @import("std");
 const ast = @import("ast");
 
 const compiler = @import("compiler.zig");
+const errors = @import("errors.zig");
 
 const Compiler = compiler.Compiler;
 const Type = compiler.Type;
+const Error = errors.Error;
 
 pub const Value = union(enum) {
     uint: usize,
@@ -16,10 +18,18 @@ pub const Value = union(enum) {
     nil,
     undefined,
 
-    pub fn eval(expr: *const ast.Expression, c: *const Compiler) !Value {
-        _ = c;
+    pub fn eval(expr: *const ast.Expression, c: *Compiler) Error!Value {
         return switch (expr.*) {
             .int => |int| .{ .uint = int.payload },
+            .ident => |ident| {
+                const symbol = c.module.getSymbol(ident.payload) orelse return errors.unknownSymbol(c.io, ident.payload, c.source_map[ident.pos]);
+                if (symbol.type == .type) {
+                    return .{ .type = try symbol.value.?.type.clone(c.alloc) };
+                }
+                if (symbol.value) |v| return try v.clone(c.alloc);
+                return error.UnknownSymbol; // Should probably have a better error for this
+            },
+            .type => |t| .{ .type = try Type.fromAst(c.alloc, c.io, &t.payload, c) },
             else => @panic("unimplemented"),
         };
     }
@@ -54,7 +64,7 @@ pub const Value = union(enum) {
         }
     }
 
-    pub fn clone(self: Value, alloc: std.mem.Allocator) !Value {
+    pub fn clone(self: Value, alloc: std.mem.Allocator) Error!Value {
         return switch (self) {
             .type => |t| .{ .type = try t.clone(alloc) },
             else => self,

@@ -53,7 +53,7 @@ fn conditional(
         .@"if" => ast.Statement.If,
     },
     c: *Compiler,
-) ![]const u8 {
+) Error![]const u8 {
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
 
@@ -166,6 +166,7 @@ fn conditional(
             .type = capture_t,
             .inner_name = capture_name,
             .binding = .let,
+            .free_name = false,
             .free_inner_name = false,
             .free_type = false,
         });
@@ -192,7 +193,7 @@ pub fn compileTopLevel(
     io: std.Io,
     statement: ast.TopLevelStatement,
     c: *Compiler,
-) !void {
+) Error!void {
     switch (statement) {
         .import => |s| try import(alloc, s, c),
         .binding_function_declaration => |bfd| {
@@ -208,6 +209,7 @@ pub fn compileTopLevel(
                 .type = function_type,
                 .binding = .@"const",
                 .is_pub = bfd.is_pub,
+                .free_name = false,
                 .free_inner_name = false,
                 .free_type = true,
             });
@@ -241,6 +243,7 @@ pub fn compileTopLevel(
                         }),
                     },
                 },
+                .free_name = false,
                 .free_inner_name = false,
                 .free_type = false,
             });
@@ -257,6 +260,7 @@ pub fn compileTopLevel(
                     .type = .{ .template = .{ .function_definition = fd } },
                     .binding = .@"const",
                     .is_pub = fd.is_pub,
+                    .free_name = false,
                     .free_type = true,
                     .free_inner_name = false,
                 });
@@ -272,6 +276,7 @@ pub fn compileTopLevel(
                 .type = function_type,
                 .binding = .@"const",
                 .is_pub = fd.is_pub,
+                .free_name = false,
                 .free_inner_name = true,
                 .free_type = true,
             });
@@ -320,6 +325,7 @@ pub fn compileTopLevel(
                     .type = .{ .template = @unionInit(Type.Template, @tagName(tag), sd) },
                     .binding = .@"const",
                     .is_pub = sd.is_pub,
+                    .free_name = false,
                     .free_type = true,
                     .free_inner_name = false,
                 });
@@ -379,11 +385,12 @@ pub fn compileTopLevel(
                 .value = .{
                     .type = @unionInit(Type, t_tag, .{
                         .name = try alloc.dupe(u8, sd.name),
-                        .members = members.?.items,
-                        .symbols = symbols.?.items,
+                        .members = &.{},
+                        .symbols = &.{},
                         .tag_type = tag_type,
                     }),
                 },
+                .free_name = false,
                 .free_type = true,
                 .free_inner_name = true,
             };
@@ -406,7 +413,6 @@ pub fn compileTopLevel(
                             .inner_name = try alloc.dupe(u8, member.name),
                             .type = member_t,
                         });
-                        symbol.value.?.type.@"struct".members = members.?.items;
 
                         const t_comp = try c.compileType(alloc, io, &member_t, member.type.pos());
                         defer alloc.free(t_comp);
@@ -437,7 +443,6 @@ pub fn compileTopLevel(
                             .inner_name = m_inner_name,
                             .value = value.uint,
                         });
-                        symbol.value.?.type.@"enum".members = members.?.items;
 
                         try typedef.print(alloc, "{s} = {},\n", .{ m_inner_name, value.uint });
                     }
@@ -459,7 +464,6 @@ pub fn compileTopLevel(
                             .inner_name = try alloc.dupe(u8, member.name),
                             .type = member_t,
                         });
-                        symbol.value.?.type.@"union".members = members.?.items;
 
                         const t_comp = try c.compileType(alloc, io, &member_t, if (member.type) |t| t.pos() else 0);
                         defer alloc.free(t_comp);
@@ -493,6 +497,7 @@ pub fn compileTopLevel(
                     .type = t,
                     .binding = .@"const",
                     .is_pub = method.is_pub,
+                    .free_name = false,
                     .free_type = true,
                     .free_inner_name = true,
                 };
@@ -500,7 +505,6 @@ pub fn compileTopLevel(
                 try c.module.registerPtr(alloc, m_symbol);
 
                 symbols.?.appendAssumeCapacity(try m_symbol.clone(alloc));
-                symbol.value.?.type.@"struct".symbols = symbols.?.items;
 
                 const return_t: Type = try .fromAst(alloc, io, &method.return_type, c);
                 defer return_t.deinit(alloc);
@@ -561,6 +565,7 @@ fn variableDefinition(
         .type = t,
         .binding = vd.binding,
         .inner_name = vd.variable_name,
+        .free_name = false,
         .free_inner_name = false,
         .free_type = true,
     });
@@ -704,7 +709,7 @@ fn parameterList(
     io: std.Io,
     parameter_list: ast.ParameterList,
     c: *Compiler,
-) ![]const u8 {
+) Error![]const u8 {
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
 
@@ -720,6 +725,7 @@ fn parameterList(
                 .inner_name = name,
                 .type = param_t,
                 .binding = if (group.is_mut[j]) .let_mut else .let,
+                .free_name = false,
                 .free_inner_name = false,
                 .free_type = true,
             });
@@ -742,7 +748,7 @@ fn parameterList(
     return buf.toOwnedSlice(alloc);
 }
 
-fn import(alloc: std.mem.Allocator, statement: ast.TopLevelStatement.Import, c: *Compiler) !void {
+fn import(alloc: std.mem.Allocator, statement: ast.TopLevelStatement.Import, c: *Compiler) Error!void {
     // const mod = void;
     // compiler.module.register(alloc, .{
     //     .name = import.alias orelse import.module_name[import.module_name.len - 1],
@@ -764,7 +770,7 @@ pub fn @"return"(
     ret: ast.Statement.Return,
     c: *Compiler,
     expected_type: Type,
-) ![]const u8 {
+) Error![]const u8 {
     const received: Type = if (ret.@"return") |*r| try .infer(alloc, io, r, c) else .void;
     defer received.deinit(alloc);
 

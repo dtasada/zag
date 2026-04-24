@@ -21,10 +21,12 @@ pub const Symbol = struct {
     is_pub: bool = false,
     value: ?Value = null,
     free_type: bool,
+    free_name: bool,
     free_inner_name: bool,
 
     pub fn deinit(self: Symbol, alloc: std.mem.Allocator) void {
         if (self.free_type) self.type.deinit(alloc);
+        if (self.free_name) alloc.free(self.name);
         if (self.free_inner_name) alloc.free(self.inner_name);
         if (self.value) |v| v.deinit(alloc);
     }
@@ -40,6 +42,9 @@ pub const Symbol = struct {
     }
 
     pub fn clone(self: Symbol, alloc: std.mem.Allocator) !Symbol {
+        const name = if (self.free_name) try alloc.dupe(u8, self.name) else self.name;
+        errdefer if (self.free_name) alloc.free(name);
+
         const inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name;
         errdefer if (self.free_inner_name) alloc.free(inner_name);
 
@@ -50,13 +55,14 @@ pub const Symbol = struct {
         errdefer if (value) |v| v.deinit(alloc);
 
         return .{
-            .name = self.name,
+            .name = name,
             .inner_name = inner_name,
             .type = t,
             .binding = self.binding,
             .is_pub = self.is_pub,
             .value = value,
             .free_type = self.free_type,
+            .free_name = self.free_name,
             .free_inner_name = self.free_inner_name,
         };
     }
@@ -148,6 +154,8 @@ pub const Compiler = struct {
     primitives: std.BufSet,
     module: Module,
     source_map: []const utils.Position,
+    alloc: std.mem.Allocator,
+    io: std.Io,
 
     fn deinit(self: *Compiler, alloc: std.mem.Allocator) void {
         self.source.deinit(alloc);
@@ -234,6 +242,8 @@ pub fn emit(alloc: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
         .module = try .init(alloc, module_name),
         .source_map = source_map,
         .primitives = .init(alloc),
+        .alloc = alloc,
+        .io = io,
     };
     defer compiler.deinit(alloc);
 
