@@ -203,4 +203,13 @@ pub const Statement = union(enum) {
             .@"continue", .@"break" => {},
         }
     }
+
+    pub fn pos(self: Statement) usize {
+        return switch (self) {
+            inline else => |s| s.pos,
+            .block => |s| s.pos,
+            .expression => |s| s.pos(),
+            .block_eval => |s| s.pos(),
+        };
+    }
 };

@@ -177,7 +177,6 @@ pub const Type = union(enum) {
 
     pub fn deinit(self: Type, alloc: std.mem.Allocator) void {
         switch (self) {
-            else => {},
             .symbol => |s| alloc.free(s.inner),
             .optional => |s| s.inner.deinitPtr(alloc),
             .slice, .reference => |s| s.inner.deinitPtr(alloc),
@@ -202,6 +201,7 @@ pub const Type = union(enum) {
                 s.parent.deinitPtr(alloc);
                 alloc.free(s.member_name);
             },
+            else => {},
         }
     }
 };

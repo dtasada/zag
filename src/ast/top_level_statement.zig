@@ -40,8 +40,8 @@ pub const TopLevelStatement = union(enum) {
                 const name = try alloc.dupe(u8, bfd.name);
                 errdefer alloc.free(name);
 
-                const parameters = try utils.cloneSlice(ast.VariableSignature, bfd.parameters, alloc);
-                errdefer utils.deinitSlice(ast.VariableSignature, parameters, alloc);
+                const parameters = try utils.cloneSlice(ast.ParameterGroup, bfd.parameters, alloc);
+                errdefer utils.deinitSlice(ast.ParameterGroup, parameters, alloc);
 
                 const return_type = try bfd.return_type.clone(alloc);
                 errdefer return_type.deinit(alloc);
@@ -56,20 +56,38 @@ pub const TopLevelStatement = union(enum) {
                     },
                 };
             },
-            .binding_type_declaration => |btd| .{
-                .binding_type_declaration = .{
-                    .pos = btd.pos,
-                    .is_pub = btd.is_pub,
-                    .name = try alloc.dupe(u8, btd.name),
-                    .type = btd.type,
-                },
+            .binding_type_declaration => |btd| {
+                const name = try alloc.dupe(u8, btd.name);
+                errdefer alloc.free(name);
+                const t = try btd.type.clone(alloc);
+                errdefer t.deinit(alloc);
+                return .{
+                    .binding_type_declaration = .{
+                        .pos = btd.pos,
+                        .is_pub = btd.is_pub,
+                        .name = name,
+                        .type = t,
+                    },
+                };
             },
+            .function_definition => |fd| .{ .function_definition = try fd.clone(alloc) },
+            .variable_definition => |vd| .{ .variable_definition = try vd.clone(alloc) },
+            .enum_declaration => |ed| .{ .enum_declaration = try ed.clone(alloc) },
+            .struct_declaration => |sd| .{ .struct_declaration = try sd.clone(alloc) },
+            .union_declaration => |ud| .{ .union_declaration = try ud.clone(alloc) },
         };
     }
 
     pub fn deinit(self: TopLevelStatement, alloc: std.mem.Allocator) void {
         switch (self) {
-            inline else => |s| s.deinit(alloc),
+            .import => |s| s.deinit(alloc),
+            .binding_function_declaration => |s| s.deinit(alloc),
+            .binding_type_declaration => |s| alloc.free(s.name),
+            .function_definition => |s| s.deinit(alloc),
+            .variable_definition => |s| s.deinit(alloc),
+            .enum_declaration => |s| s.deinit(alloc),
+            .struct_declaration => |s| s.deinit(alloc),
+            .union_declaration => |s| s.deinit(alloc),
         }
     }
 
@@ -260,17 +278,16 @@ pub const TopLevelStatement = union(enum) {
         parameters: ast.ParameterList,
         return_type: Type,
 
-        pub fn getType(self: *const BindingFunctionDeclaration, alloc: std.mem.Allocator) !Type {
+        pub fn getType(self: *const BindingFunctionDeclaration, alloc: std.mem.Allocator) !ast.Type {
             const params = try alloc.alloc(ast.Type, self.parameters.len);
+            errdefer utils.deinitSlice(ast.Type, params, alloc);
             for (self.parameters, 0..) |param, i| params[i] = try param.type.clone(alloc);
-
-            const generic_params = try alloc.alloc(ast.Type, 0);
 
             return .{
                 .function = .{
                     .pos = self.pos,
                     .parameters = params,
-                    .generic_parameters = generic_params,
+                    .generic_parameters = &.{},
                     .return_type = try self.return_type.clonePtr(alloc),
                 },
             };
@@ -292,12 +309,14 @@ pub const TopLevelStatement = union(enum) {
         return_type: Type,
         body: ast.Block,
 
-        pub fn getType(self: *const FunctionDefinition, alloc: std.mem.Allocator) !Type {
+        pub fn getType(self: *const FunctionDefinition, alloc: std.mem.Allocator) !ast.Type {
             var params: std.ArrayList(ast.Type) = .empty;
+            errdefer utils.deinitArrayList(ast.Type, &params, alloc);
             for (self.parameters) |group| for (0..group.names.len) |_|
                 try params.append(alloc, try group.type.clone(alloc));
 
             var generic_params: std.ArrayList(ast.Type) = .empty;
+            errdefer utils.deinitArrayList(ast.Type, &generic_params, alloc);
             for (self.generic_parameters) |group| for (0..group.names.len) |_|
                 try generic_params.append(alloc, try group.type.clone(alloc));
 

@@ -21,8 +21,10 @@ pub const Error = error{
     IllegalReturn,
     InstantiationFailed,
     MissingMembers,
+    NoSpaceLeft,
     NotEnoughGenericArguments,
     TypeMismatch,
+    TypeNotIterable,
     UnhandledGenericMappingTypeSubstitution,
     UnknownSymbol,
     }
@@ -371,5 +373,14 @@ pub fn expressionNotGeneric(io: std.Io, pos: utils.Position) Error {
         error.ExpressionNotGeneric,
         "Compiler error: Expression is not generic but found generic arguments ({f}).\n",
         .{pos},
+    );
+}
+
+pub fn typeNotIterable(io: std.Io, t: Type, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.TypeNotIterable,
+        "Compiler error: Expression of type '{f}' is not iterable. Only arrays and slices are currently iterable ({f}).\n",
+        .{ t, pos },
     );
 }

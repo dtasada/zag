@@ -96,10 +96,19 @@ pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
 }
 
 pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
-    var new_symbol = try symbol.clone(alloc);
+    // If the symbol already owns its metadata, we take it.
+    // If not, we dupe the name.
+    var new_symbol = symbol;
     if (!new_symbol.free_name) {
-        new_symbol.name = try alloc.dupe(u8, symbol.name);
+        const old_name = new_symbol.name;
+        new_symbol.name = try alloc.dupe(u8, old_name);
         new_symbol.free_name = true;
+    }
+    // We should also ensure inner_name is owned if it's not already.
+    if (!new_symbol.free_inner_name) {
+        const old_inner = new_symbol.inner_name;
+        new_symbol.inner_name = try alloc.dupe(u8, old_inner);
+        new_symbol.free_inner_name = true;
     }
     const symbol_ptr = try alloc.create(Symbol);
     symbol_ptr.* = new_symbol;
@@ -107,10 +116,16 @@ pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
 }
 
 pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !void {
+    // We assume the caller gives us a pointer they WANT us to own and manage.
     if (!symbol.free_name) {
         const old_name = symbol.name;
         symbol.name = try alloc.dupe(u8, old_name);
         symbol.free_name = true;
+    }
+    if (!symbol.free_inner_name) {
+        const old_inner = symbol.inner_name;
+        symbol.inner_name = try alloc.dupe(u8, old_inner);
+        symbol.free_inner_name = true;
     }
     try self.scopes.getLast().symbols.append(alloc, symbol);
 }

@@ -139,6 +139,7 @@ pub const Type = union(enum) {
 
                 try generics.mapGenerics(alloc, map, &new_fd);
 
+                utils.deinitSlice(ast.ParameterGroup, new_fd.generic_parameters, alloc);
                 new_fd.generic_parameters = &.{};
 
                 const old_name = new_fd.name;
@@ -175,6 +176,7 @@ pub const Type = union(enum) {
 
                 try generics.mapGenerics(alloc, map, &new_sd);
 
+                utils.deinitSlice(ast.ParameterGroup, new_sd.generic_types, alloc);
                 new_sd.generic_types = &.{};
 
                 const old_name = new_sd.name;
@@ -211,6 +213,7 @@ pub const Type = union(enum) {
 
                 try generics.mapGenerics(alloc, map, &new_ud);
 
+                utils.deinitSlice(ast.ParameterGroup, new_ud.generic_types, alloc);
                 new_ud.generic_types = &.{};
 
                 const old_name = new_ud.name;
@@ -246,7 +249,7 @@ pub const Type = union(enum) {
     pub const Enum = CompoundType(.@"enum");
     pub const Union = CompoundType(.@"union");
 
-    fn CompoundType(tag: utils.CompoundTypeTag) type {
+    pub fn CompoundType(tag: utils.CompoundTypeTag) type {
         return struct {
             pub const Member = if (tag == .@"enum") struct {
                 name: []const u8,
@@ -326,10 +329,9 @@ pub const Type = union(enum) {
             }
         };
     }
-
     pub const Function = struct {
         parameters: []const Type,
-        return_type: *const Type,
+        return_type: *Type,
 
         pub fn deinit(self: Function, alloc: std.mem.Allocator) void {
             utils.deinitSlice(Type, self.parameters, alloc);
@@ -777,6 +779,11 @@ pub const Type = union(enum) {
                 utils.deinitSlice(Symbol, ct.symbols, alloc);
                 if (ct.tag_type) |tt| tt.deinitPtr(alloc);
             },
+            .template => |template| switch (template) {
+                .function_definition => |fd| fd.deinit(alloc),
+                .struct_declaration => |sd| sd.deinit(alloc),
+                .union_declaration => |ud| ud.deinit(alloc),
+            },
             else => {},
         }
     }
@@ -828,8 +835,18 @@ pub const Type = union(enum) {
                 h.update(std.mem.asBytes(&tag));
                 for (ct.members) |member| {
                     h.update(member.name);
-                    h.update(std.mem.asBytes(&if (tag == .@"enum") member else member.type.hash()));
+                    if (tag == .@"enum") {
+                        h.update(std.mem.asBytes(&member.value));
+                    } else {
+                        const m_hash = member.type.hash();
+                        h.update(std.mem.asBytes(&m_hash));
+                    }
                 }
+            },
+            .template => |t| switch (t) {
+                .function_definition => |fd| h.update(fd.name),
+                .struct_declaration => |sd| h.update(sd.name),
+                .union_declaration => |ud| h.update(ud.name),
             },
             else => {},
         }
@@ -909,6 +926,15 @@ pub const Type = union(enum) {
 
                 return true;
             },
+            .template => |t| {
+                const rt = rhs.template;
+                if (std.meta.activeTag(t) != std.meta.activeTag(rt)) return false;
+                return switch (t) {
+                    .function_definition => |fd| std.mem.eql(u8, fd.name, rt.function_definition.name),
+                    .struct_declaration => |sd| std.mem.eql(u8, sd.name, rt.struct_declaration.name),
+                    .union_declaration => |ud| std.mem.eql(u8, ud.name, rt.union_declaration.name),
+                };
+            },
             .module => std.mem.eql(u8, lhs.module.name, rhs.module.name),
             else => true,
         };
@@ -981,6 +1007,13 @@ pub const Type = union(enum) {
                     .symbols = symbols,
                     .tag_type = tag_type,
                 });
+            },
+            .template => |template| return .{
+                .template = switch (template) {
+                    .function_definition => |fd| .{ .function_definition = try fd.clone(alloc) },
+                    .struct_declaration => |sd| .{ .struct_declaration = try sd.clone(alloc) },
+                    .union_declaration => |ud| .{ .union_declaration = try ud.clone(alloc) },
+                },
             },
             else => self,
         };

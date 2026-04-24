@@ -7,6 +7,7 @@ const parser = @import("parser");
 const lexer = @import("lexer");
 
 const errors = @import("errors.zig");
+const Error = errors.Error;
 const statements = @import("statements.zig");
 
 pub const Type = @import("type.zig").Type;
@@ -41,15 +42,21 @@ pub const Symbol = struct {
                 (lhs.value != null and rhs.value != null and lhs.value.?.eql(rhs.value.?)));
     }
 
-    pub fn clone(self: Symbol, alloc: std.mem.Allocator) !Symbol {
+    pub const TypeCloneMode = enum { clone, shallow };
+
+    pub fn clone(self: Symbol, alloc: std.mem.Allocator) Error!Symbol {
+        return self.cloneWithMode(alloc, .clone);
+    }
+
+    pub fn cloneWithMode(self: Symbol, alloc: std.mem.Allocator, mode: TypeCloneMode) Error!Symbol {
         const name = if (self.free_name) try alloc.dupe(u8, self.name) else self.name;
         errdefer if (self.free_name) alloc.free(name);
 
         const inner_name = if (self.free_inner_name) try alloc.dupe(u8, self.inner_name) else self.inner_name;
         errdefer if (self.free_inner_name) alloc.free(inner_name);
 
-        const t = if (self.free_type) try self.type.clone(alloc) else self.type;
-        errdefer if (self.free_type) t.deinit(alloc);
+        const t = if (self.free_type and mode == .clone) try self.type.clone(alloc) else self.type;
+        errdefer if (self.free_type and mode == .clone) t.deinit(alloc);
 
         const value = if (self.value) |v| try v.clone(alloc) else null;
         errdefer if (value) |v| v.deinit(alloc);
