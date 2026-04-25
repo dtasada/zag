@@ -486,6 +486,37 @@ pub fn compile(
             });
         },
         .range => unreachable,
+        .match => |match| {
+            var buf: std.ArrayList(u8) = .empty;
+
+            const condition_t: Type = try .infer(alloc, io, match.condition, c);
+            defer condition_t.deinit(alloc);
+
+            const condition_comp = try compile(alloc, io, match.condition, c, .{});
+            defer alloc.free(condition_comp);
+
+            try buf.print(alloc, "switch ({s}) {{", .{condition_comp});
+
+            for (match.cases) |case| {
+                switch (case.condition) {
+                    .opts => |cases| for (cases) |*single| {
+                        const single_comp = try compile(alloc, io, single, c, .{});
+                        defer alloc.free(single_comp);
+                        try buf.print(alloc, "case {s}:", .{single_comp});
+                    },
+                    .@"else" => try buf.appendSlice(alloc, "default:"),
+                }
+
+                const result_comp = try statements.compile(alloc, io, &case.result, c);
+                defer alloc.free(result_comp);
+
+                try buf.print(alloc, "{{ {s} }} break;", .{result_comp});
+            }
+
+            try buf.append(alloc, '}');
+
+            return try buf.toOwnedSlice(alloc);
+        },
         else => std.debug.panic("{}", .{expr.*}),
     };
 }

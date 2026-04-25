@@ -1,16 +1,12 @@
 bind fn printf(fmt: &c_char, args...) c_int;
 
 fn main() void {
-    let array = [_]i32{1, 2, 3, 4};
-    let slice = array[0..2];
+    let number = 4;
 
-    let s2 = array[0..];
-
-    for (slice) |number| {
-        printf("%d\n", number);
-    }
-
-    for (array) |number| {
-        printf("%d\n", number);
+    match (number) {
+        1 -> {},
+        2 -> {},
+        3 -> {},
+        4 -> {},
     }
 }
