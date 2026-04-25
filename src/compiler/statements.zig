@@ -635,11 +635,17 @@ pub fn @"for"(
     defer alloc.free(i_name);
 
     switch (iter_t) {
-        .slice => |s| {
+        inline .slice, .array => |s, t| {
+            const is_slice = comptime std.mem.eql(u8, @tagName(t), "slice");
+
             if (cond.capture) |cap| {
                 const symbol: Symbol = .{
                     .name = cap.name,
-                    .inner_name = try std.fmt.allocPrint(alloc, "{s}[{s}]", .{ iter_comp, i_name }),
+                    .inner_name = try std.fmt.allocPrint(alloc, "{s}{s}[{s}]", .{
+                        iter_comp,
+                        if (is_slice) ".ptr" else ".items",
+                        i_name,
+                    }),
                     .type = s.inner.*,
                     .binding = if (cap.takes_ref != .none) .let_mut else .let,
                     .free_name = false,
@@ -650,30 +656,12 @@ pub fn @"for"(
                 try c.module.register(alloc, symbol);
             }
 
-            try buf.print(alloc, "for (size_t {s} = 0; {0s} < {s}.len; {0s}++) ", .{
-                i_name,
-                iter_comp,
-            });
-        },
-        .array => |s| {
-            if (cond.capture) |cap| {
-                const symbol = Symbol{
-                    .name = cap.name,
-                    .inner_name = try std.fmt.allocPrint(alloc, "{s}[{s}]", .{ iter_comp, i_name }),
-                    .type = s.inner.*,
-                    .binding = if (cap.takes_ref != .none) .let_mut else .let,
-                    .free_name = false,
-                    .free_inner_name = true,
-                    .free_type = false,
-                };
-                errdefer symbol.deinit(alloc);
-                try c.module.register(alloc, symbol);
-            }
-
-            try buf.print(alloc, "for (size_t {s} = 0; {0s} < {}; {0s}++) ", .{
-                i_name,
-                s.len,
-            });
+            const len_format = if (is_slice) "{s}.len" else "{}";
+            try buf.print(
+                alloc,
+                "for (size_t {s} = 0; {0s} < " ++ len_format ++ "; {0s}++) ",
+                .{ i_name, if (is_slice) iter_comp else s.len },
+            );
         },
         else => return errors.typeNotIterable(io, iter_t, c.source_map[cond.iterator.pos()]),
     }

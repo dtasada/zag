@@ -217,6 +217,22 @@ pub const Compiler = struct {
 
                 return type_name;
             },
+            .slice => |slice| {
+                const type_name = try std.fmt.allocPrint(alloc, "__zag_Slice_{x}", .{t.hash()});
+                if (!self.primitives.contains(type_name)) {
+                    const t_comp = try self.compileType(alloc, io, slice.inner, pos);
+                    defer alloc.free(t_comp);
+                    try self.header.typedefs.print(
+                        alloc,
+                        "typedef struct {s} {{ {s}{s} *ptr; size_t len; }} {0s};",
+                        .{ type_name, if (slice.is_mut) "" else "const ", t_comp },
+                    );
+
+                    try self.primitives.insert(type_name);
+                }
+
+                return type_name;
+            },
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else

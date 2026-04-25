@@ -1,37 +1,16 @@
 bind fn printf(fmt: &c_char, args...) c_int;
 
-let some_global: i32 = 42;
-
-struct Vector2 {
-    x, y: f32,
-
-    fn init(x, y: f32) Vector2 -> Vector2 { x: x, y: y }
-}
-
-fn print_value<T>(val: T) void {
-    printf("T: %d\n", val);
-}
-
-struct Foo<T> {
-    val: T,
-}
-
-fn get_val<T>(f: &Foo<T>) T {
-    return f.val;
-}
-
-fn test_generic() void {
-    let f = Foo<i32> { val: 42 };
-    let v = get_val<i32>(&f);
-    printf("test_generic result: %d\n", v);
-}
-
 fn main() void {
-    print_value<i32>(32);
-    test_generic();
+    let array = [_]i32{1, 2, 3, 4};
+    let slice = array[0..2];
 
-    let i = 2;
-    if (4 > i > 2) {
-        test_generic();
+    let s2 = array[0..];
+
+    for (slice) |number| {
+        printf("%d\n", number);
+    }
+
+    for (array) |number| {
+        printf("%d\n", number);
     }
 }

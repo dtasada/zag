@@ -277,7 +277,7 @@ pub fn compile(
 
             return try std.fmt.allocPrint(alloc, "{s}{s}[{s}]", .{
                 lhs_comp,
-                if (lhs_t == .slice) ".ptr" else if (lhs_t == .array) ".items" else "",
+                if (lhs_t == .slice) ".ptr" else if (lhs_t == .array) ".items" else unreachable,
                 index_comp,
             });
         },
@@ -434,6 +434,56 @@ pub fn compile(
             try buf.appendSlice(alloc, final_eval.items);
             try buf.appendSlice(alloc, ";})");
             return try buf.toOwnedSlice(alloc);
+        },
+        .slice => |slice| {
+            const lhs_t: Type = try .infer(alloc, io, slice.lhs, c);
+            defer lhs_t.deinit(alloc);
+
+            if (lhs_t != .slice and lhs_t != .array) return errors.cannotSlice(io, lhs_t, c.source_map[slice.pos]);
+
+            const lhs_comp = try compile(alloc, io, slice.lhs, c, .{});
+            defer alloc.free(lhs_comp);
+
+            const start_t: Type = try .infer(alloc, io, slice.start, c);
+            defer start_t.deinit(alloc);
+            if (!start_t.isInteger()) return errors.illegalIndexType(io, start_t, c.source_map[slice.start.pos()]);
+
+            if (slice.end) |end| {
+                const end_t: Type = try .infer(alloc, io, end, c);
+                defer end_t.deinit(alloc);
+                if (!end_t.isInteger()) return errors.illegalIndexType(io, end_t, c.source_map[slice.start.pos()]);
+            }
+
+            const start_comp = try compile(alloc, io, slice.start, c, .{});
+            defer alloc.free(start_comp);
+
+            const end_comp = if (slice.end) |end|
+                try compile(alloc, io, end, c, .{})
+            else if (lhs_t == .slice)
+                try std.fmt.allocPrint(alloc, "{s}.ptr + {0s}.len", .{lhs_comp})
+            else
+                try std.fmt.allocPrint(alloc, "{s}.items + {}", .{ lhs_comp, lhs_t.array.len });
+            defer alloc.free(end_comp);
+
+            const t_comp = switch (lhs_t) {
+                .slice => try c.compileType(alloc, io, &lhs_t, slice.pos),
+                .array => try c.compileType(alloc, io, &.{
+                    .slice = .{
+                        .inner = lhs_t.array.inner,
+                        .is_mut = try c.module.getExpressionMutability(alloc, io, slice.lhs, c),
+                    },
+                }, slice.pos),
+                else => unreachable,
+            };
+            defer alloc.free(t_comp);
+
+            return try std.fmt.allocPrint(alloc, "({s}){{ .ptr = {s}{s} + {s}, .len = (size_t)({s} - {3s}) }}", .{
+                t_comp,
+                lhs_comp,
+                if (lhs_t == .slice) ".ptr" else ".items",
+                start_comp,
+                end_comp,
+            });
         },
         .range => unreachable,
         else => std.debug.panic("{}", .{expr.*}),
