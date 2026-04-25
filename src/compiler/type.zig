@@ -397,7 +397,7 @@ pub const Type = union(enum) {
         };
     }
 
-    // User owns memory
+    // Caller owns memory
     pub fn infer(
         alloc: std.mem.Allocator,
         io: std.Io,
@@ -645,7 +645,7 @@ pub const Type = union(enum) {
                 }
                 return t;
             },
-            else => unreachable,
+            inline else => |_, t| std.debug.panic("unreachable with {s}\n", .{@tagName(t)}),
         };
     }
 

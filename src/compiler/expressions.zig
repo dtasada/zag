@@ -380,6 +380,62 @@ pub fn compile(
 
             return try ret.toOwnedSlice(alloc);
         },
+        .comparison => |comparison| {
+            var buf: std.ArrayList(u8) = .empty;
+
+            try buf.appendSlice(alloc, "({");
+
+            var final_eval: std.ArrayList(u8) = .empty;
+            defer final_eval.deinit(alloc);
+
+            var left = comparison.left;
+            for (comparison.comparisons, 0..) |comp, i| {
+                const lhs_t: Type = try .infer(alloc, io, left, c);
+                defer lhs_t.deinit(alloc);
+
+                const right = comp.right;
+
+                const rhs_t: Type = try .infer(alloc, io, right, c);
+                defer rhs_t.deinit(alloc);
+
+                if (!lhs_t.eql(rhs_t))
+                    return errors.typeMismatchBinExpr(io, lhs_t, rhs_t, comp.op, c.source_map[left.pos()]);
+
+                if (lhs_t.isNumeric() and
+                    (comp.op == .@"and" or comp.op == .@"or" or comp.op == .but))
+                    return errors.booleanOperatorUsedOnNumerical(io, lhs_t, comp.op, c.source_map[left.pos()]);
+
+                if (lhs_t == .bool and
+                    (comp.op != .@"and" and comp.op != .@"or" and comp.op != .but))
+                    return errors.numericalOperatorUsedOnBoolean(io, lhs_t, comp.op, c.source_map[left.pos()]);
+
+                const t_comp = try c.compileType(alloc, io, &lhs_t, left.pos());
+                defer alloc.free(t_comp);
+
+                const left_comp = try compile(alloc, io, left, c, .{});
+                defer alloc.free(left_comp);
+
+                const right_comp = try compile(alloc, io, right, c, .{});
+                defer alloc.free(right_comp);
+
+                if (i == 0) {
+                    const lhs_name = std.hash.Wyhash.hash(0, std.mem.asBytes(&lhs_t));
+                    try buf.print(alloc, "{s} _{x} = {s};", .{ t_comp, lhs_name, left_comp });
+                    try final_eval.print(alloc, "_{x} ", .{lhs_name});
+                }
+
+                const rhs_name = std.hash.Wyhash.hash(0, std.mem.asBytes(&rhs_t));
+                try buf.print(alloc, "{s} _{x}{} = {s};", .{ t_comp, rhs_name, i, right_comp });
+                try final_eval.print(alloc, "{s} _{x}{} && _{1x}{2} ", .{ @tagName(comp.op), rhs_name, i });
+
+                left = right;
+            }
+
+            try buf.appendSlice(alloc, final_eval.items);
+            try buf.appendSlice(alloc, ";})");
+            return try buf.toOwnedSlice(alloc);
+        },
+        .range => unreachable,
         else => std.debug.panic("{}", .{expr.*}),
     };
 }

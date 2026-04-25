@@ -70,15 +70,18 @@ pub fn binary(self: *Parser, lhs: *const ast.Expression, bp: BindingPower) Error
             }
 
             if (lhs.* == .binary) switch (lhs.binary.op) {
-                .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => return .{
-                    .comparison = .{
-                        .pos = lhs.pos(),
-                        .left = lhs.binary.lhs,
-                        .comparisons = &.{
-                            .{ .op = lhs.binary.op, .right = lhs.binary.rhs },
-                            .{ .op = op, .right = new_rhs },
+                .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=" => {
+                    const comparisons = try self.alloc.alloc(ast.Expression.Comparison.Item, 2);
+                    comparisons[0] = .{ .op = lhs.binary.op, .right = try lhs.binary.rhs.clonePtr(self.alloc) };
+                    comparisons[1] = .{ .op = op, .right = new_rhs };
+                    defer lhs.deinitPtr(self.alloc);
+                    return .{
+                        .comparison = .{
+                            .pos = lhs.pos(),
+                            .left = try lhs.binary.lhs.clonePtr(self.alloc),
+                            .comparisons = comparisons,
                         },
-                    },
+                    };
                 },
                 else => {},
             };

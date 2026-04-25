@@ -21,7 +21,7 @@ fn get_val<T>(f: &Foo<T>) T {
 }
 
 fn test_generic() void {
-    let f = Foo<i32>{ val: 42 };
+    let f = Foo<i32> { val: 42 };
     let v = get_val<i32>(&f);
     printf("test_generic result: %d\n", v);
 }
@@ -31,7 +31,7 @@ fn main() void {
     test_generic();
 
     let i = 2;
-    if (i > 0) {
+    if (4 > i > 2) {
         test_generic();
     }
 }
