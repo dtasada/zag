@@ -122,7 +122,7 @@ pub const Type = union(enum) {
                 var new_fd = try fd.clone(alloc);
                 defer new_fd.deinit(alloc);
 
-                var map = std.StringHashMap(ast.Expression).init(alloc);
+                var map: std.StringHashMap(ast.Expression) = .init(alloc);
                 defer map.deinit();
 
                 var arg_i: usize = 0;
@@ -146,7 +146,7 @@ pub const Type = union(enum) {
                     new_fd.name = old_name;
                 }
 
-                const tls = ast.TopLevelStatement{ .function_definition = new_fd };
+                const tls: ast.TopLevelStatement = .{ .function_definition = new_fd };
                 try statements.compileTopLevel(alloc, io, tls, c);
 
                 const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
@@ -155,52 +155,15 @@ pub const Type = union(enum) {
 
                 return result_t;
             },
-            .struct_declaration => |sd| {
-                var new_sd = try sd.clone(alloc);
-                defer new_sd.deinit(alloc);
-
-                var map = std.StringHashMap(ast.Expression).init(alloc);
-                defer map.deinit();
-
-                var arg_i: usize = 0;
-                for (sd.generic_types) |group| {
-                    for (group.names) |name| {
-                        if (arg_i >= args.len) return error.NotEnoughGenericArguments;
-                        try map.put(name, args[arg_i]);
-                        arg_i += 1;
-                    }
-                }
-
-                try generics.mapGenerics(alloc, map, &new_sd);
-
-                utils.deinitSlice(ast.ParameterGroup, new_sd.generic_types, alloc);
-                new_sd.generic_types = &.{};
-
-                const old_name = new_sd.name;
-                new_sd.name = try alloc.dupe(u8, mangled_name);
-                defer {
-                    alloc.free(new_sd.name);
-                    new_sd.name = old_name;
-                }
-
-                const tls = ast.TopLevelStatement{ .struct_declaration = new_sd };
-                try statements.compileTopLevel(alloc, io, tls, c);
-
-                const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
-                const result_t = try symbol.value.?.type.clone(alloc);
-                try c.module.instantiations.put(try alloc.dupe(u8, mangled_name), try result_t.clone(alloc));
-
-                return result_t;
-            },
-            .union_declaration => |ud| {
-                var new_ud = try ud.clone(alloc);
+            inline .struct_declaration, .union_declaration => |d, tag| {
+                var new_ud = try d.clone(alloc);
                 defer new_ud.deinit(alloc);
 
-                var map = std.StringHashMap(ast.Expression).init(alloc);
+                var map: std.StringHashMap(ast.Expression) = .init(alloc);
                 defer map.deinit();
 
                 var arg_i: usize = 0;
-                for (ud.generic_types) |group| {
+                for (d.generic_types) |group| {
                     for (group.names) |name| {
                         if (arg_i >= args.len) return error.NotEnoughGenericArguments;
                         try map.put(name, args[arg_i]);
@@ -220,7 +183,7 @@ pub const Type = union(enum) {
                     new_ud.name = old_name;
                 }
 
-                const tls = ast.TopLevelStatement{ .union_declaration = new_ud };
+                const tls = @unionInit(ast.TopLevelStatement, @tagName(tag), new_ud);
                 try statements.compileTopLevel(alloc, io, tls, c);
 
                 const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;

@@ -53,7 +53,10 @@ pub fn compile(
             return try @"return"(alloc, io, ret, c, expected_return_type);
         },
         .block => |b| try block(alloc, io, b.payload, c, .{}),
-        .@"defer" => @panic("defer is unimplemented in the compiler"),
+        .@"defer" => |def| {
+            try c.module.scopes.getLast().defers.append(alloc, def.payload.*);
+            return alloc.dupe(u8, "");
+        },
     };
 }
 
@@ -173,15 +176,18 @@ pub fn compileTopLevel(
             });
 
             const body = try block(alloc, io, fd.body, c, .{
-                .return_type = function_type.function.return_type.*,
+                .eval_type = function_type.function.return_type.*,
             });
             defer alloc.free(body);
-            try c.source.function_impls.print(alloc, "{s} {s}{s} {s}", .{
+            try c.source.function_impls.print(alloc, "{s} {s}{s} ", .{
                 return_type_comp,
                 inner_name,
                 param_list_comp,
-                body,
             });
+
+            if (fd.body.len == 1 and fd.body[0] == .block_eval) {
+                try c.source.function_impls.print(alloc, "{{ return ({s}); }}", .{body});
+            } else try c.source.function_impls.appendSlice(alloc, body);
         },
         .variable_definition => |vd| {
             const def_comp = try variableDefinition(alloc, io, vd, c);
@@ -424,15 +430,18 @@ pub fn compileTopLevel(
                 const params_comp = try parameterList(alloc, io, method.parameters, c);
                 defer alloc.free(params_comp);
 
-                const body_comp = try block(alloc, io, method.body, c, .{ .return_type = return_t });
+                const body_comp = try block(alloc, io, method.body, c, .{ .eval_type = return_t });
                 defer alloc.free(body_comp);
 
-                try c.source.function_impls.print(alloc, "{s} {s}{s} {s}", .{
+                try c.source.function_impls.print(alloc, "{s} {s}{s} ", .{
                     return_comp,
                     m_symbol.inner_name,
                     params_comp,
-                    body_comp,
                 });
+
+                if (method.body.len == 1 and method.body[0] == .block_eval) {
+                    try c.source.function_impls.print(alloc, "{{ return ({s}); }}", .{body_comp});
+                } else try c.source.function_impls.appendSlice(alloc, body_comp);
             }
 
             ct_ptr.symbols = try symbols.toOwnedSlice(alloc);
@@ -690,27 +699,32 @@ pub fn @"return"(
     if (!received.check(expected_type))
         return errors.typeMismatch(io, expected_type, received, c.source_map[ret.pos]);
 
-    const block_return: ?[]const u8 = if (ret.@"return") |*r| try expressions.compile(alloc, io, r, c, .{
-        .expected_type = expected_type,
-    }) else null;
-    defer if (block_return) |br| alloc.free(br);
+    const expr_comp = if (ret.@"return") |*r|
+        try expressions.compile(alloc, io, r, c, .{ .expected_type = expected_type })
+    else
+        null;
+    defer if (expr_comp) |ec| alloc.free(ec);
 
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(alloc);
-
-    // Deinit all local variables in all scopes except the global one
-    for (1..c.module.scopes.items.len) |j| {
+    var block_return: std.ArrayList(u8) = .empty;
+    if (expr_comp) |_| try block_return.appendSlice(alloc, "return ({");
+    var ret_name: ?u64 = null;
+    if (ret.@"return") |*r| {
+        const return_type_comp = try c.compileType(alloc, io, &expected_type, r.pos());
+        defer alloc.free(return_type_comp);
+        ret_name = std.hash.Wyhash.hash(0, expr_comp.?);
+        try block_return.print(alloc, "{s} _{x} = {s};", .{ return_type_comp, ret_name.?, expr_comp.? });
+    }
+    for (1..c.module.scopes.items.len + 1) |j| {
         const scope = c.module.scopes.items[c.module.scopes.items.len - j];
-        for (scope.defers.items) |d| {
-            const st = try compile(alloc, io, &d, c);
+        for (scope.defers.items) |*d| {
+            const st = try compile(alloc, io, d, c);
             defer alloc.free(st);
-            try buf.appendSlice(alloc, st);
+            try block_return.appendSlice(alloc, st);
         }
     }
+    if (ret_name) |rn| try block_return.print(alloc, "_{x};}});", .{rn});
 
-    if (block_return) |br| try buf.print(alloc, "return {s};", .{br}) else try buf.appendSlice(alloc, "return;");
-
-    return try buf.toOwnedSlice(alloc);
+    return block_return.toOwnedSlice(alloc);
 }
 
 pub fn block(
@@ -719,50 +733,111 @@ pub fn block(
     b: ast.Block,
     c: *Compiler,
     opts: struct {
-        return_type: ?Type = null,
         eval_type: ?Type = null,
         create_scope: bool = true,
     },
 ) Error![]const u8 {
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(alloc);
+
     if (opts.create_scope) {
+        try buf.append(alloc, '{');
         try c.module.pushScope(alloc);
     }
     defer if (opts.create_scope) c.module.popScope(alloc);
+    var returned: union(enum) {
+        yes: ast.Statement.Return,
+        block_eval: ast.Expression,
+        no,
+        @"continue",
+        @"break",
+    } = .no;
+    for (b) |statement| switch (statement) {
+        .@"return" => |r| {
+            if (returned == .yes)
+                return errors.doubleReturn(io, c.source_map[returned.yes.pos], c.source_map[r.pos]);
+            if (returned == .block_eval)
+                return errors.doubleReturn(io, c.source_map[returned.block_eval.pos()], c.source_map[r.pos]);
+            returned = .{ .yes = r };
+            break; // todo: warning unreachable code
+        },
+        .block_eval => |be| {
+            if (returned == .yes)
+                return errors.doubleReturn(io, c.source_map[returned.yes.pos], c.source_map[be.pos()]);
+            if (returned == .block_eval)
+                return errors.doubleReturn(io, c.source_map[returned.block_eval.pos()], c.source_map[be.pos()]);
 
-    var block_return: std.ArrayList(u8) = .empty;
-    defer block_return.deinit(alloc);
+            const be_t: Type = try .infer(alloc, io, &be, c);
+            defer be_t.deinit(alloc);
+            if (be_t != .void) {
+                returned = .{ .block_eval = be };
+            } else {
+                const statement_comp = try compile(alloc, io, &statement, c);
+                defer alloc.free(statement_comp);
+                try buf.appendSlice(alloc, statement_comp);
+            }
+            break; // todo: warning unreachable code
+        },
+        .@"continue" => returned = .@"continue",
+        .@"break" => returned = .@"break",
+        else => {
+            const statement_comp = try compile(alloc, io, &statement, c);
+            defer alloc.free(statement_comp);
+            try buf.appendSlice(alloc, statement_comp);
+        },
+    };
 
-    try block_return.appendSlice(alloc, "{ ");
+    switch (returned) {
+        .yes => |r| {
+            const ret_comp = try @"return"(alloc, io, r, c, opts.eval_type orelse
+                return errors.illegalReturn(io, c.source_map[r.pos]));
+            defer alloc.free(ret_comp);
+            try buf.appendSlice(alloc, ret_comp);
+        },
+        .block_eval => |*be| {
+            const expected = opts.eval_type orelse
+                return errors.illegalReturn(io, c.source_map[be.pos()]);
 
-    const ret_name: ?usize = if (opts.eval_type != null) b[b.len - 1].pos() else null;
-    if (ret_name) |rn| {
-        const t_comp = try c.compileType(alloc, io, &opts.eval_type.?, rn);
-        defer alloc.free(t_comp);
-        try block_return.print(alloc, "{s} _{x}; ", .{ t_comp, rn });
+            const received: Type = try .infer(alloc, io, be, c);
+            defer received.deinit(alloc);
+
+            if (!received.check(expected))
+                return errors.typeMismatch(io, expected, received, c.source_map[be.pos()]);
+
+            const t_comp = try c.compileType(alloc, io, &expected, be.pos());
+            defer alloc.free(t_comp);
+
+            const ret_comp = try expressions.compile(alloc, io, be, c, .{ .expected_type = expected });
+            defer alloc.free(ret_comp);
+
+            const ret_name = std.hash.Wyhash.hash(0, ret_comp);
+            try buf.print(alloc, "{s} _{x} = {s};", .{ t_comp, ret_name, ret_comp });
+            for (1..c.module.scopes.items.len + 1) |j| {
+                const scope = c.module.scopes.items[c.module.scopes.items.len - j];
+                for (scope.defers.items) |*d| {
+                    const st = try compile(alloc, io, d, c);
+                    defer alloc.free(st);
+                    try buf.appendSlice(alloc, st);
+                }
+            }
+            try buf.print(alloc, "_{x};", .{ret_name});
+        },
+        .no => for (c.module.scopes.getLast().defers.items) |*d| {
+            const st = try compile(alloc, io, d, c);
+            defer alloc.free(st);
+            try buf.appendSlice(alloc, st);
+        },
+        inline .@"break", .@"continue" => |_, t| {
+            for (c.module.scopes.getLast().defers.items) |*d| {
+                const st = try compile(alloc, io, d, c);
+                defer alloc.free(st);
+                try buf.appendSlice(alloc, st);
+            }
+            try buf.appendSlice(alloc, @tagName(t));
+        },
     }
 
-    for (b, 0..) |statement, i| {
-        if (opts.eval_type != null and i == b.len - 1) {
-            const expr_comp = try expressions.compile(alloc, io, &statement.block_eval, c, .{
-                .expected_type = opts.eval_type,
-            });
-            defer alloc.free(expr_comp);
-            try block_return.print(alloc, "_{x} = {s}; ", .{ ret_name.?, expr_comp });
-        } else if (opts.return_type != null and i == b.len - 1 and statement == .block_eval) {
-            const st = try @"return"(alloc, io, .{
-                .pos = statement.pos(),
-                .@"return" = statement.block_eval,
-            }, c, opts.return_type.?);
-            defer alloc.free(st);
-            try block_return.appendSlice(alloc, st);
-        } else {
-            const st = try compile(alloc, io, &statement, c);
-            defer alloc.free(st);
-            try block_return.appendSlice(alloc, st);
-        }
-    }
-    if (ret_name) |rn| try block_return.print(alloc, "_{x};", .{rn});
-    try block_return.appendSlice(alloc, " }");
+    if (opts.create_scope) try buf.append(alloc, '}');
 
-    return block_return.toOwnedSlice(alloc);
+    return try buf.toOwnedSlice(alloc);
 }
