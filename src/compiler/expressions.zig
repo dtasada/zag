@@ -244,6 +244,10 @@ pub fn compile(
                     std.fmt.allocPrint(alloc, "{s}.{s}", .{ parent_comp, member.member_name })
                 else
                     errors.badMemberAccessSlice(io, parent_t, member.member_name, c.source_map[member.pos]),
+                .module => |module| if (module.getSymbol(member.member_name)) |symbol|
+                    try alloc.dupe(u8, symbol.inner_name)
+                else
+                    errors.unknownMember(io, parent_t, member.member_name, c.source_map[member.pos]),
                 else => errors.badMemberAccess(io, parent_t, member.member_name, c.source_map[member.pos]),
             };
         },

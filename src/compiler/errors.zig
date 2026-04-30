@@ -27,8 +27,7 @@ pub const Error = error{
     TypeNotIterable,
     UnhandledGenericMappingTypeSubstitution,
     UnknownSymbol,
-    }
- || std.mem.Allocator.Error;
+} || std.mem.Allocator.Error;
 
 pub fn unknownSymbol(io: std.Io, symbol: []const u8, pos: utils.Position) Error {
     return utils.printErr(

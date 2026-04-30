@@ -7,10 +7,11 @@ const expressions = @import("expressions.zig");
 const errors = @import("errors.zig");
 const compiler = @import("compiler.zig");
 
+const Module = compiler.Module;
 const Compiler = compiler.Compiler;
-const Type = @import("type.zig").Type;
+const Type = compiler.Type;
+const Value = compiler.Value;
 const Symbol = compiler.Symbol;
-const Value = @import("value.zig").Value;
 const Error = errors.Error;
 
 pub fn compile(
@@ -73,7 +74,7 @@ pub fn compileTopLevel(
             defer function_type_ast.deinit(alloc);
 
             const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
-            const symbol = Symbol{
+            const symbol: Symbol = .{
                 .name = bfd.name,
                 .inner_name = bfd.name,
                 .type = function_type,
@@ -99,7 +100,7 @@ pub fn compileTopLevel(
             });
         },
         .binding_type_declaration => |btd| {
-            const symbol = Symbol{
+            const symbol: Symbol = .{
                 .name = btd.name,
                 .inner_name = btd.name,
                 .type = .type,
@@ -128,7 +129,7 @@ pub fn compileTopLevel(
         },
         .function_definition => |fd| {
             if (fd.generic_parameters.len > 0) {
-                const symbol = Symbol{
+                const symbol: Symbol = .{
                     .name = fd.name,
                     .inner_name = fd.name,
                     .type = .{ .template = .{ .function_definition = try fd.clone(alloc) } },
@@ -147,7 +148,7 @@ pub fn compileTopLevel(
             defer function_type_ast.deinit(alloc);
 
             const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
-            const symbol = Symbol{
+            const symbol: Symbol = .{
                 .name = fd.name,
                 .inner_name = inner_name,
                 .type = function_type,
@@ -157,8 +158,10 @@ pub fn compileTopLevel(
                 .free_inner_name = true,
                 .free_type = true,
             };
-            errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
+            c.module.register(alloc, symbol) catch |err| {
+                symbol.deinit(alloc);
+                return err;
+            };
 
             const return_type_comp = try c.compileType(alloc, io, function_type.function.return_type, fd.return_type.pos());
             defer alloc.free(return_type_comp);
@@ -451,27 +454,35 @@ pub fn compileTopLevel(
     }
 }
 
-fn import(
+pub fn import(
     alloc: std.mem.Allocator,
     io: std.Io,
     s: ast.TopLevelStatement.Import,
     c: *Compiler,
 ) Error!void {
-    _ = c;
     var path_buf: [1024]u8 = undefined;
     var path: []const u8 = "";
-    for (s.module_name) |name| {
-        path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ path, name }) catch |err| switch (err) {
-            error.NoSpaceLeft => return error.NoSpaceLeft,
-        };
-    }
+    for (s.module_name) |name| path = try std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ path, name });
     const full_path = try std.fmt.allocPrint(alloc, "{s}.zag", .{path[1..]});
     defer alloc.free(full_path);
 
-    compiler.emit(alloc, io, full_path) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return error.UnknownSymbol, // todo: better error for emit failure
-    };
+    const ptr = try alloc.create(Module);
+    errdefer alloc.destroy(ptr);
+
+    var module = compiler.processImports(alloc, io, full_path) catch unreachable;
+    errdefer module.deinit(alloc);
+    ptr.* = module;
+
+    try c.module.register(alloc, .{
+        .name = module.name,
+        .inner_name = module.name,
+        .type = .{ .module = ptr },
+        .binding = .@"const",
+        .is_pub = false,
+        .free_inner_name = false,
+        .free_name = false,
+        .free_type = true,
+    });
 }
 
 pub fn parameterList(
@@ -489,7 +500,7 @@ pub fn parameterList(
     else for (parameter_list, 0..) |group, i| {
         for (group.names, 0..) |name, j| {
             const param_t: Type = try .fromAst(alloc, io, &group.type, c);
-            const symbol = Symbol{
+            const symbol: Symbol = .{
                 .name = name,
                 .inner_name = name,
                 .type = param_t,
@@ -529,7 +540,7 @@ pub fn variableDefinition(
     else
         try .infer(alloc, io, &vd.assigned_value, c);
 
-    const symbol = Symbol{
+    const symbol: Symbol = .{
         .name = vd.variable_name,
         .type = t,
         .binding = vd.binding,

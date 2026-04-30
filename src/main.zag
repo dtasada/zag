@@ -1,12 +1,5 @@
-bind fn printf(fmt: &c_char, args...) c_int;
+import c;
 
 fn main() void {
-    let number = 4;
-
-    match (number) {
-        1 -> {},
-        2 -> {},
-        3 -> {},
-        4 -> {},
-    }
+    c.printf("hello world\n");
 }

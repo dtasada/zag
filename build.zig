@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) void {
     const compiler_mod = modules.create("compiler", "src/compiler/compiler.zig");
     zag_mod.mod.addImport("build_options", options_mod);
     compiler_mod.mod.addImport("build_options", options_mod);
+    lexer_mod.mod.addImport("build_options", options_mod);
 
     zag_mod.addImport(&lexer_mod);
     zag_mod.addImport(&parser_mod);

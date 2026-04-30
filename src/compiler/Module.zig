@@ -40,7 +40,11 @@ fn registerBuiltin(
 }
 
 pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
-    var self: Module = .{ .name = name, .instantiations = std.StringHashMap(Type).init(alloc) };
+    var self: Module = .{
+        .name = try alloc.dupe(u8, name),
+        .instantiations = .init(alloc),
+    };
+    errdefer self.deinit(alloc);
 
     try self.pushScope(alloc);
 
@@ -76,7 +80,14 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
     try self.registerBuiltin(alloc, "c_float", "float", .{ .type = .c_float });
     try self.registerBuiltin(alloc, "c_double", "double", .{ .type = .c_double });
 
-    try self.registerBuiltin(alloc, "c_null", "NULL", .{ .type = .{ .reference = .{ .is_mut = false, .inner = try Type.clonePtr(.void, alloc) } } });
+    try self.registerBuiltin(alloc, "c_null", "NULL", .{
+        .type = .{
+            .reference = .{
+                .is_mut = false,
+                .inner = try .clonePtr(.void, alloc),
+            },
+        },
+    });
     try self.registerBuiltin(alloc, "nil", "nil", .nil);
     try self.registerBuiltin(alloc, "undefined", "undefined", .undefined);
 
@@ -93,6 +104,7 @@ pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
         entry.value_ptr.deinit(alloc);
     }
     self.instantiations.deinit();
+    alloc.free(self.name);
 }
 
 pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
@@ -111,6 +123,7 @@ pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
         new_symbol.free_inner_name = true;
     }
     const symbol_ptr = try alloc.create(Symbol);
+    errdefer alloc.destroy(symbol_ptr);
     symbol_ptr.* = new_symbol;
     try self.scopes.getLast().symbols.append(alloc, symbol_ptr);
 }
@@ -131,13 +144,16 @@ pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !vo
 }
 
 pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
+    std.debug.print("pushing {s}\n", .{self.name});
     const new_scope = try alloc.create(Scope);
+    errdefer alloc.destroy(new_scope);
     new_scope.defers = .empty;
     new_scope.symbols = .empty;
     try self.scopes.append(alloc, new_scope);
 }
 
 pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
+    std.debug.print("popping {s}\n", .{self.name});
     const last_scope = self.scopes.pop().?;
     for (last_scope.symbols.items) |symbol| {
         symbol.deinit(alloc);
@@ -146,6 +162,7 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
     last_scope.symbols.deinit(alloc);
     last_scope.defers.deinit(alloc);
     alloc.destroy(last_scope);
+    std.debug.print("popped {s}\n", .{self.name});
 }
 
 pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {

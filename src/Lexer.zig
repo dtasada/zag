@@ -421,17 +421,16 @@ const keywords: std.StaticStringMap(Token) = .initComptime(.{
 });
 
 /// Initializes and runs tokenizer. Populates `tokens`. User owns return values.
+/// Does not take ownership of input.
 pub fn tokenize(
     alloc: std.mem.Allocator,
     io: std.Io,
+    input: []const u8,
     file_path: []const u8,
 ) !struct {
     []Token,
     []utils.Position,
 } {
-    const input = try std.Io.Dir.cwd().readFileAlloc(io, file_path, alloc, .unlimited);
-    defer alloc.free(input);
-
     var self: Lexer = .{
         .input = input,
         .file_path = file_path,

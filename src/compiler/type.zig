@@ -63,7 +63,7 @@ pub const Type = union(enum) {
     @"enum": Enum,
     @"union": Union,
 
-    module: Module,
+    module: *Module,
     template: Template,
 
     pub fn getMangledName(
@@ -742,6 +742,10 @@ pub const Type = union(enum) {
                 .function_definition => |fd| fd.deinit(alloc),
                 .struct_declaration => |sd| sd.deinit(alloc),
                 .union_declaration => |ud| ud.deinit(alloc),
+            },
+            .module => |module| {
+                module.deinit(alloc);
+                alloc.destroy(module);
             },
             else => {},
         }
