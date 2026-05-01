@@ -91,6 +91,26 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
     try self.registerBuiltin(alloc, "nil", "nil", .nil);
     try self.registerBuiltin(alloc, "undefined", "undefined", .undefined);
 
+    try self.register(alloc, .{
+        .name = "cast",
+        .inner_name = "cast",
+        .type = .{ .template = .builtin_cast },
+        .binding = .@"const",
+        .free_name = false,
+        .free_inner_name = false,
+        .free_type = false,
+    });
+
+    try self.register(alloc, .{
+        .name = "sizeof",
+        .inner_name = "sizeof",
+        .type = .{ .template = .builtin_sizeof },
+        .binding = .@"const",
+        .free_name = false,
+        .free_inner_name = false,
+        .free_type = false,
+    });
+
     return self;
 }
 
@@ -246,6 +266,8 @@ pub fn getSymbolFromExpression(
 
             const template_name = switch (lhs_t) {
                 .template => |t| switch (t) {
+                    .builtin_cast => "cast",
+                    .builtin_sizeof => "sizeof",
                     inline else => |d| d.name,
                 },
                 else => return null,

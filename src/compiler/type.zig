@@ -59,6 +59,9 @@ pub const Type = union(enum) {
 
     function: Function,
 
+    instantiated_builtin_cast: *const Type,
+    instantiated_builtin_sizeof: *const Type,
+
     @"struct": Struct,
     @"enum": Enum,
     @"union": Union,
@@ -109,6 +112,8 @@ pub const Type = union(enum) {
 
         const template = self.template;
         const template_name = switch (template) {
+            .builtin_cast => "cast",
+            .builtin_sizeof => "sizeof",
             inline else => |d| d.name,
         };
 
@@ -118,6 +123,20 @@ pub const Type = union(enum) {
         if (c.module.instantiations.get(mangled_name)) |t| return try t.clone(alloc);
 
         switch (template) {
+            .builtin_cast => {
+                if (args.len != 1) return error.ArgumentCount;
+                const val = try Value.eval(alloc, io, &args[0], c);
+                defer val.deinit(alloc);
+                if (val != .type) return error.TypeMismatch;
+                return .{ .instantiated_builtin_cast = try .clonePtr(val.type, alloc) };
+            },
+            .builtin_sizeof => {
+                if (args.len != 1) return error.ArgumentCount;
+                const val = try Value.eval(alloc, io, &args[0], c);
+                defer val.deinit(alloc);
+                if (val != .type) return error.TypeMismatch;
+                return .{ .instantiated_builtin_sizeof = try .clonePtr(val.type, alloc) };
+            },
             .function_definition => |fd| {
                 var new_fd = try fd.clone(alloc);
                 defer new_fd.deinit(alloc);
@@ -199,6 +218,8 @@ pub const Type = union(enum) {
         function_definition: ast.TopLevelStatement.FunctionDefinition,
         struct_declaration: ast.TopLevelStatement.StructDeclaration,
         union_declaration: ast.TopLevelStatement.UnionDeclaration,
+        builtin_cast,
+        builtin_sizeof,
     };
     const Reference = struct { inner: *const Type, is_mut: bool };
     const Slice = struct { inner: *const Type, is_mut: bool };
@@ -515,6 +536,16 @@ pub const Type = union(enum) {
             .call => |call| {
                 const callee_t = try infer(alloc, io, call.callee, c);
                 defer callee_t.deinit(alloc);
+
+                if (callee_t == .instantiated_builtin_cast) {
+                    if (call.args.len != 1) return error.ArgumentCount;
+                    return try callee_t.instantiated_builtin_cast.clone(alloc);
+                }
+                if (callee_t == .instantiated_builtin_sizeof) {
+                    if (call.args.len != 0) return error.ArgumentCount;
+                    return .usize;
+                }
+
                 if (callee_t != .function)
                     return errors.expressionNotCallable(io, callee_t, c.source_map[call.callee.pos()]);
 
@@ -643,7 +674,10 @@ pub const Type = union(enum) {
                 defer lhs_t.deinit(alloc);
 
                 const t = try lhs_t.instantiate(alloc, io, generic.arguments, c, generic.pos);
-                if (lhs_t == .template and lhs_t.template != .function_definition) {
+                if (lhs_t == .template and 
+                    lhs_t.template != .function_definition and
+                    lhs_t.template != .builtin_cast and
+                    lhs_t.template != .builtin_sizeof) {
                     t.deinit(alloc);
                     return .type;
                 }
@@ -735,6 +769,7 @@ pub const Type = union(enum) {
                 eu.success.deinitPtr(alloc);
             },
             .function => |f| f.deinit(alloc),
+            .instantiated_builtin_cast, .instantiated_builtin_sizeof => |t| t.deinitPtr(alloc),
             inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
             inline .@"struct", .@"enum", .@"union" => |ct| {
                 alloc.free(ct.name);
@@ -746,6 +781,7 @@ pub const Type = union(enum) {
                 .function_definition => |fd| fd.deinit(alloc),
                 .struct_declaration => |sd| sd.deinit(alloc),
                 .union_declaration => |ud| ud.deinit(alloc),
+                .builtin_cast, .builtin_sizeof => {},
             },
             .module => {},
             else => {},
@@ -766,6 +802,8 @@ pub const Type = union(enum) {
                     try writer.writeAll(if (i == f.parameters.len - 1) ")" else ", ");
                 }
             },
+            .instantiated_builtin_cast => |t| try writer.print("cast<{f}>", .{t.*}),
+            .instantiated_builtin_sizeof => |t| try writer.print("sizeof<{f}>", .{t.*}),
             inline .@"struct", .@"enum", .@"union" => |ct| try writer.writeAll(ct.name),
             .module => |m| try writer.writeAll(m.name),
             inline else => |_, t| try writer.writeAll(@tagName(t)),
@@ -795,6 +833,7 @@ pub const Type = union(enum) {
                 h.update(std.mem.asBytes(&f.return_type.hash()));
                 for (f.parameters) |param_t| h.update(std.mem.asBytes(&param_t.hash()));
             },
+            .instantiated_builtin_cast, .instantiated_builtin_sizeof => |t| h.update(std.mem.asBytes(&t.hash())),
             inline .@"struct", .@"enum", .@"union" => |ct, tag| {
                 h.update(std.mem.asBytes(&tag));
                 for (ct.members) |member| {
@@ -808,7 +847,9 @@ pub const Type = union(enum) {
                 }
             },
             .template => |t| switch (t) {
-                inline else => |d| h.update(d.name),
+                inline .function_definition, .struct_declaration, .union_declaration => |d| h.update(d.name),
+                .builtin_cast => h.update("cast"),
+                .builtin_sizeof => h.update("sizeof"),
             },
             else => {},
         }
@@ -871,6 +912,8 @@ pub const Type = union(enum) {
                 }
                 break :b true;
             },
+            .instantiated_builtin_cast => lhs.instantiated_builtin_cast.eql(rhs.instantiated_builtin_cast.*),
+            .instantiated_builtin_sizeof => lhs.instantiated_builtin_sizeof.eql(rhs.instantiated_builtin_sizeof.*),
             inline .@"struct", .@"enum", .@"union" => |ct, t| {
                 const a = ct;
                 const b = @field(rhs, @tagName(t));
@@ -895,6 +938,7 @@ pub const Type = union(enum) {
                     .function_definition => |fd| std.mem.eql(u8, fd.name, rt.function_definition.name),
                     .struct_declaration => |sd| std.mem.eql(u8, sd.name, rt.struct_declaration.name),
                     .union_declaration => |ud| std.mem.eql(u8, ud.name, rt.union_declaration.name),
+                    .builtin_cast, .builtin_sizeof => true,
                 };
             },
             .module => std.mem.eql(u8, lhs.module.name, rhs.module.name),
@@ -950,6 +994,8 @@ pub const Type = union(enum) {
                     },
                 };
             },
+            .instantiated_builtin_cast => |t| .{ .instantiated_builtin_cast = try t.clonePtr(alloc) },
+            .instantiated_builtin_sizeof => |t| .{ .instantiated_builtin_sizeof = try t.clonePtr(alloc) },
             inline .@"struct", .@"enum", .@"union" => |ct, tag| {
                 const name = try alloc.dupe(u8, ct.name);
                 errdefer alloc.free(name);
@@ -975,6 +1021,8 @@ pub const Type = union(enum) {
                     .function_definition => |fd| .{ .function_definition = try fd.clone(alloc) },
                     .struct_declaration => |sd| .{ .struct_declaration = try sd.clone(alloc) },
                     .union_declaration => |ud| .{ .union_declaration = try ud.clone(alloc) },
+                    .builtin_cast => .builtin_cast,
+                    .builtin_sizeof => .builtin_sizeof,
                 },
             },
             else => self,

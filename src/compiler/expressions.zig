@@ -76,8 +76,13 @@ pub fn compile(
             defer lhs_t.deinit(alloc);
 
             const template_name = switch (lhs_t.template) {
+                .builtin_cast => "cast",
+                .builtin_sizeof => "sizeof",
                 inline else => |d| d.name,
             };
+
+            if (lhs_t.template == .builtin_cast or lhs_t.template == .builtin_sizeof)
+                return error.InstantiationFailed;
 
             const mangled_name = try Type.getMangledName(alloc, io, template_name, generic.arguments, c);
             defer alloc.free(mangled_name);
@@ -126,6 +131,24 @@ pub fn compile(
         .call => |call| {
             const lhs_t: Type = try .infer(alloc, io, call.callee, c);
             defer lhs_t.deinit(alloc);
+
+            if (lhs_t == .instantiated_builtin_cast) {
+                const target_t_comp = try c.compileType(alloc, io, lhs_t.instantiated_builtin_cast, call.pos);
+                defer alloc.free(target_t_comp);
+
+                const arg_comp = try compile(alloc, io, &call.args[0], c, .{});
+                defer alloc.free(arg_comp);
+
+                return try std.fmt.allocPrint(alloc, "(({s}){s})", .{ target_t_comp, arg_comp });
+            }
+
+            if (lhs_t == .instantiated_builtin_sizeof) {
+                const target_t_comp = try c.compileType(alloc, io, lhs_t.instantiated_builtin_sizeof, call.pos);
+                defer alloc.free(target_t_comp);
+
+                return try std.fmt.allocPrint(alloc, "sizeof({s})", .{target_t_comp});
+            }
+
             if (lhs_t != .function) return errors.expressionNotCallable(io, lhs_t, c.source_map[call.pos]);
 
             const function_t = lhs_t.function;
