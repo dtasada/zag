@@ -156,6 +156,9 @@ pub const Compiler = struct {
     module: Module,
     source_map: []const utils.Position,
 
+    /// borrowed
+    module_registry: *std.StringHashMap(Module),
+
     fn deinit(self: *Compiler, alloc: std.mem.Allocator) void {
         self.module.deinit(alloc);
         self.deinitWithoutModule(alloc);
@@ -243,9 +246,317 @@ pub const Compiler = struct {
                 errors.unknownSymbol(io, @tagName(tag), self.source_map[pos]),
         };
     }
+
+    fn analyze(
+        c: *Compiler,
+        alloc: std.mem.Allocator,
+        io: std.Io,
+        root_node: []const ast.TopLevelStatement,
+    ) !void {
+        for (root_node) |statement| switch (statement) {
+            .binding_function_declaration => |bfd| {
+                const function_type_ast = try bfd.getType(alloc);
+                defer function_type_ast.deinit(alloc);
+
+                const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
+                const symbol: Symbol = .{
+                    .name = bfd.name,
+                    .inner_name = bfd.name,
+                    .type = function_type,
+                    .binding = .@"const",
+                    .is_pub = bfd.is_pub,
+                    .free_name = false,
+                    .free_inner_name = false,
+                    .free_type = true,
+                };
+                errdefer symbol.deinit(alloc);
+                try c.module.register(alloc, symbol);
+            },
+            .binding_type_declaration => |btd| {
+                const symbol: Symbol = .{
+                    .name = btd.name,
+                    .inner_name = btd.name,
+                    .type = .type,
+                    .binding = .@"const",
+                    .is_pub = btd.is_pub,
+                    .value = .{
+                        .type = switch (btd.type) {
+                            inline else => |tag| @unionInit(Type, @tagName(tag), .{
+                                .name = btd.name,
+                                .members = &.{},
+                                .symbols = &.{},
+                                .tag_type = undefined, // todo: binding unions might need a specified tag_type
+                            }),
+                        },
+                    },
+                    .free_name = false,
+                    .free_inner_name = false,
+                    .free_type = false,
+                };
+                errdefer symbol.deinit(alloc);
+                try c.module.register(alloc, symbol);
+            },
+            .function_definition => |fd| {
+                if (fd.generic_parameters.len > 0) {
+                    const symbol: Symbol = .{
+                        .name = fd.name,
+                        .inner_name = fd.name,
+                        .type = .{ .template = .{ .function_definition = try fd.clone(alloc) } },
+                        .binding = .@"const",
+                        .is_pub = fd.is_pub,
+                        .free_name = false,
+                        .free_type = true,
+                        .free_inner_name = false,
+                    };
+                    errdefer symbol.deinit(alloc);
+                    try c.module.register(alloc, symbol);
+                    continue;
+                }
+
+                const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, fd.name });
+                const function_type_ast = try fd.getType(alloc);
+                defer function_type_ast.deinit(alloc);
+
+                const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
+                const symbol: Symbol = .{
+                    .name = fd.name,
+                    .inner_name = inner_name,
+                    .type = function_type,
+                    .binding = .@"const",
+                    .is_pub = fd.is_pub,
+                    .free_name = false,
+                    .free_inner_name = true,
+                    .free_type = true,
+                };
+                errdefer symbol.deinit(alloc);
+                try c.module.register(alloc, symbol);
+            },
+            .variable_definition => |vd| {
+                const t: Type = if (vd.type) |*t|
+                    try .fromAst(alloc, io, t, c)
+                else
+                    try .infer(alloc, io, &vd.assigned_value, c);
+
+                const symbol: Symbol = .{
+                    .name = vd.variable_name,
+                    .type = t,
+                    .binding = vd.binding,
+                    .inner_name = vd.variable_name,
+                    .free_name = false,
+                    .free_inner_name = false,
+                    .free_type = true,
+                };
+                errdefer symbol.deinit(alloc);
+                try c.module.register(alloc, symbol);
+            },
+            inline .struct_declaration, .enum_declaration, .union_declaration => |sd, tag| {
+                if (tag != .enum_declaration and sd.generic_types.len > 0) {
+                    const symbol: Symbol = .{
+                        .name = sd.name,
+                        .inner_name = sd.name,
+                        .type = .{
+                            .template = @unionInit(
+                                Type.Template,
+                                @tagName(tag),
+                                try sd.clone(alloc),
+                            ),
+                        },
+                        .binding = .@"const",
+                        .is_pub = sd.is_pub,
+                        .free_name = false,
+                        .free_type = true,
+                        .free_inner_name = false,
+                    };
+                    errdefer symbol.deinit(alloc);
+                    try c.module.register(alloc, symbol);
+                    continue;
+                }
+
+                var members_set: std.StringHashMap(usize) = .init(alloc);
+                defer members_set.deinit();
+                for (sd.members) |m| {
+                    if (members_set.get(m.name)) |pos|
+                        return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                    try members_set.put(m.name, m.pos);
+                }
+                for (sd.variables) |vd| {
+                    if (members_set.get(vd.variable_name)) |pos|
+                        return errors.duplicateStructMember(io, vd.variable_name, c.source_map[pos], c.source_map[vd.pos]);
+                    try members_set.put(vd.variable_name, vd.pos);
+                }
+                for (sd.methods) |m| {
+                    if (members_set.get(m.name)) |pos|
+                        return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                    try members_set.put(m.name, m.pos);
+                }
+
+                const t_tag = switch (tag) {
+                    .struct_declaration => .@"struct",
+                    .union_declaration => .@"union",
+                    .enum_declaration => .@"enum",
+                    else => unreachable,
+                };
+
+                var tag_type: ?*Type = null;
+                if (tag == .union_declaration) {
+                    tag_type = try alloc.create(Type);
+                    tag_type.?.* = .smallestIntegerFor(sd.members.len);
+                }
+
+                const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
+
+                const symbol = try alloc.create(Symbol);
+                symbol.* = .{
+                    .name = try alloc.dupe(u8, sd.name),
+                    .inner_name = inner_name,
+                    .type = .type,
+                    .binding = .@"const",
+                    .is_pub = sd.is_pub,
+                    .value = .{
+                        .type = switch (tag) {
+                            .struct_declaration => .{ .@"struct" = .{
+                                .name = try alloc.dupe(u8, sd.name),
+                                .members = &.{},
+                                .symbols = &.{},
+                                .tag_type = tag_type,
+                            } },
+                            .union_declaration => .{ .@"union" = .{
+                                .name = try alloc.dupe(u8, sd.name),
+                                .members = &.{},
+                                .symbols = &.{},
+                                .tag_type = tag_type,
+                            } },
+                            .enum_declaration => .{ .@"enum" = .{
+                                .name = try alloc.dupe(u8, sd.name),
+                                .members = &.{},
+                                .symbols = &.{},
+                                .tag_type = tag_type,
+                            } },
+                            else => unreachable,
+                        },
+                    },
+                    .free_name = true,
+                    .free_type = true,
+                    .free_inner_name = true,
+                };
+                c.module.registerPtr(alloc, symbol) catch |err| {
+                    symbol.deinit(alloc);
+                    alloc.destroy(symbol);
+                    return err;
+                };
+
+                const ct_type = Type.CompoundType(t_tag);
+                var members: std.ArrayList(ct_type.Member) = .empty;
+                defer {
+                    for (members.items) |m| m.deinit(alloc);
+                    members.deinit(alloc);
+                }
+
+                var symbols: std.ArrayList(Symbol) = .empty;
+                defer {
+                    for (symbols.items) |s| s.deinit(alloc);
+                    symbols.deinit(alloc);
+                }
+
+                switch (tag) {
+                    .struct_declaration => {
+                        for (sd.members) |member| {
+                            const member_t: Type = try .fromAst(alloc, io, &member.type, c);
+                            try members.append(alloc, .{
+                                .name = try alloc.dupe(u8, member.name),
+                                .inner_name = try alloc.dupe(u8, member.name),
+                                .type = member_t,
+                            });
+                        }
+                    },
+                    .union_declaration => for (sd.members) |member| {
+                        const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c) else .u8;
+                        try members.append(alloc, .{
+                            .name = try alloc.dupe(u8, member.name),
+                            .inner_name = try alloc.dupe(u8, member.name),
+                            .type = member_t,
+                        });
+                    },
+                    .enum_declaration => {
+                        for (sd.members, 0..) |member, i| {
+                            const value: Value = if (member.value) |*v|
+                                try .eval(alloc, io, v, c)
+                            else
+                                .{ .uint = if (i == 0) 0 else members.items[i - 1].value + 1 };
+
+                            if (value != .uint)
+                                return errors.enumMemberMustBeInteger(io, value.getType(), c.source_map[sd.pos]);
+
+                            const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
+                                symbol.inner_name,
+                                member.name,
+                            });
+                            try members.append(alloc, .{
+                                .name = try alloc.dupe(u8, member.name),
+                                .inner_name = m_inner_name,
+                                .value = value.uint,
+                            });
+                        }
+                    },
+                    else => unreachable,
+                }
+
+                const ct_ptr = switch (tag) {
+                    .struct_declaration => &symbol.value.?.type.@"struct",
+                    .union_declaration => &symbol.value.?.type.@"union",
+                    .enum_declaration => &symbol.value.?.type.@"enum",
+                    else => unreachable,
+                };
+                ct_ptr.members = try members.toOwnedSlice(alloc);
+
+                for (sd.methods) |method| {
+                    if (method.generic_parameters.len > 0) continue;
+
+                    const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
+                        symbol.inner_name,
+                        method.name,
+                    });
+
+                    const method_t_ast = try method.getType(alloc);
+                    defer method_t_ast.deinit(alloc);
+                    const t: Type = try .fromAst(alloc, io, &method_t_ast, c);
+                    const m_symbol = try alloc.create(Symbol);
+                    m_symbol.* = .{
+                        .name = try alloc.dupe(u8, method.name),
+                        .inner_name = m_inner_name,
+                        .type = t,
+                        .binding = .@"const",
+                        .is_pub = method.is_pub,
+                        .free_name = true,
+                        .free_type = true,
+                        .free_inner_name = true,
+                    };
+                    c.module.registerPtr(alloc, m_symbol) catch |err| {
+                        m_symbol.deinit(alloc);
+                        alloc.destroy(m_symbol);
+                        return err;
+                    };
+
+                    const cloned = try m_symbol.clone(alloc);
+                    try symbols.append(alloc, cloned);
+
+                    const return_t: Type = try .fromAst(alloc, io, &method.return_type, c);
+                    defer return_t.deinit(alloc);
+                }
+
+                ct_ptr.symbols = try symbols.toOwnedSlice(alloc);
+            },
+            .import => |import| try statements.import(alloc, io, import, c),
+        };
+    }
 };
 
-pub fn emit(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []const u8) !void {
+pub fn emit(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    rel_file_path: []const u8,
+    module_registry: *std.StringHashMap(Module),
+) !void {
     var file_path = rel_file_path;
     var free_file_path = false;
     const input = std.Io.Dir.cwd().readFileAlloc(io, rel_file_path, alloc, .unlimited) catch |err| switch (err) {
@@ -277,6 +588,7 @@ pub fn emit(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []const u8) !vo
         .module = try .init(alloc, module_name),
         .source_map = source_map,
         .primitives = .init(alloc),
+        .module_registry = module_registry,
     };
     defer compiler.deinit(alloc);
 
@@ -287,7 +599,7 @@ pub fn emit(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []const u8) !vo
     const relative_path = if (std.mem.eql(u8, dir_name, build_options.stdlib_path))
         try std.fs.path.join(alloc, &.{ "lib", file_path[dir_name.len .. file_path.len - 4] })
     else
-        file_path;
+        file_path[0 .. file_path.len - 4];
     defer if (std.mem.startsWith(u8, file_path, build_options.stdlib_path)) alloc.free(relative_path);
 
     const source_path = try std.fmt.allocPrint(alloc, "{s}.c", .{relative_path});
@@ -307,7 +619,11 @@ pub fn emit(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []const u8) !vo
     try compiler.header.includes.print(alloc, "#include <stdint.h>\n", .{});
     try compiler.header.includes.print(alloc, "#include <stdbool.h>\n", .{});
 
-    for (root_node) |statement| try statements.compileTopLevel(alloc, io, statement, &compiler);
+    try compiler.analyze(alloc, io, root_node);
+
+    // transpile step
+    for (root_node) |statement|
+        try statements.compileTopLevel(alloc, io, statement, &compiler);
 
     try compiler.source.includes.print(alloc, "int main() {{ {s}_main(); return 0; }}", .{module_name});
 
@@ -325,7 +641,12 @@ pub fn emit(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []const u8) !vo
 }
 
 // caller owns return value
-pub fn processImports(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []const u8) !Module {
+pub fn processImports(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    rel_file_path: []const u8,
+    module_registry: *std.StringHashMap(Module),
+) !*Module {
     var file_path = rel_file_path;
     var free_file_path = false;
     const input = std.Io.Dir.cwd().readFileAlloc(io, rel_file_path, alloc, .unlimited) catch |err| switch (err) {
@@ -340,6 +661,8 @@ pub fn processImports(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []con
     };
     defer alloc.free(input);
     defer if (free_file_path) alloc.free(file_path);
+
+    if (module_registry.getPtr(file_path)) |mod| return mod;
 
     std.debug.assert(std.mem.eql(u8, file_path[file_path.len - 4 ..], ".zag"));
 
@@ -357,305 +680,16 @@ pub fn processImports(alloc: std.mem.Allocator, io: std.Io, rel_file_path: []con
         .module = try .init(alloc, module_name),
         .source_map = source_map,
         .primitives = .init(alloc),
+        .module_registry = module_registry,
     };
     const c = &compiler;
     defer compiler.deinitWithoutModule(alloc);
 
-    for (root_node) |statement| switch (statement) {
-        .binding_function_declaration => |bfd| {
-            const function_type_ast = try bfd.getType(alloc);
-            defer function_type_ast.deinit(alloc);
+    try c.analyze(alloc, io, root_node);
 
-            const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
-            const symbol: Symbol = .{
-                .name = bfd.name,
-                .inner_name = bfd.name,
-                .type = function_type,
-                .binding = .@"const",
-                .is_pub = bfd.is_pub,
-                .free_name = false,
-                .free_inner_name = false,
-                .free_type = true,
-            };
-            errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
-        },
-        .binding_type_declaration => |btd| {
-            const symbol: Symbol = .{
-                .name = btd.name,
-                .inner_name = btd.name,
-                .type = .type,
-                .binding = .@"const",
-                .is_pub = btd.is_pub,
-                .value = .{
-                    .type = switch (btd.type) {
-                        inline else => |tag| @unionInit(Type, @tagName(tag), .{
-                            .name = btd.name,
-                            .members = &.{},
-                            .symbols = &.{},
-                            .tag_type = undefined, // todo: binding unions might need a specified tag_type
-                        }),
-                    },
-                },
-                .free_name = false,
-                .free_inner_name = false,
-                .free_type = false,
-            };
-            errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
-        },
-        .function_definition => |fd| {
-            if (fd.generic_parameters.len > 0) {
-                const symbol: Symbol = .{
-                    .name = fd.name,
-                    .inner_name = fd.name,
-                    .type = .{ .template = .{ .function_definition = try fd.clone(alloc) } },
-                    .binding = .@"const",
-                    .is_pub = fd.is_pub,
-                    .free_name = false,
-                    .free_type = true,
-                    .free_inner_name = false,
-                };
-                errdefer symbol.deinit(alloc);
-                try c.module.register(alloc, symbol);
-                continue;
-            }
+    const gop = try module_registry.getOrPut(file_path);
+    if (gop.found_existing) return gop.value_ptr;
+    gop.value_ptr.* = c.module;
 
-            const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, fd.name });
-            const function_type_ast = try fd.getType(alloc);
-            defer function_type_ast.deinit(alloc);
-
-            const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
-            const symbol: Symbol = .{
-                .name = fd.name,
-                .inner_name = inner_name,
-                .type = function_type,
-                .binding = .@"const",
-                .is_pub = fd.is_pub,
-                .free_name = false,
-                .free_inner_name = true,
-                .free_type = true,
-            };
-            errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
-        },
-        .variable_definition => |vd| {
-            const t: Type = if (vd.type) |*t|
-                try .fromAst(alloc, io, t, c)
-            else
-                try .infer(alloc, io, &vd.assigned_value, c);
-
-            const symbol: Symbol = .{
-                .name = vd.variable_name,
-                .type = t,
-                .binding = vd.binding,
-                .inner_name = vd.variable_name,
-                .free_name = false,
-                .free_inner_name = false,
-                .free_type = true,
-            };
-            errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
-        },
-        inline .struct_declaration, .enum_declaration, .union_declaration => |sd, tag| {
-            if (tag != .enum_declaration and sd.generic_types.len > 0) {
-                const symbol: Symbol = .{
-                    .name = sd.name,
-                    .inner_name = sd.name,
-                    .type = .{
-                        .template = @unionInit(
-                            Type.Template,
-                            @tagName(tag),
-                            try sd.clone(alloc),
-                        ),
-                    },
-                    .binding = .@"const",
-                    .is_pub = sd.is_pub,
-                    .free_name = false,
-                    .free_type = true,
-                    .free_inner_name = false,
-                };
-                errdefer symbol.deinit(alloc);
-                try c.module.register(alloc, symbol);
-                continue;
-            }
-
-            var members_set: std.StringHashMap(usize) = .init(alloc);
-            defer members_set.deinit();
-            for (sd.members) |m| {
-                if (members_set.get(m.name)) |pos|
-                    return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
-                try members_set.put(m.name, m.pos);
-            }
-            for (sd.variables) |vd| {
-                if (members_set.get(vd.variable_name)) |pos|
-                    return errors.duplicateStructMember(io, vd.variable_name, c.source_map[pos], c.source_map[vd.pos]);
-                try members_set.put(vd.variable_name, vd.pos);
-            }
-            for (sd.methods) |m| {
-                if (members_set.get(m.name)) |pos|
-                    return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
-                try members_set.put(m.name, m.pos);
-            }
-
-            const t_tag = switch (tag) {
-                .struct_declaration => .@"struct",
-                .union_declaration => .@"union",
-                .enum_declaration => .@"enum",
-                else => unreachable,
-            };
-
-            var tag_type: ?*Type = null;
-            if (tag == .union_declaration) {
-                tag_type = try alloc.create(Type);
-                tag_type.?.* = .smallestIntegerFor(sd.members.len);
-            }
-
-            const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, sd.name });
-
-            const symbol = try alloc.create(Symbol);
-            symbol.* = .{
-                .name = try alloc.dupe(u8, sd.name),
-                .inner_name = inner_name,
-                .type = .type,
-                .binding = .@"const",
-                .is_pub = sd.is_pub,
-                .value = .{
-                    .type = switch (tag) {
-                        .struct_declaration => .{ .@"struct" = .{
-                            .name = try alloc.dupe(u8, sd.name),
-                            .members = &.{},
-                            .symbols = &.{},
-                            .tag_type = tag_type,
-                        } },
-                        .union_declaration => .{ .@"union" = .{
-                            .name = try alloc.dupe(u8, sd.name),
-                            .members = &.{},
-                            .symbols = &.{},
-                            .tag_type = tag_type,
-                        } },
-                        .enum_declaration => .{ .@"enum" = .{
-                            .name = try alloc.dupe(u8, sd.name),
-                            .members = &.{},
-                            .symbols = &.{},
-                            .tag_type = tag_type,
-                        } },
-                        else => unreachable,
-                    },
-                },
-                .free_name = true,
-                .free_type = true,
-                .free_inner_name = true,
-            };
-            c.module.registerPtr(alloc, symbol) catch |err| {
-                symbol.deinit(alloc);
-                alloc.destroy(symbol);
-                return err;
-            };
-
-            const ct_type = Type.CompoundType(t_tag);
-            var members: std.ArrayList(ct_type.Member) = .empty;
-            defer {
-                for (members.items) |m| m.deinit(alloc);
-                members.deinit(alloc);
-            }
-
-            var symbols: std.ArrayList(Symbol) = .empty;
-            defer {
-                for (symbols.items) |s| s.deinit(alloc);
-                symbols.deinit(alloc);
-            }
-
-            switch (tag) {
-                .struct_declaration => {
-                    for (sd.members) |member| {
-                        const member_t: Type = try .fromAst(alloc, io, &member.type, c);
-                        try members.append(alloc, .{
-                            .name = try alloc.dupe(u8, member.name),
-                            .inner_name = try alloc.dupe(u8, member.name),
-                            .type = member_t,
-                        });
-                    }
-                },
-                .union_declaration => for (sd.members) |member| {
-                    const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c) else .u8;
-                    try members.append(alloc, .{
-                        .name = try alloc.dupe(u8, member.name),
-                        .inner_name = try alloc.dupe(u8, member.name),
-                        .type = member_t,
-                    });
-                },
-                .enum_declaration => {
-                    for (sd.members, 0..) |member, i| {
-                        const value: Value = if (member.value) |*v|
-                            try .eval(alloc, io, v, c)
-                        else
-                            .{ .uint = if (i == 0) 0 else members.items[i - 1].value + 1 };
-
-                        if (value != .uint)
-                            return errors.enumMemberMustBeInteger(io, value.getType(), c.source_map[sd.pos]);
-
-                        const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
-                            symbol.inner_name,
-                            member.name,
-                        });
-                        try members.append(alloc, .{
-                            .name = try alloc.dupe(u8, member.name),
-                            .inner_name = m_inner_name,
-                            .value = value.uint,
-                        });
-                    }
-                },
-                else => unreachable,
-            }
-
-            const ct_ptr = switch (tag) {
-                .struct_declaration => &symbol.value.?.type.@"struct",
-                .union_declaration => &symbol.value.?.type.@"union",
-                .enum_declaration => &symbol.value.?.type.@"enum",
-                else => unreachable,
-            };
-            ct_ptr.members = try members.toOwnedSlice(alloc);
-
-            for (sd.methods) |method| {
-                if (method.generic_parameters.len > 0) continue;
-
-                const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
-                    symbol.inner_name,
-                    method.name,
-                });
-
-                const method_t_ast = try method.getType(alloc);
-                defer method_t_ast.deinit(alloc);
-                const t: Type = try .fromAst(alloc, io, &method_t_ast, c);
-                const m_symbol = try alloc.create(Symbol);
-                m_symbol.* = .{
-                    .name = try alloc.dupe(u8, method.name),
-                    .inner_name = m_inner_name,
-                    .type = t,
-                    .binding = .@"const",
-                    .is_pub = method.is_pub,
-                    .free_name = true,
-                    .free_type = true,
-                    .free_inner_name = true,
-                };
-                c.module.registerPtr(alloc, m_symbol) catch |err| {
-                    m_symbol.deinit(alloc);
-                    alloc.destroy(m_symbol);
-                    return err;
-                };
-
-                const cloned = try m_symbol.clone(alloc);
-                try symbols.append(alloc, cloned);
-
-                const return_t: Type = try .fromAst(alloc, io, &method.return_type, c);
-                defer return_t.deinit(alloc);
-            }
-
-            ct_ptr.symbols = try symbols.toOwnedSlice(alloc);
-        },
-        .import => |import| try statements.import(alloc, io, import, c),
-    };
-
-    return c.module;
+    return gop.value_ptr;
 }

@@ -144,7 +144,6 @@ pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !vo
 }
 
 pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
-    std.debug.print("pushing {s}\n", .{self.name});
     const new_scope = try alloc.create(Scope);
     errdefer alloc.destroy(new_scope);
     new_scope.defers = .empty;
@@ -153,7 +152,6 @@ pub fn pushScope(self: *Module, alloc: std.mem.Allocator) !void {
 }
 
 pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
-    std.debug.print("popping {s}\n", .{self.name});
     const last_scope = self.scopes.pop().?;
     for (last_scope.symbols.items) |symbol| {
         symbol.deinit(alloc);
@@ -162,7 +160,6 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
     last_scope.symbols.deinit(alloc);
     last_scope.defers.deinit(alloc);
     alloc.destroy(last_scope);
-    std.debug.print("popped {s}\n", .{self.name});
 }
 
 pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {

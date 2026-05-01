@@ -591,6 +591,10 @@ pub const Type = union(enum) {
                         return try member_t.clone(alloc);
                     },
                     .@"enum" => .usize,
+                    .module => |m| if (m.getSymbol(member.member_name)) |symbol|
+                        try symbol.type.clone(alloc)
+                    else
+                        errors.unknownMember(io, t, member.member_name, c.source_map[member.pos]),
                     .slice => |slc| if (std.mem.eql(u8, member.member_name, "ptr")) .{
                         .reference = .{
                             .inner = try slc.inner.clonePtr(alloc),
@@ -743,10 +747,7 @@ pub const Type = union(enum) {
                 .struct_declaration => |sd| sd.deinit(alloc),
                 .union_declaration => |ud| ud.deinit(alloc),
             },
-            .module => |module| {
-                module.deinit(alloc);
-                alloc.destroy(module);
-            },
+            .module => {},
             else => {},
         }
     }

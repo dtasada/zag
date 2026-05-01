@@ -466,17 +466,13 @@ pub fn import(
     const full_path = try std.fmt.allocPrint(alloc, "{s}.zag", .{path[1..]});
     defer alloc.free(full_path);
 
-    const ptr = try alloc.create(Module);
-    errdefer alloc.destroy(ptr);
-
-    var module = compiler.processImports(alloc, io, full_path) catch unreachable;
+    var module = compiler.processImports(alloc, io, full_path, c.module_registry) catch unreachable;
     errdefer module.deinit(alloc);
-    ptr.* = module;
 
     try c.module.register(alloc, .{
         .name = module.name,
         .inner_name = module.name,
-        .type = .{ .module = ptr },
+        .type = .{ .module = module },
         .binding = .@"const",
         .is_pub = false,
         .free_inner_name = false,

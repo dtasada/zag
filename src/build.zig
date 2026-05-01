@@ -4,15 +4,28 @@ const build_options = @import("build_options");
 const utils = @import("utils");
 const compiler = @import("compiler");
 
+const Module = compiler.Module;
+
 pub fn build(alloc: std.mem.Allocator, io: std.Io) !void {
     // Transpile stdlib first so user code can import from it
-    // try transpileModuleWithHeaders(alloc, build_options.stdlib_path);
-    try transpileModuleWithHeaders(alloc, io, "src");
+    var module_registry: std.StringHashMap(Module) = .init(alloc);
+    defer {
+        var it = module_registry.valueIterator();
+        while (it.next()) |mod| mod.deinit(alloc);
+        module_registry.deinit();
+    }
+    try transpileModuleWithHeaders(alloc, io, build_options.stdlib_path, &module_registry);
+    try transpileModuleWithHeaders(alloc, io, "src", &module_registry);
 
     try compile(alloc, io);
 }
 
-fn transpileModuleWithHeaders(alloc: std.mem.Allocator, io: std.Io, dir_path: []const u8) !void {
+fn transpileModuleWithHeaders(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    dir_path: []const u8,
+    module_registry: *std.StringHashMap(Module),
+) !void {
     var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true });
     defer dir.close(io);
 
@@ -23,15 +36,20 @@ fn transpileModuleWithHeaders(alloc: std.mem.Allocator, io: std.Io, dir_path: []
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zag")) continue;
 
-        const file_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir_path, entry.path });
+        const file_path = try std.fs.path.join(alloc, &.{ dir_path, entry.path });
         defer alloc.free(file_path);
 
-        try transpileWithHeaders(alloc, io, file_path);
+        try transpileWithHeaders(alloc, io, file_path, module_registry);
     }
 }
 
-fn transpileWithHeaders(alloc: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
-    compiler.emit(alloc, io, file_path) catch |err|
+fn transpileWithHeaders(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    file_path: []const u8,
+    module_registry: *std.StringHashMap(Module),
+) !void {
+    compiler.emit(alloc, io, file_path, module_registry) catch |err|
         return utils.printErr(io, error.CompilationError, "Compilation error: {}\n", .{err});
 }
 
