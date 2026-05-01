@@ -154,7 +154,6 @@ pub const Compiler = struct {
 
     primitives: std.BufSet,
     module: Module,
-    source_map: []const utils.Position,
 
     /// borrowed
     module_registry: *std.StringHashMap(Module),
@@ -243,7 +242,7 @@ pub const Compiler = struct {
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else
-                errors.unknownSymbol(io, @tagName(tag), self.source_map[pos]),
+                errors.unknownSymbol(io, @tagName(tag), self.getPos(pos)),
         };
     }
 
@@ -376,17 +375,17 @@ pub const Compiler = struct {
                 defer members_set.deinit();
                 for (sd.members) |m| {
                     if (members_set.get(m.name)) |pos|
-                        return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                        return errors.duplicateStructMember(io, m.name, c.getPos(pos), c.getPos(m.pos));
                     try members_set.put(m.name, m.pos);
                 }
                 for (sd.variables) |vd| {
                     if (members_set.get(vd.variable_name)) |pos|
-                        return errors.duplicateStructMember(io, vd.variable_name, c.source_map[pos], c.source_map[vd.pos]);
+                        return errors.duplicateStructMember(io, vd.variable_name, c.getPos(pos), c.getPos(vd.pos));
                     try members_set.put(vd.variable_name, vd.pos);
                 }
                 for (sd.methods) |m| {
                     if (members_set.get(m.name)) |pos|
-                        return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                        return errors.duplicateStructMember(io, m.name, c.getPos(pos), c.getPos(m.pos));
                     try members_set.put(m.name, m.pos);
                 }
 
@@ -485,7 +484,7 @@ pub const Compiler = struct {
                                 .{ .uint = if (i == 0) 0 else members.items[i - 1].value + 1 };
 
                             if (value != .uint)
-                                return errors.enumMemberMustBeInteger(io, value.getType(), c.source_map[sd.pos]);
+                                return errors.enumMemberMustBeInteger(io, value.getType(), c.getPos(sd.pos));
 
                             const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
                                 symbol.inner_name,
@@ -573,6 +572,10 @@ pub const Compiler = struct {
             .import => |import| try statements.import(alloc, io, import, c),
         };
     }
+
+    pub fn getPos(c: *const Compiler, index: usize) utils.Position {
+        return c.module.source_map[index];
+    }
 };
 
 pub fn emit(
@@ -597,7 +600,6 @@ pub fn emit(
     defer if (free_file_path) alloc.free(file_path);
 
     const tokens, const source_map = try lexer.tokenize(alloc, io, input, file_path);
-    defer alloc.free(source_map);
 
     const root_node = try parser.parse(alloc, io, tokens, source_map);
     defer utils.deinitSlice(ast.TopLevelStatement, root_node, alloc);
@@ -609,8 +611,7 @@ pub fn emit(
     var compiler: Compiler = .{
         .header = try .init(alloc),
         .source = try .init(alloc),
-        .module = try .init(alloc, module_name),
-        .source_map = source_map,
+        .module = try .init(alloc, module_name, source_map),
         .primitives = .init(alloc),
         .module_registry = module_registry,
     };
@@ -701,8 +702,7 @@ pub fn processImports(
     var compiler: Compiler = .{
         .header = try .init(alloc),
         .source = try .init(alloc),
-        .module = try .init(alloc, module_name),
-        .source_map = source_map,
+        .module = try .init(alloc, module_name, source_map),
         .primitives = .init(alloc),
         .module_registry = module_registry,
     };

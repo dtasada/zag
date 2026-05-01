@@ -48,7 +48,7 @@ pub fn compile(
                         }
                     }
                 }
-                return errors.illegalReturn(io, c.source_map[ret.pos]);
+                return errors.illegalReturn(io, c.getPos(ret.pos));
             };
 
             return try @"return"(alloc, io, ret, c, expected_return_type);
@@ -85,7 +85,7 @@ pub fn compileTopLevel(
                 .free_type = true,
             };
             errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
+            try c.module.registerAtTopLevel(alloc, symbol);
 
             const return_type_comp = try c.compileType(alloc, io, function_type.function.return_type, bfd.return_type.pos());
             defer alloc.free(return_type_comp);
@@ -121,7 +121,7 @@ pub fn compileTopLevel(
                 .free_type = false,
             };
             errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
+            try c.module.registerAtTopLevel(alloc, symbol);
             try c.header.forward_decls.print(alloc, "typedef {s} {s} {1s};", .{
                 @tagName(btd.type),
                 btd.name,
@@ -140,7 +140,7 @@ pub fn compileTopLevel(
                     .free_inner_name = false,
                 };
                 errdefer symbol.deinit(alloc);
-                return try c.module.register(alloc, symbol);
+                return try c.module.registerAtTopLevel(alloc, symbol);
             }
 
             const inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ c.module.name, fd.name });
@@ -158,7 +158,7 @@ pub fn compileTopLevel(
                 .free_inner_name = true,
                 .free_type = true,
             };
-            c.module.register(alloc, symbol) catch |err| {
+            c.module.registerAtTopLevel(alloc, symbol) catch |err| {
                 symbol.deinit(alloc);
                 return err;
             };
@@ -221,24 +221,24 @@ pub fn compileTopLevel(
                     .free_inner_name = false,
                 };
                 errdefer symbol.deinit(alloc);
-                return try c.module.register(alloc, symbol);
+                return try c.module.registerAtTopLevel(alloc, symbol);
             }
 
             var members_set: std.StringHashMap(usize) = .init(alloc);
             defer members_set.deinit();
             for (sd.members) |m| {
                 if (members_set.get(m.name)) |pos|
-                    return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                    return errors.duplicateStructMember(io, m.name, c.getPos(pos), c.getPos(m.pos));
                 try members_set.put(m.name, m.pos);
             }
             for (sd.variables) |vd| {
                 if (members_set.get(vd.variable_name)) |pos|
-                    return errors.duplicateStructMember(io, vd.variable_name, c.source_map[pos], c.source_map[vd.pos]);
+                    return errors.duplicateStructMember(io, vd.variable_name, c.getPos(pos), c.getPos(vd.pos));
                 try members_set.put(vd.variable_name, vd.pos);
             }
             for (sd.methods) |m| {
                 if (members_set.get(m.name)) |pos|
-                    return errors.duplicateStructMember(io, m.name, c.source_map[pos], c.source_map[m.pos]);
+                    return errors.duplicateStructMember(io, m.name, c.getPos(pos), c.getPos(m.pos));
                 try members_set.put(m.name, m.pos);
             }
 
@@ -358,7 +358,7 @@ pub fn compileTopLevel(
                             .{ .uint = if (i == 0) 0 else members.items[i - 1].value + 1 };
 
                         if (value != .uint)
-                            return errors.enumMemberMustBeInteger(io, value.getType(), c.source_map[sd.pos]);
+                            return errors.enumMemberMustBeInteger(io, value.getType(), c.getPos(sd.pos));
 
                         const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
                             symbol.inner_name,
@@ -407,7 +407,7 @@ pub fn compileTopLevel(
                     .free_type = true,
                     .free_inner_name = true,
                 };
-                c.module.registerPtr(alloc, m_symbol) catch |err| {
+                c.module.registerPtrAtTopLevel(alloc, m_symbol) catch |err| {
                     m_symbol.deinit(alloc);
                     alloc.destroy(m_symbol);
                     return err;
@@ -570,7 +570,7 @@ pub fn conditional(
     const cond_t: Type = try .infer(alloc, io, &cond.condition, c);
     defer cond_t.deinit(alloc);
     if (cond_t != .bool and cond_t != .optional)
-        return errors.typeMismatch(io, .bool, cond_t, c.source_map[cond.condition.pos()]);
+        return errors.typeMismatch(io, .bool, cond_t, c.getPos(cond.condition.pos()));
 
     const cond_comp = try expressions.compile(alloc, io, &cond.condition, c, .{});
     defer alloc.free(cond_comp);
@@ -580,7 +580,7 @@ pub fn conditional(
 
     if (cond.capture) |cap| {
         if (cond_t != .optional)
-            return errors.illegalCapture(io, c.source_map[cond.condition.pos()]);
+            return errors.illegalCapture(io, c.getPos(cond.condition.pos()));
 
         const capture_t: Type = switch (cap.takes_ref) {
             .some => |is_mut| .{
@@ -667,7 +667,7 @@ pub fn @"for"(
                 .{ i_name, if (is_slice) iter_comp else s.len },
             );
         },
-        else => return errors.typeNotIterable(io, iter_t, c.source_map[cond.iterator.pos()]),
+        else => return errors.typeNotIterable(io, iter_t, c.getPos(cond.iterator.pos())),
     }
 
     const body_comp = try compile(alloc, io, cond.body, c);
@@ -689,7 +689,7 @@ pub fn @"return"(
     defer received.deinit(alloc);
 
     if (!received.check(expected_type))
-        return errors.typeMismatch(io, expected_type, received, c.source_map[ret.pos]);
+        return errors.typeMismatch(io, expected_type, received, c.getPos(ret.pos));
 
     const expr_comp = if (ret.@"return") |*r|
         try expressions.compile(alloc, io, r, c, .{ .expected_type = expected_type })
@@ -747,17 +747,17 @@ pub fn block(
     for (b) |statement| switch (statement) {
         .@"return" => |r| {
             if (returned == .yes)
-                return errors.doubleReturn(io, c.source_map[returned.yes.pos], c.source_map[r.pos]);
+                return errors.doubleReturn(io, c.getPos(returned.yes.pos), c.getPos(r.pos));
             if (returned == .block_eval)
-                return errors.doubleReturn(io, c.source_map[returned.block_eval.pos()], c.source_map[r.pos]);
+                return errors.doubleReturn(io, c.getPos(returned.block_eval.pos()), c.getPos(r.pos));
             returned = .{ .yes = r };
             break; // todo: warning unreachable code
         },
         .block_eval => |be| {
             if (returned == .yes)
-                return errors.doubleReturn(io, c.source_map[returned.yes.pos], c.source_map[be.pos()]);
+                return errors.doubleReturn(io, c.getPos(returned.yes.pos), c.getPos(be.pos()));
             if (returned == .block_eval)
-                return errors.doubleReturn(io, c.source_map[returned.block_eval.pos()], c.source_map[be.pos()]);
+                return errors.doubleReturn(io, c.getPos(returned.block_eval.pos()), c.getPos(be.pos()));
 
             const be_t: Type = try .infer(alloc, io, &be, c);
             defer be_t.deinit(alloc);
@@ -782,19 +782,19 @@ pub fn block(
     switch (returned) {
         .yes => |r| {
             const ret_comp = try @"return"(alloc, io, r, c, opts.eval_type orelse
-                return errors.illegalReturn(io, c.source_map[r.pos]));
+                return errors.illegalReturn(io, c.getPos(r.pos)));
             defer alloc.free(ret_comp);
             try buf.appendSlice(alloc, ret_comp);
         },
         .block_eval => |*be| {
             const expected = opts.eval_type orelse
-                return errors.illegalReturn(io, c.source_map[be.pos()]);
+                return errors.illegalReturn(io, c.getPos(be.pos()));
 
             const received: Type = try .infer(alloc, io, be, c);
             defer received.deinit(alloc);
 
             if (!received.check(expected))
-                return errors.typeMismatch(io, expected, received, c.source_map[be.pos()]);
+                return errors.typeMismatch(io, expected, received, c.getPos(be.pos()));
 
             const t_comp = try c.compileType(alloc, io, &expected, be.pos());
             defer alloc.free(t_comp);

@@ -28,7 +28,7 @@ pub const Value = union(enum) {
             .int => |int| .{ .uint = int.payload },
             .ident => |ident| {
                 const symbol = c.module.getSymbol(ident.payload) orelse
-                    return errors.unknownSymbol(io, ident.payload, c.source_map[ident.pos]);
+                    return errors.unknownSymbol(io, ident.payload, c.getPos(ident.pos));
                 if (symbol.type == .type)
                     return .{ .type = try symbol.value.?.type.clone(alloc) };
                 if (symbol.value) |v| return try v.clone(alloc);

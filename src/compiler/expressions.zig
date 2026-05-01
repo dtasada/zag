@@ -23,7 +23,7 @@ pub fn compile(
         defer received.deinit(alloc);
 
         if (et.eql(received)) return compile(alloc, io, expr, c, .{});
-        if (!received.check(et)) return errors.typeMismatch(io, et, received, c.source_map[expr.pos()]);
+        if (!received.check(et)) return errors.typeMismatch(io, et, received, c.getPos(expr.pos()));
 
         switch (et) {
             .optional => {
@@ -46,7 +46,7 @@ pub fn compile(
         .ident => |ident| if (c.module.getSymbol(ident.payload)) |symbol|
             try alloc.dupe(u8, symbol.inner_name)
         else
-            errors.unknownSymbol(io, ident.payload, c.source_map[ident.pos]),
+            errors.unknownSymbol(io, ident.payload, c.getPos(ident.pos)),
         .string => |string| try std.fmt.allocPrint(alloc, "\"{s}\"", .{string.payload}),
         .char => |char| try std.fmt.allocPrint(alloc, "'{c}'", .{char.payload}),
         inline .int, .float => |number| try std.fmt.allocPrint(alloc, "{}", .{number.payload}),
@@ -65,29 +65,24 @@ pub fn compile(
             return try std.fmt.allocPrint(alloc, "({{{s}}})", .{block_comp});
         },
         .generic => |generic| {
-            const t: Type = try .infer(alloc, io, expr, c);
-            defer t.deinit(alloc);
-
-            // This is a bit hacky, but we can reconstruct the mangled name
-            // or just use Type.instantiate to get the type and then find the symbol.
-            // Since we know it's a function and it's in the module.
-
             const lhs_t: Type = try .infer(alloc, io, generic.lhs, c);
             defer lhs_t.deinit(alloc);
+
+            if (lhs_t.template == .builtin_cast or lhs_t.template == .builtin_sizeof) {
+                return try alloc.dupe(u8, if (lhs_t.template == .builtin_cast) "cast" else "sizeof");
+            }
 
             const template_name = switch (lhs_t.template) {
                 .builtin_cast => "cast",
                 .builtin_sizeof => "sizeof",
-                inline else => |d| d.name,
+                .function_definition => |fd| fd.name,
+                .struct_declaration => |sd| sd.name,
+                .union_declaration => |ud| ud.name,
             };
-
-            if (lhs_t.template == .builtin_cast or lhs_t.template == .builtin_sizeof)
-                return error.InstantiationFailed;
 
             const mangled_name = try Type.getMangledName(alloc, io, template_name, generic.arguments, c);
             defer alloc.free(mangled_name);
 
-            std.debug.print("mangled_name: {s}\n", .{mangled_name});
             const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
             return try alloc.dupe(u8, symbol.inner_name);
         },
@@ -107,10 +102,10 @@ pub fn compile(
                 try .eval(alloc, io, inst.length, c);
 
             if (len != .uint)
-                return errors.arrayLengthMustBeInteger(io, len.getType(), c.source_map[inst.length.pos()]);
+                return errors.arrayLengthMustBeInteger(io, len.getType(), c.getPos(inst.length.pos()));
 
             if (len.uint != inst.contents.len)
-                return errors.arrayInstantiationSizeMismatch(io, len.uint, inst.contents.len, c.source_map[inst.length.pos()]);
+                return errors.arrayInstantiationSizeMismatch(io, len.uint, inst.contents.len, c.getPos(inst.length.pos()));
 
             const t: Type = .{ .array = .{ .inner = &inner_ast, .len = len.uint } };
             const t_comp = try c.compileType(alloc, io, &t, inst.pos);
@@ -150,7 +145,7 @@ pub fn compile(
                 return try std.fmt.allocPrint(alloc, "sizeof({s})", .{target_t_comp});
             }
 
-            if (lhs_t != .function) return errors.expressionNotCallable(io, lhs_t, c.source_map[call.pos]);
+            if (lhs_t != .function) return errors.expressionNotCallable(io, lhs_t, c.getPos(call.pos));
 
             const function_t = lhs_t.function;
 
@@ -162,9 +157,9 @@ pub fn compile(
 
             if (is_variadic) |param_index| {
                 if (call.args.len < param_index)
-                    return errors.argumentCount(io, function_t.parameters.len, call.args.len, c.source_map[call.pos]);
+                    return errors.argumentCount(io, function_t.parameters.len, call.args.len, c.getPos(call.pos));
             } else if (function_t.parameters.len != call.args.len)
-                return errors.argumentCount(io, function_t.parameters.len, call.args.len, c.source_map[call.pos]);
+                return errors.argumentCount(io, function_t.parameters.len, call.args.len, c.getPos(call.pos));
 
             var buf: std.ArrayList(u8) = .empty;
             errdefer buf.deinit(alloc);
@@ -178,7 +173,7 @@ pub fn compile(
                 defer received.deinit(alloc);
 
                 if (expected != .variadic and !received.check(expected))
-                    return errors.typeMismatch(io, expected, received, c.source_map[call.args[i].pos()]);
+                    return errors.typeMismatch(io, expected, received, c.getPos(call.args[i].pos()));
             }
 
             try buf.append(alloc, '(');
@@ -205,7 +200,7 @@ pub fn compile(
             defer expected_type.deinit(alloc);
 
             if (!try c.module.getExpressionMutability(alloc, io, assignment.assignee, c))
-                return errors.assignmentOnNonMut(io, c.source_map[assignment.pos]);
+                return errors.assignmentOnNonMut(io, c.getPos(assignment.pos));
 
             const lhs = try compile(alloc, io, assignment.assignee, c, .{});
             defer alloc.free(lhs);
@@ -249,7 +244,7 @@ pub fn compile(
             return switch (parent_t) {
                 inline .@"struct", .@"union", .@"enum" => |ct, tag| {
                     if (!ct.hasMember(member.member_name))
-                        return errors.unknownMember(io, parent_t, member.member_name, c.source_map[member.pos]);
+                        return errors.unknownMember(io, parent_t, member.member_name, c.getPos(member.pos));
 
                     for (ct.members) |m| if (std.mem.eql(u8, m.name, member.member_name)) {
                         return if (tag == .@"enum")
@@ -267,21 +262,21 @@ pub fn compile(
                     std.mem.eql(u8, member.member_name, "len"))
                     std.fmt.allocPrint(alloc, "{s}.{s}", .{ parent_comp, member.member_name })
                 else
-                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.source_map[member.pos]),
+                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.getPos(member.pos)),
                 .module => |module| if (module.getSymbol(member.member_name)) |symbol|
                     try alloc.dupe(u8, symbol.inner_name)
                 else
-                    errors.unknownMember(io, parent_t, member.member_name, c.source_map[member.pos]),
-                else => errors.badMemberAccess(io, parent_t, member.member_name, c.source_map[member.pos]),
+                    errors.unknownMember(io, parent_t, member.member_name, c.getPos(member.pos)),
+                else => errors.badMemberAccess(io, parent_t, member.member_name, c.getPos(member.pos)),
             };
         },
         .prefix => |prefix| {
             const rhs_t: Type = try .infer(alloc, io, prefix.rhs, c);
             defer rhs_t.deinit(alloc);
 
-            if (rhs_t == .bool and prefix.op != .@"!") return errors.badBangPrefix(io, rhs_t, c.source_map[prefix.pos]);
+            if (rhs_t == .bool and prefix.op != .@"!") return errors.badBangPrefix(io, rhs_t, c.getPos(prefix.pos));
             if ((rhs_t.isNumeric() or rhs_t == .reference) and prefix.op != .@"-")
-                return errors.badDashPrefix(io, rhs_t, c.source_map[prefix.pos]);
+                return errors.badDashPrefix(io, rhs_t, c.getPos(prefix.pos));
 
             const rhs_comp = try compile(alloc, io, prefix.rhs, c, .{});
             defer alloc.free(rhs_comp);
@@ -291,11 +286,11 @@ pub fn compile(
         .index => |index| {
             const lhs_t: Type = try .infer(alloc, io, index.lhs, c);
             defer lhs_t.deinit(alloc);
-            if (lhs_t != .slice and lhs_t != .array) return errors.illegalIndex(io, lhs_t, c.source_map[index.pos]);
+            if (lhs_t != .slice and lhs_t != .array) return errors.illegalIndex(io, lhs_t, c.getPos(index.pos));
 
             const index_t: Type = try .infer(alloc, io, index.index, c);
             defer index_t.deinit(alloc);
-            if (!index_t.isInteger()) return errors.illegalIndexType(io, index_t, c.source_map[index.index.pos()]);
+            if (!index_t.isInteger()) return errors.illegalIndexType(io, index_t, c.getPos(index.index.pos()));
 
             const lhs_comp = try compile(alloc, io, index.lhs, c, .{});
             defer alloc.free(lhs_comp);
@@ -325,7 +320,7 @@ pub fn compile(
                 (lhs_t == .reference and rhs_t == .reference) or
                 (lhs_t == .@"enum" and rhs_t == .@"enum" and lhs_t.eql(rhs_t)) or
                 expr_is_type or expr_is_optional))
-                return errors.illegalBinaryExpression(io, lhs_t, binary.op, rhs_t, c.source_map[binary.pos]);
+                return errors.illegalBinaryExpression(io, lhs_t, binary.op, rhs_t, c.getPos(binary.pos));
 
             switch (binary.op) {
                 .@"^" => if (Value.eval(alloc, io, expr, c)) |comptime_expr| {
@@ -401,16 +396,16 @@ pub fn compile(
         .struct_instantiation => |si| {
             const t: Type = try .infer(alloc, io, si.type_expr, c);
             defer t.deinit(alloc);
-            if (t != .type) return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
+            if (t != .type) return errors.exprIsNotStruct(io, t, c.getPos(si.pos));
 
             const symbol = c.module.getSymbolFromExpression(alloc, io, si.type_expr, c) orelse
-                return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
+                return errors.exprIsNotStruct(io, t, c.getPos(si.pos));
 
             if (symbol.value == null or symbol.value.? != .type or
                 (symbol.value.?.type != .@"struct" and
                     symbol.value.?.type != .@"union"))
             {
-                return errors.exprIsNotStruct(io, t, c.source_map[si.pos]);
+                return errors.exprIsNotStruct(io, t, c.getPos(si.pos));
             }
 
             const si_t = symbol.value.?.type;
@@ -428,7 +423,7 @@ pub fn compile(
                     try missing.append(alloc, m.name);
 
                 if (missing.items.len > 0)
-                    return errors.missingStructMembers(io, si_t, missing.items, c.source_map[si.pos]);
+                    return errors.missingStructMembers(io, si_t, missing.items, c.getPos(si.pos));
 
                 // check for extraneous members
                 var expected: std.BufSet = .init(alloc);
@@ -443,8 +438,8 @@ pub fn compile(
                     try extraneous.append(alloc, m.name);
 
                 if (extraneous.items.len > 0)
-                    return errors.extraneousStructMembers(io, si_t, extraneous.items, c.source_map[si.pos]);
-            } else if (si.members.len != 1) return errors.unionMemberCount(io, si_t, si.members.len, c.source_map[si.pos]);
+                    return errors.extraneousStructMembers(io, si_t, extraneous.items, c.getPos(si.pos));
+            } else if (si.members.len != 1) return errors.unionMemberCount(io, si_t, si.members.len, c.getPos(si.pos));
 
             var ret: std.ArrayList(u8) = .empty;
             errdefer ret.deinit(alloc);
@@ -487,15 +482,15 @@ pub fn compile(
                 defer rhs_t.deinit(alloc);
 
                 if (!lhs_t.eql(rhs_t))
-                    return errors.typeMismatchBinExpr(io, lhs_t, rhs_t, comp.op, c.source_map[left.pos()]);
+                    return errors.typeMismatchBinExpr(io, lhs_t, rhs_t, comp.op, c.getPos(left.pos()));
 
                 if (lhs_t.isNumeric() and
                     (comp.op == .@"and" or comp.op == .@"or" or comp.op == .but))
-                    return errors.booleanOperatorUsedOnNumerical(io, lhs_t, comp.op, c.source_map[left.pos()]);
+                    return errors.booleanOperatorUsedOnNumerical(io, lhs_t, comp.op, c.getPos(left.pos()));
 
                 if (lhs_t == .bool and
                     (comp.op != .@"and" and comp.op != .@"or" and comp.op != .but))
-                    return errors.numericalOperatorUsedOnBoolean(io, lhs_t, comp.op, c.source_map[left.pos()]);
+                    return errors.numericalOperatorUsedOnBoolean(io, lhs_t, comp.op, c.getPos(left.pos()));
 
                 const t_comp = try c.compileType(alloc, io, &lhs_t, left.pos());
                 defer alloc.free(t_comp);
@@ -527,19 +522,19 @@ pub fn compile(
             const lhs_t: Type = try .infer(alloc, io, slice.lhs, c);
             defer lhs_t.deinit(alloc);
 
-            if (lhs_t != .slice and lhs_t != .array) return errors.cannotSlice(io, lhs_t, c.source_map[slice.pos]);
+            if (lhs_t != .slice and lhs_t != .array) return errors.cannotSlice(io, lhs_t, c.getPos(slice.pos));
 
             const lhs_comp = try compile(alloc, io, slice.lhs, c, .{});
             defer alloc.free(lhs_comp);
 
             const start_t: Type = try .infer(alloc, io, slice.start, c);
             defer start_t.deinit(alloc);
-            if (!start_t.isInteger()) return errors.illegalIndexType(io, start_t, c.source_map[slice.start.pos()]);
+            if (!start_t.isInteger()) return errors.illegalIndexType(io, start_t, c.getPos(slice.start.pos()));
 
             if (slice.end) |end| {
                 const end_t: Type = try .infer(alloc, io, end, c);
                 defer end_t.deinit(alloc);
-                if (!end_t.isInteger()) return errors.illegalIndexType(io, end_t, c.source_map[slice.start.pos()]);
+                if (!end_t.isInteger()) return errors.illegalIndexType(io, end_t, c.getPos(slice.start.pos()));
             }
 
             const start_comp = try compile(alloc, io, slice.start, c, .{});

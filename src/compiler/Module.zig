@@ -17,6 +17,7 @@ const Scope = struct {
 };
 
 name: []const u8,
+source_map: []const utils.Position,
 scopes: std.ArrayList(*Scope) = .empty,
 instantiations: std.StringHashMap(Type),
 
@@ -39,9 +40,11 @@ fn registerBuiltin(
     });
 }
 
-pub fn init(alloc: std.mem.Allocator, name: []const u8) !Module {
+/// Takes ownership of `source_map`
+pub fn init(alloc: std.mem.Allocator, name: []const u8, source_map: []const utils.Position) !Module {
     var self: Module = .{
         .name = try alloc.dupe(u8, name),
+        .source_map = source_map,
         .instantiations = .init(alloc),
     };
     errdefer self.deinit(alloc);
@@ -118,13 +121,32 @@ pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
     for (self.scopes.items) |_| self.popScope(alloc);
     self.scopes.deinit(alloc);
 
-    var iter = self.instantiations.iterator();
-    while (iter.next()) |entry| {
+    var it = self.instantiations.iterator();
+    while (it.next()) |entry| {
         alloc.free(entry.key_ptr.*);
         entry.value_ptr.deinit(alloc);
     }
     self.instantiations.deinit();
     alloc.free(self.name);
+    alloc.free(self.source_map);
+}
+
+pub fn registerAtTopLevel(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
+    var new_symbol = symbol;
+    if (!new_symbol.free_name) {
+        const old_name = new_symbol.name;
+        new_symbol.name = try alloc.dupe(u8, old_name);
+        new_symbol.free_name = true;
+    }
+    if (!new_symbol.free_inner_name) {
+        const old_inner = new_symbol.inner_name;
+        new_symbol.inner_name = try alloc.dupe(u8, old_inner);
+        new_symbol.free_inner_name = true;
+    }
+    const symbol_ptr = try alloc.create(Symbol);
+    errdefer alloc.destroy(symbol_ptr);
+    symbol_ptr.* = new_symbol;
+    try self.scopes.items[0].symbols.append(alloc, symbol_ptr);
 }
 
 pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
@@ -146,6 +168,20 @@ pub fn register(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
     errdefer alloc.destroy(symbol_ptr);
     symbol_ptr.* = new_symbol;
     try self.scopes.getLast().symbols.append(alloc, symbol_ptr);
+}
+
+pub fn registerPtrAtTopLevel(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !void {
+    if (!symbol.free_name) {
+        const old_name = symbol.name;
+        symbol.name = try alloc.dupe(u8, old_name);
+        symbol.free_name = true;
+    }
+    if (!symbol.free_inner_name) {
+        const old_inner = symbol.inner_name;
+        symbol.inner_name = try alloc.dupe(u8, old_inner);
+        symbol.free_inner_name = true;
+    }
+    try self.scopes.items[0].symbols.append(alloc, symbol);
 }
 
 pub fn registerPtr(self: *Module, alloc: std.mem.Allocator, symbol: *Symbol) !void {
@@ -211,20 +247,20 @@ pub fn getExpressionMutability(
         .index => |index| {
             const t: Type = try .infer(alloc, io, index.lhs, c);
             defer t.deinit(alloc);
-            if (t != .reference and t != .array)
-                return errors.illegalIndex(io, t, c.source_map[index.pos]);
+            if (t != .reference and t != .array and t != .slice)
+                return errors.illegalIndex(io, t, c.getPos(index.pos));
 
             const i_t: Type = try .infer(alloc, io, index.index, c);
             defer i_t.deinit(alloc);
             if (!i_t.isInteger())
-                return errors.illegalIndexType(io, i_t, c.source_map[index.pos]);
+                return errors.illegalIndexType(io, i_t, c.getPos(index.pos));
 
             return try self.getExpressionMutability(alloc, io, index.lhs, c);
         },
         .dereference => |deref| {
             const t: Type = try .infer(alloc, io, deref.parent, c);
             defer t.deinit(alloc);
-            if (t != .reference) return errors.derefNonPtr(io, t, c.source_map[deref.pos]);
+            if (t != .reference) return errors.derefNonPtr(io, t, c.getPos(deref.pos));
 
             return t.reference.is_mut;
         },
@@ -239,8 +275,8 @@ pub fn getExpressionMutability(
                     std.mem.eql(u8, member.member_name, "len"))
                     true
                 else
-                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.source_map[member.pos]),
-                else => errors.badMemberAccess(io, parent_t, member.member_name, c.source_map[member.pos]),
+                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.getPos(member.pos)),
+                else => errors.badMemberAccess(io, parent_t, member.member_name, c.getPos(member.pos)),
             };
         },
         else => false,
