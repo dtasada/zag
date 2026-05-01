@@ -87,6 +87,7 @@ pub fn compile(
             const mangled_name = try Type.getMangledName(alloc, io, template_name, generic.arguments, c);
             defer alloc.free(mangled_name);
 
+            std.debug.print("mangled_name: {s}\n", .{mangled_name});
             const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
             return try alloc.dupe(u8, symbol.inner_name);
         },
@@ -309,33 +310,93 @@ pub fn compile(
             });
         },
         .binary => |binary| {
+            var buf: std.ArrayList(u8) = .empty;
+            errdefer buf.deinit(alloc);
+
             const lhs_t: Type = try .infer(alloc, io, binary.lhs, c);
-            defer lhs_t.deinit(alloc);
-
             const rhs_t: Type = try .infer(alloc, io, binary.rhs, c);
-            defer rhs_t.deinit(alloc);
+            const expr_is_optional = (lhs_t == .optional and rhs_t == .@"typeof(nil)") or
+                (lhs_t == .optional and rhs_t == .optional and lhs_t.optional.eql(rhs_t.optional.*)) or
+                (rhs_t == .optional and lhs_t == .@"typeof(nil)");
+            const expr_is_type = lhs_t == .type and rhs_t == .type;
 
-            if (!lhs_t.eql(rhs_t))
-                return errors.typeMismatchBinExpr(io, lhs_t, rhs_t, binary.op, c.source_map[binary.pos]);
+            if (!((lhs_t.isNumeric() and rhs_t.isNumeric()) or
+                (lhs_t == .bool and rhs_t == .bool) or
+                (lhs_t == .reference and rhs_t == .reference) or
+                (lhs_t == .@"enum" and rhs_t == .@"enum" and lhs_t.eql(rhs_t)) or
+                expr_is_type or expr_is_optional))
+                return errors.illegalBinaryExpression(io, lhs_t, binary.op, rhs_t, c.source_map[binary.pos]);
 
-            if (lhs_t.isNumeric() and
-                (binary.op == .@"and" or binary.op == .@"or" or binary.op == .but))
-                return errors.booleanOperatorUsedOnNumerical(io, lhs_t, binary.op, c.source_map[binary.pos]);
+            switch (binary.op) {
+                .@"^" => if (Value.eval(alloc, io, expr, c)) |comptime_expr| {
+                    try buf.print(alloc, "{f}", .{comptime_expr});
+                } else |_| {
+                    const lhs_comp = try compile(alloc, io, binary.lhs, c, .{});
+                    defer alloc.free(lhs_comp);
 
-            if (lhs_t == .bool and
-                (binary.op != .@"and" and binary.op != .@"or" and binary.op != .but))
-                return errors.numericalOperatorUsedOnBoolean(io, lhs_t, binary.op, c.source_map[binary.pos]);
+                    const rhs_comp = try compile(alloc, io, binary.rhs, c, .{});
+                    defer alloc.free(rhs_comp);
 
-            const lhs_comp = try compile(alloc, io, binary.lhs, c, .{});
-            defer alloc.free(lhs_comp);
+                    try buf.print(alloc, "pow({s}, {s})", .{ lhs_comp, rhs_comp });
+                },
+                else => if (expr_is_optional) {
+                    try buf.appendSlice(alloc, "({");
 
-            const rhs_comp = try compile(alloc, io, binary.rhs, c, .{});
-            defer alloc.free(rhs_comp);
+                    const lhs_t_comp = try c.compileType(alloc, io, &lhs_t, binary.lhs.pos());
+                    defer alloc.free(lhs_t_comp);
 
-            return if (binary.op == .@"^")
-                try std.fmt.allocPrint(alloc, "pow({s}, {s})", .{ lhs_comp, rhs_comp })
-            else
-                try std.fmt.allocPrint(alloc, "{s} {s} {s}", .{ lhs_comp, @tagName(binary.op), rhs_comp });
+                    var lhs_name: [17]u8 = undefined;
+                    _ = try std.fmt.bufPrint(&lhs_name, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(binary.lhs))});
+                    const lhs_comp = try compile(alloc, io, binary.lhs, c, .{});
+                    defer alloc.free(lhs_comp);
+
+                    const rhs_t_comp = try c.compileType(alloc, io, &if (rhs_t == .@"typeof(nil)") lhs_t else rhs_t, binary.pos);
+                    defer alloc.free(rhs_t_comp);
+                    var rhs_name: [17]u8 = undefined;
+                    _ = try std.fmt.bufPrint(&rhs_name, "_{x}", .{std.hash.Wyhash.hash(0, std.mem.asBytes(binary.rhs))});
+                    const rhs_comp = try compile(alloc, io, binary.rhs, c, .{});
+                    defer alloc.free(rhs_comp);
+
+                    try buf.print(alloc, "{s} {s} = {s};", .{ lhs_t_comp, lhs_name, lhs_comp });
+                    try buf.print(alloc, "{s} {s} = {s};", .{ rhs_t_comp, rhs_name, rhs_comp });
+
+                    try buf.appendSlice(alloc, "((");
+                    if (lhs_t == .@"typeof(nil)") {
+                        try buf.appendSlice(alloc, "false");
+                    } else try buf.print(alloc, "{s}.is_some", .{lhs_name});
+
+                    try buf.appendSlice(alloc, " == ");
+
+                    if (rhs_t == .@"typeof(nil)") {
+                        try buf.appendSlice(alloc, "false");
+                    } else try buf.print(alloc, "{s}.is_some", .{rhs_name});
+
+                    try buf.print(
+                        alloc,
+                        ") && (!({[lhs]s}.is_some && {[rhs]s}.is_some) || ({[lhs]s}.payload == {[rhs]s}.payload))",
+                        .{ .lhs = lhs_name, .rhs = rhs_name },
+                    );
+
+                    try buf.appendSlice(alloc, "})");
+                } else if (expr_is_type) {
+                    const lhs_symbol = c.module.getSymbolFromExpression(alloc, io, binary.lhs, c).?;
+                    const rhs_symbol = c.module.getSymbolFromExpression(alloc, io, binary.rhs, c).?;
+                    try buf.print(alloc, "{}", .{lhs_symbol.value.?.type.eql(rhs_symbol.value.?.type)});
+                } else {
+                    const lhs_comp = try compile(alloc, io, binary.lhs, c, .{});
+                    defer alloc.free(lhs_comp);
+                    const rhs_comp = try compile(alloc, io, binary.rhs, c, .{});
+                    defer alloc.free(rhs_comp);
+
+                    try buf.print(alloc, "{s} {s} {s}", .{ lhs_comp, switch (binary.op) {
+                        .@"and", .but => "&&",
+                        .@"or" => "||",
+                        else => |op| @tagName(op),
+                    }, rhs_comp });
+                },
+            }
+
+            return try buf.toOwnedSlice(alloc);
         },
         .struct_instantiation => |si| {
             const t: Type = try .infer(alloc, io, si.type_expr, c);

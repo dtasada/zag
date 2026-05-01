@@ -492,7 +492,7 @@ pub const Type = union(enum) {
                 const lhs: Type = try infer(alloc, io, binary.lhs, c);
                 const rhs: Type = try infer(alloc, io, binary.rhs, c);
                 defer rhs.deinit(alloc);
-                if (!rhs.eql(lhs)) return utils.printErr(
+                if (!rhs.check(lhs)) return utils.printErr( // i feel like this should be eql instead of check but...
                     io,
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression: '{f}' {s} '{f}' ({f}).\n",
@@ -674,10 +674,11 @@ pub const Type = union(enum) {
                 defer lhs_t.deinit(alloc);
 
                 const t = try lhs_t.instantiate(alloc, io, generic.arguments, c, generic.pos);
-                if (lhs_t == .template and 
+                if (lhs_t == .template and
                     lhs_t.template != .function_definition and
                     lhs_t.template != .builtin_cast and
-                    lhs_t.template != .builtin_sizeof) {
+                    lhs_t.template != .builtin_sizeof)
+                {
                     t.deinit(alloc);
                     return .type;
                 }

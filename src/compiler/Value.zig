@@ -75,4 +75,12 @@ pub const Value = union(enum) {
             else => self,
         };
     }
+
+    pub fn format(self: Value, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        switch (self) {
+            inline .uint, .int, .float, .bool => |v| try writer.print("{}", .{v}),
+            inline .nil, .undefined => |_, t| _ = try writer.write(@tagName(t)),
+            .type => |t| try writer.print("{f}", .{t}),
+        }
+    }
 };

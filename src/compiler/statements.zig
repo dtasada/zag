@@ -265,27 +265,16 @@ pub fn compileTopLevel(
                 .binding = .@"const",
                 .is_pub = sd.is_pub,
                 .value = .{
-                    .type = switch (tag) {
-                        .struct_declaration => .{ .@"struct" = .{
+                    .type = @unionInit(
+                        Type,
+                        @tagName(tag)[0..std.mem.findScalar(u8, @tagName(tag), '_').?],
+                        .{
                             .name = try alloc.dupe(u8, sd.name),
                             .members = &.{},
                             .symbols = &.{},
                             .tag_type = tag_type,
-                        } },
-                        .union_declaration => .{ .@"union" = .{
-                            .name = try alloc.dupe(u8, sd.name),
-                            .members = &.{},
-                            .symbols = &.{},
-                            .tag_type = tag_type,
-                        } },
-                        .enum_declaration => .{ .@"enum" = .{
-                            .name = try alloc.dupe(u8, sd.name),
-                            .members = &.{},
-                            .symbols = &.{},
-                            .tag_type = tag_type,
-                        } },
-                        else => unreachable,
-                    },
+                        },
+                    ),
                 },
                 .free_name = true,
                 .free_type = true,
@@ -342,14 +331,17 @@ pub fn compileTopLevel(
                     try typedef.print(alloc, "{s} tag;\n", .{tag_type_comp});
                     try typedef.print(alloc, "union {{\n", .{});
                     for (sd.members) |member| {
-                        const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c) else .u8;
+                        const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c) else .void;
                         try members.append(alloc, .{
                             .name = try alloc.dupe(u8, member.name),
                             .inner_name = try alloc.dupe(u8, member.name),
                             .type = member_t,
                         });
 
-                        const t_comp = try c.compileType(alloc, io, &member_t, if (member.type) |t| t.pos() else 0);
+                        const t_comp = if (member_t == .void)
+                            try alloc.dupe(u8, "uint8_t")
+                        else
+                            try c.compileType(alloc, io, &member_t, if (member.type) |t| t.pos() else 0);
                         defer alloc.free(t_comp);
 
                         try typedef.print(alloc, "{s} {s};\n", .{ t_comp, member.name });
@@ -420,6 +412,9 @@ pub fn compileTopLevel(
                     alloc.destroy(m_symbol);
                     return err;
                 };
+
+                try c.module.pushScope(alloc);
+                defer c.module.popScope(alloc);
 
                 const cloned = try m_symbol.clone(alloc);
                 try symbols.append(alloc, cloned);
@@ -496,7 +491,7 @@ pub fn parameterList(
     else for (parameter_list, 0..) |group, i| {
         for (group.names, 0..) |name, j| {
             const param_t: Type = try .fromAst(alloc, io, &group.type, c);
-            const symbol: Symbol = .{
+            c.module.register(alloc, .{
                 .name = name,
                 .inner_name = name,
                 .type = param_t,
@@ -504,9 +499,10 @@ pub fn parameterList(
                 .free_name = false,
                 .free_inner_name = false,
                 .free_type = true,
+            }) catch |err| {
+                param_t.deinit(alloc);
+                return err;
             };
-            errdefer symbol.deinit(alloc);
-            try c.module.register(alloc, symbol);
 
             if (param_t == .variadic) {
                 try buf.appendSlice(alloc, "...");
@@ -536,7 +532,7 @@ pub fn variableDefinition(
     else
         try .infer(alloc, io, &vd.assigned_value, c);
 
-    const symbol: Symbol = .{
+    c.module.register(alloc, .{
         .name = vd.variable_name,
         .type = t,
         .binding = vd.binding,
@@ -544,9 +540,10 @@ pub fn variableDefinition(
         .free_name = false,
         .free_inner_name = false,
         .free_type = true,
+    }) catch |err| {
+        t.deinit(alloc);
+        return err;
     };
-    errdefer symbol.deinit(alloc);
-    try c.module.register(alloc, symbol);
 
     const t_comp = try c.compileType(alloc, io, &t, if (vd.type) |vdt| vdt.pos() else 0);
     defer alloc.free(t_comp);

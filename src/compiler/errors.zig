@@ -17,6 +17,7 @@ pub const Error = error{
     EnumMemberMustBeInteger,
     ExpressionNotCallable,
     ExpressionNotGeneric,
+    IllegalBinaryExpression,
     IllegalOperator,
     IllegalReturn,
     InstantiationFailed,
@@ -26,6 +27,7 @@ pub const Error = error{
     TypeMismatch,
     TypeNotIterable,
     UnhandledGenericMappingTypeSubstitution,
+    UnionMemberTypeRequired,
     UnknownSymbol,
 } || std.mem.Allocator.Error;
 
@@ -381,5 +383,29 @@ pub fn typeNotIterable(io: std.Io, t: Type, pos: utils.Position) Error {
         error.TypeNotIterable,
         "Compiler error: Expression of type '{f}' is not iterable. Only arrays and slices are currently iterable ({f}).\n",
         .{ t, pos },
+    );
+}
+
+pub fn unionMemberTypeRequired(io: std.Io, pos: utils.Position) Error {
+    return utils.printErr(
+        io,
+        error.UnionMemberTypeRequired,
+        "Compiler error: Union member must have a type ({f}).\n",
+        .{pos},
+    );
+}
+
+pub fn illegalBinaryExpression(
+    io: std.Io,
+    lhs_t: Type,
+    op: ast.BinaryOperator,
+    rhs_t: Type,
+    pos: utils.Position,
+) Error {
+    return utils.printErr(
+        io,
+        error.IllegalBinaryExpression,
+        "comperr: Binary expression between non-numeric types is illegal. Received '{f}' {s} '{f}' ({f}).\n",
+        .{ lhs_t, @tagName(op), rhs_t, pos },
     );
 }

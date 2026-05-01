@@ -507,6 +507,30 @@ pub const Compiler = struct {
                     .enum_declaration => &symbol.value.?.type.@"enum",
                     else => unreachable,
                 };
+
+                for (sd.members, 0..) |member, i| {
+                    if (tag == .enum_declaration) {
+                        try members.append(alloc, .{
+                            .name = try alloc.dupe(u8, member.name),
+                            .inner_name = try alloc.dupe(u8, member.name),
+                            .value = i,
+                        });
+                    } else {
+                        const member_t = if (tag == .struct_declaration)
+                            try Type.fromAst(alloc, io, &member.type, c)
+                        else if (member.type) |*t|
+                            try Type.fromAst(alloc, io, t, c)
+                        else
+                            .void;
+
+                        try members.append(alloc, .{
+                            .name = try alloc.dupe(u8, member.name),
+                            .inner_name = try alloc.dupe(u8, member.name),
+                            .type = member_t,
+                        });
+                    }
+                }
+
                 ct_ptr.members = try members.toOwnedSlice(alloc);
 
                 for (sd.methods) |method| {
