@@ -175,7 +175,7 @@ pub const Compiler = struct {
         alloc: std.mem.Allocator,
         io: std.Io,
         t: *const Type,
-        m: *const Module,
+        m: *Module,
         pos: usize,
     ) ![]const u8 {
         return switch (t.*) {
@@ -205,7 +205,7 @@ pub const Compiler = struct {
             },
             .variadic => unreachable,
             .@"struct", .@"union", .@"enum" => {
-                const symbol = self.module.findSymbolByType(t.*).?;
+                const symbol = m.findSymbolByType(t.*) orelse self.module.findSymbolByType(t.*).?;
                 return try alloc.dupe(u8, symbol.inner_name);
             },
             .array => |array| {
@@ -252,7 +252,7 @@ pub const Compiler = struct {
         alloc: std.mem.Allocator,
         io: std.Io,
         root_node: []const ast.TopLevelStatement,
-        m: *const Module,
+        m: *Module,
     ) !void {
         for (root_node) |statement| switch (statement) {
             .binding_function_declaration => |bfd| {
@@ -284,6 +284,7 @@ pub const Compiler = struct {
                         .type = switch (btd.type) {
                             inline else => |tag| @unionInit(Type, @tagName(tag), .{
                                 .name = btd.name,
+                                .inner_name = btd.name,
                                 .members = &.{},
                                 .symbols = &.{},
                                 .tag_type = undefined, // todo: binding unions might need a specified tag_type
@@ -423,18 +424,21 @@ pub const Compiler = struct {
                         .type = switch (tag) {
                             .struct_declaration => .{ .@"struct" = .{
                                 .name = try alloc.dupe(u8, sd.name),
+                                .inner_name = try alloc.dupe(u8, inner_name),
                                 .members = &.{},
                                 .symbols = &.{},
                                 .tag_type = tag_type,
                             } },
                             .union_declaration => .{ .@"union" = .{
                                 .name = try alloc.dupe(u8, sd.name),
+                                .inner_name = try alloc.dupe(u8, inner_name),
                                 .members = &.{},
                                 .symbols = &.{},
                                 .tag_type = tag_type,
                             } },
                             .enum_declaration => .{ .@"enum" = .{
                                 .name = try alloc.dupe(u8, sd.name),
+                                .inner_name = try alloc.dupe(u8, inner_name),
                                 .members = &.{},
                                 .symbols = &.{},
                                 .tag_type = tag_type,
@@ -463,6 +467,62 @@ pub const Compiler = struct {
                 defer {
                     for (symbols.items) |sym| sym.deinit(alloc);
                     symbols.deinit(alloc);
+                }
+
+                try m.pushScope(alloc);
+                defer m.popScope(alloc);
+
+                for (sd.subtypes) |subtype| {
+                    const st_name = switch (subtype) { inline else => |s| s.name };
+                    const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{ symbol.inner_name, st_name });
+                    defer alloc.free(m_inner_name);
+
+                    var forward_symbol = try alloc.create(Symbol);
+                    forward_symbol.* = .{
+                        .name = try alloc.dupe(u8, st_name),
+                        .inner_name = try alloc.dupe(u8, m_inner_name),
+                        .type = .type,
+                        .binding = .@"const",
+                        .is_pub = switch (subtype) { inline else => |s| s.is_pub },
+                        .value = .{
+                            .type = switch (subtype) {
+                                .@"struct" => .{ .@"struct" = .{ .name = try alloc.dupe(u8, m_inner_name), .inner_name = try alloc.dupe(u8, m_inner_name), .members = &.{}, .symbols = &.{}, .tag_type = null } },
+                                .@"union" => .{ .@"union" = .{ .name = try alloc.dupe(u8, m_inner_name), .inner_name = try alloc.dupe(u8, m_inner_name), .members = &.{}, .symbols = &.{}, .tag_type = null } },
+                                .@"enum" => .{ .@"enum" = .{ .name = try alloc.dupe(u8, m_inner_name), .inner_name = try alloc.dupe(u8, m_inner_name), .members = &.{}, .symbols = &.{}, .tag_type = null } },
+                            }
+                        },
+                        .free_name = true,
+                        .free_type = true,
+                        .free_inner_name = true,
+                    };
+                    m.registerPtr(alloc, forward_symbol) catch |err| {
+                        forward_symbol.deinit(alloc);
+                        alloc.destroy(forward_symbol);
+                        return err;
+                    };
+
+                    var modified_st: ast.TopLevelStatement = switch (subtype) {
+                        .@"struct" => |s| .{ .struct_declaration = try s.clone(alloc) },
+                        .@"enum" => |e| .{ .enum_declaration = try e.clone(alloc) },
+                        .@"union" => |u| .{ .union_declaration = try u.clone(alloc) },
+                    };
+                    defer modified_st.deinit(alloc);
+                    switch (modified_st) {
+                        inline .struct_declaration, .enum_declaration, .union_declaration => |*s| {
+                            alloc.free(s.name);
+                            s.name = try alloc.dupe(u8, m_inner_name);
+                        },
+                        else => unreachable,
+                    }
+
+                    try analyze(c, alloc, io, &[_]ast.TopLevelStatement{modified_st}, m);
+
+                    const st_symbol = m.getSymbol(m_inner_name) orelse return error.UnknownSymbol;
+                    
+                    forward_symbol.value.?.type.deinit(alloc);
+                    forward_symbol.value = .{ .type = try st_symbol.value.?.type.clone(alloc) };
+
+                    try symbols.append(alloc, try forward_symbol.clone(alloc));
                 }
 
                 switch (tag) {
@@ -515,29 +575,6 @@ pub const Compiler = struct {
                     else => unreachable,
                 };
 
-                for (sd.members, 0..) |member, i| {
-                    if (tag == .enum_declaration) {
-                        try members.append(alloc, .{
-                            .name = try alloc.dupe(u8, member.name),
-                            .inner_name = try alloc.dupe(u8, member.name),
-                            .value = i,
-                        });
-                    } else {
-                        const member_t = if (tag == .struct_declaration)
-                            try Type.fromAst(alloc, io, &member.type, c, m)
-                        else if (member.type) |*t|
-                            try Type.fromAst(alloc, io, t, c, m)
-                        else
-                            .void;
-
-                        try members.append(alloc, .{
-                            .name = try alloc.dupe(u8, member.name),
-                            .inner_name = try alloc.dupe(u8, member.name),
-                            .type = member_t,
-                        });
-                    }
-                }
-
                 ct_ptr.members = try members.toOwnedSlice(alloc);
 
                 for (sd.methods) |method| {
@@ -577,7 +614,7 @@ pub const Compiler = struct {
 
                 ct_ptr.symbols = try symbols.toOwnedSlice(alloc);
             },
-            .import => |import_stmt| try statements.import(alloc, io, import_stmt, c),
+            .import => |import_stmt| try statements.import(alloc, io, import_stmt, c, m),
         };
     }
 };

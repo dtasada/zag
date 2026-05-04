@@ -73,7 +73,7 @@ pub const Type = union(enum) {
         template_name: []const u8,
         args: []const ast.Expression,
         c: *Compiler,
-        m: *const Module,
+        m: *Module,
     ) Error![]const u8 {
         var mangled_name: std.ArrayList(u8) = .empty;
         errdefer mangled_name.deinit(alloc);
@@ -105,7 +105,7 @@ pub const Type = union(enum) {
         io: std.Io,
         args: []const ast.Expression,
         c: *Compiler,
-        m: *const Module,
+        m: *Module,
         pos: usize,
     ) Error!Type {
         if (self != .template) return errors.expressionNotGeneric(io, m.source_map[pos]);
@@ -120,7 +120,7 @@ pub const Type = union(enum) {
         const mangled_name = try getMangledName(alloc, io, template_name, args, c, m);
         defer alloc.free(mangled_name);
 
-        if (c.module.instantiations.get(mangled_name)) |t| return try t.clone(alloc);
+        if (template.module.instantiations.get(mangled_name)) |t| return try t.clone(alloc);
 
         const result_t: Type = switch (template.kind) {
             .builtin_cast => {
@@ -151,19 +151,30 @@ pub const Type = union(enum) {
                 var new_fd = try fd.clone(alloc);
                 defer new_fd.deinit(alloc);
 
-                var map: std.StringHashMap(ast.Expression) = .init(alloc);
-                defer map.deinit();
+                try template.module.pushScope(alloc);
+                defer template.module.popScope(alloc);
 
                 var arg_i: usize = 0;
                 for (fd.generic_parameters) |group| {
                     for (group.names) |name| {
                         if (arg_i >= args.len) return error.NotEnoughGenericArguments;
-                        try map.put(name, args[arg_i]);
+                        const val = try Value.eval(alloc, io, &args[arg_i], c, m);
+                        const symbol: Symbol = .{
+                            .name = name,
+                            .inner_name = name,
+                            .type = if (val == .type) .type else val.getType(),
+                            .binding = .@"const",
+                            .is_pub = false,
+                            .value = val,
+                            .free_name = false,
+                            .free_type = true,
+                            .free_inner_name = false,
+                        };
+                        errdefer symbol.deinit(alloc);
+                        try template.module.register(alloc, symbol);
                         arg_i += 1;
                     }
                 }
-
-                try generics.mapGenerics(alloc, map, &new_fd);
 
                 utils.deinitSlice(ast.ParameterGroup, new_fd.generic_parameters, alloc);
                 new_fd.generic_parameters = &.{};
@@ -178,26 +189,37 @@ pub const Type = union(enum) {
                 const tls: ast.TopLevelStatement = .{ .function_definition = new_fd };
                 try statements.compileTopLevel(alloc, io, tls, c, template.module);
 
-                const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
+                const symbol = m.getSymbol(mangled_name) orelse return error.InstantiationFailed;
                 break :b try symbol.type.clone(alloc);
             },
             inline .struct_declaration, .union_declaration => |d, tag| b: {
                 var new_ud = try d.clone(alloc);
                 defer new_ud.deinit(alloc);
 
-                var map: std.StringHashMap(ast.Expression) = .init(alloc);
-                defer map.deinit();
+                try template.module.pushScope(alloc);
+                defer template.module.popScope(alloc);
 
                 var arg_i: usize = 0;
                 for (d.generic_types) |group| {
                     for (group.names) |name| {
                         if (arg_i >= args.len) return error.NotEnoughGenericArguments;
-                        try map.put(name, args[arg_i]);
+                        const val = try Value.eval(alloc, io, &args[arg_i], c, m);
+                        const symbol: Symbol = .{
+                            .name = name,
+                            .inner_name = name,
+                            .type = if (val == .type) .type else val.getType(),
+                            .binding = .@"const",
+                            .is_pub = false,
+                            .value = val,
+                            .free_name = false,
+                            .free_type = true,
+                            .free_inner_name = false,
+                        };
+                        errdefer symbol.deinit(alloc);
+                        try template.module.register(alloc, symbol);
                         arg_i += 1;
                     }
                 }
-
-                try generics.mapGenerics(alloc, map, &new_ud);
 
                 utils.deinitSlice(ast.ParameterGroup, new_ud.generic_types, alloc);
                 new_ud.generic_types = &.{};
@@ -212,13 +234,14 @@ pub const Type = union(enum) {
                 const tls = @unionInit(ast.TopLevelStatement, @tagName(tag), new_ud);
                 try statements.compileTopLevel(alloc, io, tls, c, template.module);
 
-                const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
-                break :b try symbol.value.?.type.clone(alloc);
-            },
-        };
+                const symbol = m.getSymbol(mangled_name) orelse return error.InstantiationFailed;
+                const result_t = try symbol.value.?.type.clone(alloc);
+                try m.instantiations.put(try alloc.dupe(u8, mangled_name), try result_t.clone(alloc));
+                break :b result_t;
+                },
+                };
 
-        try c.module.instantiations.put(try alloc.dupe(u8, mangled_name), try result_t.clone(alloc));
-        return result_t;
+                return result_t;
     }
 
     pub const Template = struct {
@@ -230,7 +253,7 @@ pub const Type = union(enum) {
             builtin_sizeof,
         };
 
-        module: *const Module,
+        module: *Module,
         kind: Kind,
     };
     const Reference = struct { inner: *const Type, is_mut: bool };
@@ -303,6 +326,7 @@ pub const Type = union(enum) {
             };
 
             name: []const u8,
+            inner_name: []const u8,
             members: []const Member,
             symbols: []const Symbol,
             tag_type: ?*const Type,
@@ -337,7 +361,7 @@ pub const Type = union(enum) {
         io: std.Io,
         t: *const ast.Type,
         c: *Compiler,
-        m: *const Module,
+        m: *Module,
     ) Error!*Type {
         const ret = try alloc.create(Type);
         errdefer alloc.destroy(ret);
@@ -351,7 +375,7 @@ pub const Type = union(enum) {
         io: std.Io,
         t: *const ast.Type,
         c: *Compiler,
-        module: *const Module,
+        module: *Module,
     ) Error!Type {
         return switch (t.*) {
             .symbol => |s| {
@@ -446,10 +470,10 @@ pub const Type = union(enum) {
         io: std.Io,
         expr: *const ast.Expression,
         c: *Compiler,
-        m: *const Module,
+        m: *Module,
     ) Error!Type {
         return switch (expr.*) {
-            .ident => |ident| if (c.module.getSymbol(ident.payload)) |symbol|
+            .ident => |ident| if (m.getSymbol(ident.payload)) |symbol|
                 try symbol.type.clone(alloc)
             else
                 errors.unknownSymbol(io, ident.payload, m.source_map[ident.pos]),
@@ -528,12 +552,12 @@ pub const Type = union(enum) {
                 };
             },
             .block => |block| {
-                try c.module.pushScope(alloc);
-                defer c.module.popScope(alloc);
+                try m.pushScope(alloc);
+                defer m.popScope(alloc);
 
                 var found: ?struct { Type, usize } = null;
                 for (block.payload) |statement| switch (statement) {
-                    .variable_definition => |vd| try c.module.register(alloc, .{
+                    .variable_definition => |vd| try m.register(alloc, .{
                         .name = vd.variable_name,
                         .inner_name = vd.variable_name,
                         .type = if (vd.type) |*t|
@@ -604,7 +628,7 @@ pub const Type = union(enum) {
                             inline .slice, .array => |s| try s.inner.clonePtr(alloc),
                             else => unreachable,
                         },
-                        .is_mut = c.module.getExpressionMutability(alloc, io, slice.lhs, c) catch |err| switch (err) {
+                        .is_mut = m.getExpressionMutability(alloc, io, slice.lhs, c) catch |err| switch (err) {
                             error.UnknownSymbol => return errors.unknownSymbol(
                                 io,
                                 slice.lhs.ident.payload,
@@ -626,14 +650,26 @@ pub const Type = union(enum) {
 
                 return switch (t) {
                     .@"struct" => |ct| {
-                        const member_t = ct.getMemberType(member.member_name) orelse
-                            return errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]);
-                        return try member_t.clone(alloc);
+                        if (ct.getMemberType(member.member_name)) |member_t| {
+                            return try member_t.clone(alloc);
+                        }
+                        for (ct.symbols) |symbol| {
+                            if (std.mem.eql(u8, symbol.name, member.member_name)) {
+                                return try symbol.type.clone(alloc);
+                            }
+                        }
+                        return errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]);
                     },
                     .@"union" => |ct| {
-                        const member_t = ct.getMemberType(member.member_name) orelse
-                            return errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]);
-                        return try member_t.clone(alloc);
+                        if (ct.getMemberType(member.member_name)) |member_t| {
+                            return try member_t.clone(alloc);
+                        }
+                        for (ct.symbols) |symbol| {
+                            if (std.mem.eql(u8, symbol.name, member.member_name)) {
+                                return try symbol.type.clone(alloc);
+                            }
+                        }
+                        return errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]);
                     },
                     .@"enum" => .usize,
                     .module => |mod| if (mod.getSymbol(member.member_name)) |symbol|
@@ -663,7 +699,7 @@ pub const Type = union(enum) {
             .reference => |ref| {
                 const rhs_t = try alloc.create(Type);
                 rhs_t.* = try infer(alloc, io, ref.inner, c, m);
-                if (ref.is_mut and !try c.module.getExpressionMutability(alloc, io, ref.inner, c))
+                if (ref.is_mut and !try m.getExpressionMutability(alloc, io, ref.inner, c))
                     return errors.mutRefOfConst(io, m.source_map[ref.pos]);
                 return .{
                     .reference = .{
@@ -677,7 +713,7 @@ pub const Type = union(enum) {
                 defer st.deinit(alloc);
                 if (st != .type) return errors.exprIsNotStruct(io, st, m.source_map[si.pos]);
 
-                const symbol = c.module.getSymbolFromExpression(alloc, io, si.type_expr, c) orelse
+                const symbol = m.getSymbolFromExpression(alloc, io, si.type_expr, c) orelse
                     return errors.exprIsNotStruct(io, st, m.source_map[si.pos]);
 
                 return try symbol.value.?.type.clone(alloc);
@@ -787,6 +823,7 @@ pub const Type = union(enum) {
             inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
             inline .@"struct", .@"enum", .@"union" => |ct| {
                 alloc.free(ct.name);
+                alloc.free(ct.inner_name);
                 utils.deinitSlice(@TypeOf(ct).Member, ct.members, alloc);
                 utils.deinitSlice(Symbol, ct.symbols, alloc);
                 if (ct.tag_type) |tt| tt.deinitPtr(alloc);
@@ -925,21 +962,8 @@ pub const Type = union(enum) {
                 break :b true;
             },
             inline .@"struct", .@"enum", .@"union" => |ct, t| {
-                const a = ct;
                 const b = @field(rhs, @tagName(t));
-
-                if (!std.mem.eql(u8, a.name, b.name)) return false;
-                if (a.members.len != b.members.len) return false;
-                if (a.symbols.len != b.symbols.len) return false;
-
-                for (0..a.members.len) |i| {
-                    if (!a.members[i].eql(b.members[i])) return false;
-                }
-                for (0..a.symbols.len) |i| {
-                    if (!a.symbols[i].eql(b.symbols[i])) return false;
-                }
-
-                return true;
+                return std.mem.eql(u8, ct.inner_name, b.inner_name);
             },
             .template => |t| {
                 const rt = rhs.template;
@@ -1008,6 +1032,9 @@ pub const Type = union(enum) {
                 const name = try alloc.dupe(u8, ct.name);
                 errdefer alloc.free(name);
 
+                const inner_name = try alloc.dupe(u8, ct.inner_name);
+                errdefer alloc.free(inner_name);
+
                 const members = try utils.cloneSlice(@TypeOf(ct).Member, ct.members, alloc);
                 errdefer utils.deinitSlice(@TypeOf(ct).Member, members, alloc);
 
@@ -1019,6 +1046,7 @@ pub const Type = union(enum) {
 
                 return @unionInit(Type, @tagName(tag), .{
                     .name = name,
+                    .inner_name = inner_name,
                     .members = members,
                     .symbols = symbols,
                     .tag_type = tag_type,

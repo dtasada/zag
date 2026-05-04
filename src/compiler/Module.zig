@@ -228,7 +228,7 @@ pub fn popScope(self: *Module, alloc: std.mem.Allocator) void {
     alloc.destroy(last_scope);
 }
 
-pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
+pub fn getSymbol(self: *Module, name: []const u8) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
         for (scope.symbols.items) |symbol| {
@@ -242,7 +242,7 @@ pub fn getSymbol(self: *const Module, name: []const u8) ?*Symbol {
 }
 
 pub fn getExpressionMutability(
-    self: *const Module,
+    self: *Module,
     alloc: std.mem.Allocator,
     io: std.Io,
     expr: *const ast.Expression,
@@ -294,7 +294,7 @@ pub fn getExpressionMutability(
 }
 
 pub fn getSymbolFromExpression(
-    self: *const Module,
+    self: *Module,
     alloc: std.mem.Allocator,
     io: std.Io,
     expr: *const ast.Expression,
@@ -328,7 +328,7 @@ pub fn getSymbolFromExpression(
     };
 }
 
-pub fn findSymbolByType(self: *const Module, t: Type) ?*Symbol {
+pub fn findSymbolByType(self: *Module, t: Type) ?*Symbol {
     var it = std.mem.reverseIterator(self.scopes.items);
     while (it.next()) |scope| {
         for (scope.symbols.items) |symbol| {

@@ -5,6 +5,7 @@ const compiler = @import("compiler.zig");
 const errors = @import("errors.zig");
 
 const Compiler = compiler.Compiler;
+const Module = compiler.Module;
 const Type = compiler.Type;
 const Error = errors.Error;
 
@@ -23,7 +24,7 @@ pub const Value = union(enum) {
         io: std.Io,
         expr: *const ast.Expression,
         c: *Compiler,
-        m: *const compiler.Module,
+        m: *Module,
     ) Error!Value {
         return switch (expr.*) {
             .int => |int| .{ .uint = int.payload },

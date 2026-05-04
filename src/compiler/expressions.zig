@@ -15,7 +15,7 @@ pub fn compile(
     io: std.Io,
     expr: *const ast.Expression,
     c: *Compiler,
-    m: *const Module,
+    m: *Module,
     opts: struct {
         expected_type: ?Type = null,
     },
