@@ -153,10 +153,10 @@ pub const Compiler = struct {
     },
 
     primitives: std.BufSet,
-    module: Module,
+    module: *Module,
 
     /// borrowed
-    module_registry: *std.StringHashMap(Module),
+    module_registry: *std.StringHashMap(*Module),
 
     fn deinit(self: *Compiler, alloc: std.mem.Allocator) void {
         self.module.deinit(alloc);
@@ -175,13 +175,14 @@ pub const Compiler = struct {
         alloc: std.mem.Allocator,
         io: std.Io,
         t: *const Type,
+        m: *const Module,
         pos: usize,
     ) ![]const u8 {
         return switch (t.*) {
             .optional => |optional| {
                 const type_name = try std.fmt.allocPrint(alloc, "__zag_Optional_{x}", .{optional.hash()});
                 if (!self.primitives.contains(type_name)) {
-                    const t_comp = try self.compileType(alloc, io, optional, pos);
+                    const t_comp = try self.compileType(alloc, io, optional, m, pos);
                     defer alloc.free(t_comp);
                     try self.header.typedefs.print(
                         alloc,
@@ -195,7 +196,7 @@ pub const Compiler = struct {
                 return type_name;
             },
             .reference => |ref| {
-                const inner = try self.compileType(alloc, io, ref.inner, pos);
+                const inner = try self.compileType(alloc, io, ref.inner, m, pos);
                 defer alloc.free(inner);
                 return try std.fmt.allocPrint(alloc, "{s}{s}*", .{
                     if (!ref.is_mut) "const " else "",
@@ -210,7 +211,7 @@ pub const Compiler = struct {
             .array => |array| {
                 const type_name = try std.fmt.allocPrint(alloc, "__zag_Array_{x}", .{t.hash()});
                 if (!self.primitives.contains(type_name)) {
-                    const t_comp = try self.compileType(alloc, io, array.inner, pos);
+                    const t_comp = try self.compileType(alloc, io, array.inner, m, pos);
                     defer alloc.free(t_comp);
                     try self.header.typedefs.print(
                         alloc,
@@ -226,7 +227,7 @@ pub const Compiler = struct {
             .slice => |slice| {
                 const type_name = try std.fmt.allocPrint(alloc, "__zag_Slice_{x}", .{t.hash()});
                 if (!self.primitives.contains(type_name)) {
-                    const t_comp = try self.compileType(alloc, io, slice.inner, pos);
+                    const t_comp = try self.compileType(alloc, io, slice.inner, m, pos);
                     defer alloc.free(t_comp);
                     try self.header.typedefs.print(
                         alloc,
@@ -242,7 +243,7 @@ pub const Compiler = struct {
             inline else => |_, tag| if (self.module.getSymbol(@tagName(tag))) |symbol|
                 alloc.dupe(u8, symbol.inner_name)
             else
-                errors.unknownSymbol(io, @tagName(tag), self.getPos(pos)),
+                errors.unknownSymbol(io, @tagName(tag), m.source_map[pos]),
         };
     }
 
@@ -251,13 +252,14 @@ pub const Compiler = struct {
         alloc: std.mem.Allocator,
         io: std.Io,
         root_node: []const ast.TopLevelStatement,
+        m: *const Module,
     ) !void {
         for (root_node) |statement| switch (statement) {
             .binding_function_declaration => |bfd| {
                 const function_type_ast = try bfd.getType(alloc);
                 defer function_type_ast.deinit(alloc);
 
-                const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
+                const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c, m);
                 const symbol: Symbol = .{
                     .name = bfd.name,
                     .inner_name = bfd.name,
@@ -300,7 +302,10 @@ pub const Compiler = struct {
                     const symbol: Symbol = .{
                         .name = fd.name,
                         .inner_name = fd.name,
-                        .type = .{ .template = .{ .function_definition = try fd.clone(alloc) } },
+                        .type = .{ .template = .{
+                            .kind = .{ .function_definition = try fd.clone(alloc) },
+                            .module = m,
+                        } },
                         .binding = .@"const",
                         .is_pub = fd.is_pub,
                         .free_name = false,
@@ -316,7 +321,7 @@ pub const Compiler = struct {
                 const function_type_ast = try fd.getType(alloc);
                 defer function_type_ast.deinit(alloc);
 
-                const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c);
+                const function_type: Type = try .fromAst(alloc, io, &function_type_ast, c, m);
                 const symbol: Symbol = .{
                     .name = fd.name,
                     .inner_name = inner_name,
@@ -332,9 +337,9 @@ pub const Compiler = struct {
             },
             .variable_definition => |vd| {
                 const t: Type = if (vd.type) |*t|
-                    try .fromAst(alloc, io, t, c)
+                    try .fromAst(alloc, io, t, c, m)
                 else
-                    try .infer(alloc, io, &vd.assigned_value, c);
+                    try .infer(alloc, io, &vd.assigned_value, c, m);
 
                 const symbol: Symbol = .{
                     .name = vd.variable_name,
@@ -354,11 +359,14 @@ pub const Compiler = struct {
                         .name = sd.name,
                         .inner_name = sd.name,
                         .type = .{
-                            .template = @unionInit(
-                                Type.Template,
-                                @tagName(tag),
-                                try sd.clone(alloc),
-                            ),
+                            .template = .{
+                                .kind = @unionInit(
+                                    Type.Template.Kind,
+                                    @tagName(tag),
+                                    try sd.clone(alloc),
+                                ),
+                                .module = m,
+                            },
                         },
                         .binding = .@"const",
                         .is_pub = sd.is_pub,
@@ -373,20 +381,20 @@ pub const Compiler = struct {
 
                 var members_set: std.StringHashMap(usize) = .init(alloc);
                 defer members_set.deinit();
-                for (sd.members) |m| {
-                    if (members_set.get(m.name)) |pos|
-                        return errors.duplicateStructMember(io, m.name, c.getPos(pos), c.getPos(m.pos));
-                    try members_set.put(m.name, m.pos);
+                for (sd.members) |member| {
+                    if (members_set.get(member.name)) |pos|
+                        return errors.duplicateStructMember(io, member.name, m.source_map[pos], m.source_map[member.pos]);
+                    try members_set.put(member.name, member.pos);
                 }
                 for (sd.variables) |vd| {
                     if (members_set.get(vd.variable_name)) |pos|
-                        return errors.duplicateStructMember(io, vd.variable_name, c.getPos(pos), c.getPos(vd.pos));
+                        return errors.duplicateStructMember(io, vd.variable_name, m.source_map[pos], m.source_map[vd.pos]);
                     try members_set.put(vd.variable_name, vd.pos);
                 }
-                for (sd.methods) |m| {
-                    if (members_set.get(m.name)) |pos|
-                        return errors.duplicateStructMember(io, m.name, c.getPos(pos), c.getPos(m.pos));
-                    try members_set.put(m.name, m.pos);
+                for (sd.methods) |method| {
+                    if (members_set.get(method.name)) |pos|
+                        return errors.duplicateStructMember(io, method.name, m.source_map[pos], m.source_map[method.pos]);
+                    try members_set.put(method.name, method.pos);
                 }
 
                 const t_tag = switch (tag) {
@@ -447,20 +455,20 @@ pub const Compiler = struct {
                 const ct_type = Type.CompoundType(t_tag);
                 var members: std.ArrayList(ct_type.Member) = .empty;
                 defer {
-                    for (members.items) |m| m.deinit(alloc);
+                    for (members.items) |member_m| member_m.deinit(alloc);
                     members.deinit(alloc);
                 }
 
                 var symbols: std.ArrayList(Symbol) = .empty;
                 defer {
-                    for (symbols.items) |s| s.deinit(alloc);
+                    for (symbols.items) |sym| sym.deinit(alloc);
                     symbols.deinit(alloc);
                 }
 
                 switch (tag) {
                     .struct_declaration => {
                         for (sd.members) |member| {
-                            const member_t: Type = try .fromAst(alloc, io, &member.type, c);
+                            const member_t: Type = try .fromAst(alloc, io, &member.type, c, m);
                             try members.append(alloc, .{
                                 .name = try alloc.dupe(u8, member.name),
                                 .inner_name = try alloc.dupe(u8, member.name),
@@ -469,7 +477,7 @@ pub const Compiler = struct {
                         }
                     },
                     .union_declaration => for (sd.members) |member| {
-                        const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c) else .u8;
+                        const member_t: Type = if (member.type) |*t| try .fromAst(alloc, io, t, c, m) else .u8;
                         try members.append(alloc, .{
                             .name = try alloc.dupe(u8, member.name),
                             .inner_name = try alloc.dupe(u8, member.name),
@@ -479,12 +487,12 @@ pub const Compiler = struct {
                     .enum_declaration => {
                         for (sd.members, 0..) |member, i| {
                             const value: Value = if (member.value) |*v|
-                                try .eval(alloc, io, v, c)
+                                try .eval(alloc, io, v, c, m)
                             else
                                 .{ .uint = if (i == 0) 0 else members.items[i - 1].value + 1 };
 
                             if (value != .uint)
-                                return errors.enumMemberMustBeInteger(io, value.getType(), c.getPos(sd.pos));
+                                return errors.enumMemberMustBeInteger(io, value.getType(), m.source_map[sd.pos]);
 
                             const m_inner_name = try std.fmt.allocPrint(alloc, "{s}_{s}", .{
                                 symbol.inner_name,
@@ -516,9 +524,9 @@ pub const Compiler = struct {
                         });
                     } else {
                         const member_t = if (tag == .struct_declaration)
-                            try Type.fromAst(alloc, io, &member.type, c)
+                            try Type.fromAst(alloc, io, &member.type, c, m)
                         else if (member.type) |*t|
-                            try Type.fromAst(alloc, io, t, c)
+                            try Type.fromAst(alloc, io, t, c, m)
                         else
                             .void;
 
@@ -542,7 +550,7 @@ pub const Compiler = struct {
 
                     const method_t_ast = try method.getType(alloc);
                     defer method_t_ast.deinit(alloc);
-                    const t: Type = try .fromAst(alloc, io, &method_t_ast, c);
+                    const t: Type = try .fromAst(alloc, io, &method_t_ast, c, m);
                     const m_symbol = try alloc.create(Symbol);
                     m_symbol.* = .{
                         .name = try alloc.dupe(u8, method.name),
@@ -563,18 +571,14 @@ pub const Compiler = struct {
                     const cloned = try m_symbol.clone(alloc);
                     try symbols.append(alloc, cloned);
 
-                    const return_t: Type = try .fromAst(alloc, io, &method.return_type, c);
+                    const return_t: Type = try .fromAst(alloc, io, &method.return_type, c, m);
                     defer return_t.deinit(alloc);
                 }
 
                 ct_ptr.symbols = try symbols.toOwnedSlice(alloc);
             },
-            .import => |import| try statements.import(alloc, io, import, c),
+            .import => |import_stmt| try statements.import(alloc, io, import_stmt, c),
         };
-    }
-
-    pub fn getPos(c: *const Compiler, index: usize) utils.Position {
-        return c.module.source_map[index];
     }
 };
 
@@ -582,7 +586,7 @@ pub fn emit(
     alloc: std.mem.Allocator,
     io: std.Io,
     rel_file_path: []const u8,
-    module_registry: *std.StringHashMap(Module),
+    module_registry: *std.StringHashMap(*Module),
 ) !void {
     var file_path = rel_file_path;
     var free_file_path = false;
@@ -599,7 +603,8 @@ pub fn emit(
     defer alloc.free(input);
     defer if (free_file_path) alloc.free(file_path);
 
-    const tokens, const source_map = try lexer.tokenize(alloc, io, input, file_path);
+    const owned_file_path = try alloc.dupe(u8, file_path);
+    const tokens, const source_map = try lexer.tokenize(alloc, io, input, owned_file_path);
 
     const root_node = try parser.parse(alloc, io, tokens, source_map);
     defer utils.deinitSlice(ast.TopLevelStatement, root_node, alloc);
@@ -644,11 +649,11 @@ pub fn emit(
     try compiler.header.includes.print(alloc, "#include <stdint.h>\n", .{});
     try compiler.header.includes.print(alloc, "#include <stdbool.h>\n", .{});
 
-    try compiler.analyze(alloc, io, root_node);
+    try compiler.analyze(alloc, io, root_node, compiler.module);
 
     // transpile step
     for (root_node) |statement|
-        try statements.compileTopLevel(alloc, io, statement, &compiler);
+        try statements.compileTopLevel(alloc, io, statement, &compiler, compiler.module);
 
     try compiler.source.includes.print(alloc, "int main() {{ {s}_main(); return 0; }}", .{module_name});
 
@@ -670,7 +675,7 @@ pub fn processImports(
     alloc: std.mem.Allocator,
     io: std.Io,
     rel_file_path: []const u8,
-    module_registry: *std.StringHashMap(Module),
+    module_registry: *std.StringHashMap(*Module),
 ) !*Module {
     var file_path = rel_file_path;
     var free_file_path = false;
@@ -687,12 +692,12 @@ pub fn processImports(
     defer alloc.free(input);
     defer if (free_file_path) alloc.free(file_path);
 
-    if (module_registry.getPtr(file_path)) |mod| return mod;
+    if (module_registry.getPtr(file_path)) |mod| return mod.*;
 
     std.debug.assert(std.mem.eql(u8, file_path[file_path.len - 4 ..], ".zag"));
 
-    const tokens, const source_map = try lexer.tokenize(alloc, io, input, file_path);
-    defer alloc.free(source_map);
+    const owned_file_path = try alloc.dupe(u8, file_path);
+    const tokens, const source_map = try lexer.tokenize(alloc, io, input, owned_file_path);
 
     const root_node = try parser.parse(alloc, io, tokens, source_map);
     defer utils.deinitSlice(ast.TopLevelStatement, root_node, alloc);
@@ -709,11 +714,14 @@ pub fn processImports(
     const c = &compiler;
     defer compiler.deinitWithoutModule(alloc);
 
-    try c.analyze(alloc, io, root_node);
+    try c.analyze(alloc, io, root_node, c.module);
 
     const gop = try module_registry.getOrPut(file_path);
-    if (gop.found_existing) return gop.value_ptr;
+    if (gop.found_existing) {
+        c.module.deinit(alloc);
+        return gop.value_ptr.*;
+    }
     gop.value_ptr.* = c.module;
 
-    return gop.value_ptr;
+    return gop.value_ptr.*;
 }

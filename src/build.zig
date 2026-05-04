@@ -8,10 +8,10 @@ const Module = compiler.Module;
 
 pub fn build(alloc: std.mem.Allocator, io: std.Io) !void {
     // Transpile stdlib first so user code can import from it
-    var module_registry: std.StringHashMap(Module) = .init(alloc);
+    var module_registry: std.StringHashMap(*Module) = .init(alloc);
     defer {
         var it = module_registry.valueIterator();
-        while (it.next()) |mod| mod.deinit(alloc);
+        while (it.next()) |mod| mod.*.deinit(alloc);
         module_registry.deinit();
     }
     try transpileModuleWithHeaders(alloc, io, build_options.stdlib_path, &module_registry);
@@ -24,7 +24,7 @@ fn transpileModuleWithHeaders(
     alloc: std.mem.Allocator,
     io: std.Io,
     dir_path: []const u8,
-    module_registry: *std.StringHashMap(Module),
+    module_registry: *std.StringHashMap(*Module),
 ) !void {
     var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true });
     defer dir.close(io);
@@ -47,7 +47,7 @@ fn transpileWithHeaders(
     alloc: std.mem.Allocator,
     io: std.Io,
     file_path: []const u8,
-    module_registry: *std.StringHashMap(Module),
+    module_registry: *std.StringHashMap(*Module),
 ) !void {
     compiler.emit(alloc, io, file_path, module_registry) catch |err|
         return utils.printErr(io, error.CompilationError, "Compilation error: {}\n", .{err});

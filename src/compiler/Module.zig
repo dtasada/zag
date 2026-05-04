@@ -40,16 +40,24 @@ fn registerBuiltin(
     });
 }
 
-/// Takes ownership of `source_map`
-pub fn init(alloc: std.mem.Allocator, name: []const u8, source_map: []const utils.Position) !Module {
-    var self: Module = .{
+/// Caller owns returned pointer
+pub fn init(alloc: std.mem.Allocator, name: []const u8, source_map: []const utils.Position) !*Module {
+    const self = try alloc.create(Module);
+    errdefer alloc.destroy(self);
+
+    self.* = .{
         .name = try alloc.dupe(u8, name),
         .source_map = source_map,
         .instantiations = .init(alloc),
+        .scopes = .empty,
     };
-    errdefer self.deinit(alloc);
+    errdefer {
+        alloc.free(self.name);
+        self.instantiations.deinit();
+    }
 
     try self.pushScope(alloc);
+    errdefer self.deinit(alloc);
 
     try self.registerBuiltin(alloc, "i8", "int8_t", .{ .type = .i8 });
     try self.registerBuiltin(alloc, "i16", "int16_t", .{ .type = .i16 });
@@ -97,7 +105,7 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8, source_map: []const util
     try self.register(alloc, .{
         .name = "cast",
         .inner_name = "cast",
-        .type = .{ .template = .builtin_cast },
+        .type = .{ .template = .{ .kind = .builtin_cast, .module = self } },
         .binding = .@"const",
         .free_name = false,
         .free_inner_name = false,
@@ -107,7 +115,7 @@ pub fn init(alloc: std.mem.Allocator, name: []const u8, source_map: []const util
     try self.register(alloc, .{
         .name = "sizeof",
         .inner_name = "sizeof",
-        .type = .{ .template = .builtin_sizeof },
+        .type = .{ .template = .{ .kind = .builtin_sizeof, .module = self } },
         .binding = .@"const",
         .free_name = false,
         .free_inner_name = false,
@@ -128,7 +136,9 @@ pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
     }
     self.instantiations.deinit();
     alloc.free(self.name);
+    if (self.source_map.len > 0) alloc.free(self.source_map[0].path);
     alloc.free(self.source_map);
+    alloc.destroy(self);
 }
 
 pub fn registerAtTopLevel(self: *Module, alloc: std.mem.Allocator, symbol: Symbol) !void {
@@ -245,27 +255,27 @@ pub fn getExpressionMutability(
                 (symbol.type == .slice and symbol.type.slice.is_mut);
         },
         .index => |index| {
-            const t: Type = try .infer(alloc, io, index.lhs, c);
+            const t: Type = try .infer(alloc, io, index.lhs, c, self);
             defer t.deinit(alloc);
             if (t != .reference and t != .array and t != .slice)
-                return errors.illegalIndex(io, t, c.getPos(index.pos));
+                return errors.illegalIndex(io, t, self.source_map[index.pos]);
 
-            const i_t: Type = try .infer(alloc, io, index.index, c);
+            const i_t: Type = try .infer(alloc, io, index.index, c, self);
             defer i_t.deinit(alloc);
             if (!i_t.isInteger())
-                return errors.illegalIndexType(io, i_t, c.getPos(index.pos));
+                return errors.illegalIndexType(io, i_t, self.source_map[index.pos]);
 
             return try self.getExpressionMutability(alloc, io, index.lhs, c);
         },
         .dereference => |deref| {
-            const t: Type = try .infer(alloc, io, deref.parent, c);
+            const t: Type = try .infer(alloc, io, deref.parent, c, self);
             defer t.deinit(alloc);
-            if (t != .reference) return errors.derefNonPtr(io, t, c.getPos(deref.pos));
+            if (t != .reference) return errors.derefNonPtr(io, t, self.source_map[deref.pos]);
 
             return t.reference.is_mut;
         },
         .member => |member| {
-            const parent_t: Type = try .infer(alloc, io, member.parent, c);
+            const parent_t: Type = try .infer(alloc, io, member.parent, c, self);
             defer parent_t.deinit(alloc);
 
             return switch (parent_t) {
@@ -275,8 +285,8 @@ pub fn getExpressionMutability(
                     std.mem.eql(u8, member.member_name, "len"))
                     true
                 else
-                    errors.badMemberAccessSlice(io, parent_t, member.member_name, c.getPos(member.pos)),
-                else => errors.badMemberAccess(io, parent_t, member.member_name, c.getPos(member.pos)),
+                    errors.badMemberAccessSlice(io, parent_t, member.member_name, self.source_map[member.pos]),
+                else => errors.badMemberAccess(io, parent_t, member.member_name, self.source_map[member.pos]),
             };
         },
         else => false,
@@ -297,11 +307,11 @@ pub fn getSymbolFromExpression(
             else => null,
         },
         .generic => |generic| {
-            const lhs_t = Type.infer(alloc, io, generic.lhs, c) catch return null;
+            const lhs_t = Type.infer(alloc, io, generic.lhs, c, self) catch return null;
             defer lhs_t.deinit(alloc);
 
             const template_name = switch (lhs_t) {
-                .template => |t| switch (t) {
+                .template => |t| switch (t.kind) {
                     .builtin_cast => "cast",
                     .builtin_sizeof => "sizeof",
                     inline else => |d| d.name,
@@ -309,7 +319,7 @@ pub fn getSymbolFromExpression(
                 else => return null,
             };
 
-            const mangled_name = Type.getMangledName(alloc, io, template_name, generic.arguments, c) catch return null;
+            const mangled_name = Type.getMangledName(alloc, io, template_name, generic.arguments, c, self) catch return null;
             defer alloc.free(mangled_name);
 
             return self.getSymbol(mangled_name);

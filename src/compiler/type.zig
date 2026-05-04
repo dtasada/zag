@@ -19,6 +19,7 @@ pub const Type = union(enum) {
     type,
     variadic,
     range,
+    any,
 
     i8,
     i16,
@@ -59,9 +60,6 @@ pub const Type = union(enum) {
 
     function: Function,
 
-    instantiated_builtin_cast: *const Type,
-    instantiated_builtin_sizeof: *const Type,
-
     @"struct": Struct,
     @"enum": Enum,
     @"union": Union,
@@ -75,6 +73,7 @@ pub const Type = union(enum) {
         template_name: []const u8,
         args: []const ast.Expression,
         c: *Compiler,
+        m: *const Module,
     ) Error![]const u8 {
         var mangled_name: std.ArrayList(u8) = .empty;
         errdefer mangled_name.deinit(alloc);
@@ -83,7 +82,7 @@ pub const Type = union(enum) {
         try mangled_name.append(alloc, '_');
 
         for (args) |arg| {
-            const val: Value = try .eval(alloc, io, &arg, c);
+            const val: Value = try .eval(alloc, io, &arg, c, m);
             defer val.deinit(alloc);
 
             switch (val) {
@@ -106,36 +105,47 @@ pub const Type = union(enum) {
         io: std.Io,
         args: []const ast.Expression,
         c: *Compiler,
+        m: *const Module,
         pos: usize,
     ) Error!Type {
-        if (self != .template) return errors.expressionNotGeneric(io, c.getPos(pos));
+        if (self != .template) return errors.expressionNotGeneric(io, m.source_map[pos]);
 
         const template = self.template;
-        const template_name = switch (template) {
+        const template_name = switch (template.kind) {
             .builtin_cast => "cast",
             .builtin_sizeof => "sizeof",
             inline else => |d| d.name,
         };
 
-        const mangled_name = try getMangledName(alloc, io, template_name, args, c);
+        const mangled_name = try getMangledName(alloc, io, template_name, args, c, m);
         defer alloc.free(mangled_name);
 
         if (c.module.instantiations.get(mangled_name)) |t| return try t.clone(alloc);
 
-        const result_t: Type = switch (template) {
-            .builtin_cast => b: {
-                if (args.len != 1) return error.ArgumentCount;
-                const val = try Value.eval(alloc, io, &args[0], c);
-                defer val.deinit(alloc);
-                if (val != .type) return error.TypeMismatch;
-                break :b .{ .instantiated_builtin_cast = try .clonePtr(val.type, alloc) };
+        const result_t: Type = switch (template.kind) {
+            .builtin_cast => {
+                if (args.len != 1) return error.TypeMismatch;
+                const target_t = try fromAstPtr(alloc, io, &args[0].type.payload, c, m);
+                errdefer target_t.deinitPtr(alloc);
+
+                const params = try alloc.alloc(Type, 1);
+                params[0] = .any;
+
+                return .{
+                    .function = .{
+                        .parameters = params,
+                        .return_type = target_t,
+                    },
+                };
             },
-            .builtin_sizeof => b: {
-                if (args.len != 1) return error.ArgumentCount;
-                const val = try Value.eval(alloc, io, &args[0], c);
-                defer val.deinit(alloc);
-                if (val != .type) return error.TypeMismatch;
-                break :b .{ .instantiated_builtin_sizeof = try .clonePtr(val.type, alloc) };
+            .builtin_sizeof => {
+                if (args.len != 1) return error.TypeMismatch;
+                return .{
+                    .function = .{
+                        .parameters = &.{},
+                        .return_type = try Type.clonePtr(.usize, alloc),
+                    },
+                };
             },
             .function_definition => |fd| b: {
                 var new_fd = try fd.clone(alloc);
@@ -166,7 +176,7 @@ pub const Type = union(enum) {
                 }
 
                 const tls: ast.TopLevelStatement = .{ .function_definition = new_fd };
-                try statements.compileTopLevel(alloc, io, tls, c);
+                try statements.compileTopLevel(alloc, io, tls, c, template.module);
 
                 const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
                 break :b try symbol.type.clone(alloc);
@@ -200,7 +210,7 @@ pub const Type = union(enum) {
                 }
 
                 const tls = @unionInit(ast.TopLevelStatement, @tagName(tag), new_ud);
-                try statements.compileTopLevel(alloc, io, tls, c);
+                try statements.compileTopLevel(alloc, io, tls, c, template.module);
 
                 const symbol = c.module.getSymbol(mangled_name) orelse return error.InstantiationFailed;
                 break :b try symbol.value.?.type.clone(alloc);
@@ -211,12 +221,17 @@ pub const Type = union(enum) {
         return result_t;
     }
 
-    pub const Template = union(enum) {
-        function_definition: ast.TopLevelStatement.FunctionDefinition,
-        struct_declaration: ast.TopLevelStatement.StructDeclaration,
-        union_declaration: ast.TopLevelStatement.UnionDeclaration,
-        builtin_cast,
-        builtin_sizeof,
+    pub const Template = struct {
+        pub const Kind = union(enum) {
+            function_definition: ast.TopLevelStatement.FunctionDefinition,
+            struct_declaration: ast.TopLevelStatement.StructDeclaration,
+            union_declaration: ast.TopLevelStatement.UnionDeclaration,
+            builtin_cast,
+            builtin_sizeof,
+        };
+
+        module: *const Module,
+        kind: Kind,
     };
     const Reference = struct { inner: *const Type, is_mut: bool };
     const Slice = struct { inner: *const Type, is_mut: bool };
@@ -322,10 +337,11 @@ pub const Type = union(enum) {
         io: std.Io,
         t: *const ast.Type,
         c: *Compiler,
+        m: *const Module,
     ) Error!*Type {
         const ret = try alloc.create(Type);
         errdefer alloc.destroy(ret);
-        ret.* = try fromAst(alloc, io, t, c);
+        ret.* = try fromAst(alloc, io, t, c, m);
         return ret;
     }
 
@@ -335,50 +351,51 @@ pub const Type = union(enum) {
         io: std.Io,
         t: *const ast.Type,
         c: *Compiler,
+        module: *const Module,
     ) Error!Type {
         return switch (t.*) {
             .symbol => |s| {
-                const symbol = c.module.getSymbol(s.inner) orelse
-                    return errors.unknownSymbol(io, s.inner, c.getPos(s.pos));
+                const symbol = module.getSymbol(s.inner) orelse
+                    return errors.unknownSymbol(io, s.inner, module.source_map[s.pos]);
 
                 return switch (symbol.type) {
                     .type => try symbol.value.?.type.clone(alloc),
                     .template => try symbol.type.clone(alloc),
                     .module => try symbol.type.clone(alloc),
-                    else => |received| errors.typeMismatch(io, .type, received, c.getPos(s.pos)),
+                    else => |received| errors.typeMismatch(io, .type, received, module.source_map[s.pos]),
                 };
             },
-            .optional => |opt| .{ .optional = try fromAstPtr(alloc, io, opt.inner, c) },
+            .optional => |opt| .{ .optional = try fromAstPtr(alloc, io, opt.inner, c, module) },
             inline .slice, .reference => |ref, tag| @unionInit(Type, @tagName(tag), .{
-                .inner = try fromAstPtr(alloc, io, ref.inner, c),
+                .inner = try fromAstPtr(alloc, io, ref.inner, c, module),
                 .is_mut = ref.is_mut,
             }),
             .array => |array| .{
                 .array = .{
-                    .inner = try fromAstPtr(alloc, io, array.inner, c),
-                    .len = switch (try Value.eval(alloc, io, array.size, c)) {
+                    .inner = try fromAstPtr(alloc, io, array.inner, c, module),
+                    .len = switch (try Value.eval(alloc, io, array.size, c, module)) {
                         .uint => |uint| uint,
                         else => |val| return errors.arrayLengthMustBeInteger(
                             io,
                             val.getType(),
-                            c.getPos(array.size.pos()),
+                            module.source_map[array.size.pos()],
                         ),
                     },
                 },
             },
             .error_union => |eu| .{
                 .error_union = .{
-                    .failure = try fromAstPtr(alloc, io, eu.failure, c),
-                    .success = try fromAstPtr(alloc, io, eu.success, c),
+                    .failure = try fromAstPtr(alloc, io, eu.failure, c, module),
+                    .success = try fromAstPtr(alloc, io, eu.success, c, module),
                 },
             },
             .function => |f| {
                 var params: std.ArrayList(Type) = try .initCapacity(alloc, f.parameters.len);
                 errdefer utils.deinitArrayList(Type, &params, alloc);
 
-                for (f.parameters) |*param| params.appendAssumeCapacity(try fromAst(alloc, io, param, c));
+                for (f.parameters) |*param| params.appendAssumeCapacity(try fromAst(alloc, io, param, c, module));
 
-                const return_type = try fromAstPtr(alloc, io, f.return_type, c);
+                const return_type = try fromAstPtr(alloc, io, f.return_type, c, module);
                 errdefer return_type.deinitPtr(alloc);
 
                 return .{
@@ -389,14 +406,14 @@ pub const Type = union(enum) {
                 };
             },
             .generic => |g| {
-                const lhs_t = try fromAst(alloc, io, g.lhs, c);
+                const lhs_t = try fromAst(alloc, io, g.lhs, c, module);
                 defer lhs_t.deinit(alloc);
 
-                return try lhs_t.instantiate(alloc, io, g.arguments, c, g.pos);
+                return try lhs_t.instantiate(alloc, io, g.arguments, c, module, g.pos);
             },
             .variadic => .variadic,
             .member => |m| {
-                const parent = try fromAst(alloc, io, m.parent, c);
+                const parent = try fromAst(alloc, io, m.parent, c, module);
                 defer parent.deinit(alloc);
 
                 switch (parent) {
@@ -408,16 +425,16 @@ pub const Type = union(enum) {
                                 }
                             }
                         }
-                        return errors.unknownMember(io, parent, m.member_name, c.getPos(m.pos));
+                        return errors.unknownMember(io, parent, m.member_name, module.source_map[m.pos]);
                     },
-                    .module => |module| {
-                        if (module.getSymbol(m.member_name)) |symbol| {
+                    .module => |mod| {
+                        if (mod.getSymbol(m.member_name)) |symbol| {
                             if (symbol.type == .type) return try symbol.value.?.type.clone(alloc);
                             if (symbol.type == .template) return try symbol.type.clone(alloc);
                         }
-                        return errors.unknownMember(io, parent, m.member_name, c.getPos(m.pos));
+                        return errors.unknownMember(io, parent, m.member_name, module.source_map[m.pos]);
                     },
-                    else => return errors.badMemberAccess(io, parent, m.member_name, c.getPos(m.pos)),
+                    else => return errors.badMemberAccess(io, parent, m.member_name, module.source_map[m.pos]),
                 }
             },
         };
@@ -429,26 +446,27 @@ pub const Type = union(enum) {
         io: std.Io,
         expr: *const ast.Expression,
         c: *Compiler,
+        m: *const Module,
     ) Error!Type {
         return switch (expr.*) {
             .ident => |ident| if (c.module.getSymbol(ident.payload)) |symbol|
                 try symbol.type.clone(alloc)
             else
-                errors.unknownSymbol(io, ident.payload, c.getPos(ident.pos)),
+                errors.unknownSymbol(io, ident.payload, m.source_map[ident.pos]),
             .string => try (Type{ .slice = .{ .is_mut = false, .inner = &.u8 } }).clone(alloc),
             .char => .u8,
             .int => .i32,
             .float => .f32,
             .@"if" => |cond| {
-                const condition_t = try infer(alloc, io, cond.condition, c);
+                const condition_t = try infer(alloc, io, cond.condition, c, m);
                 defer condition_t.deinit(alloc);
                 if (condition_t != .bool)
-                    return errors.typeMismatch(io, .bool, condition_t, c.getPos(cond.condition.pos()));
+                    return errors.typeMismatch(io, .bool, condition_t, m.source_map[cond.condition.pos()]);
 
-                const lhs_t = try infer(alloc, io, cond.body, c);
+                const lhs_t = try infer(alloc, io, cond.body, c, m);
                 errdefer lhs_t.deinit(alloc);
 
-                const rhs_t = try infer(alloc, io, cond.@"else", c);
+                const rhs_t = try infer(alloc, io, cond.@"else", c, m);
                 errdefer rhs_t.deinit(alloc);
 
                 const lhs_check_rhs = lhs_t.check(rhs_t);
@@ -457,8 +475,8 @@ pub const Type = union(enum) {
                     io,
                     lhs_t,
                     rhs_t,
-                    c.getPos(cond.body.pos()),
-                    c.getPos(cond.@"else".pos()),
+                    m.source_map[cond.body.pos()],
+                    m.source_map[cond.@"else".pos()],
                 );
 
                 if (lhs_check_rhs) {
@@ -470,20 +488,20 @@ pub const Type = union(enum) {
                 }
             },
             .array_instantiation => |ai| {
-                const inner = try fromAstPtr(alloc, io, &ai.type, c);
+                const inner = try fromAstPtr(alloc, io, &ai.type, c, m);
                 errdefer inner.deinitPtr(alloc);
 
                 const len: Value = if (ai.length.* == .ident and std.mem.eql(u8, ai.length.ident.payload, "_"))
                     .{ .uint = ai.contents.len }
                 else
-                    try .eval(alloc, io, ai.length, c);
+                    try .eval(alloc, io, ai.length, c, m);
                 errdefer len.deinit(alloc);
 
                 if (len != .uint)
-                    return errors.arrayLengthMustBeInteger(io, len.getType(), c.getPos(ai.length.pos()));
+                    return errors.arrayLengthMustBeInteger(io, len.getType(), m.source_map[ai.length.pos()]);
 
                 if (len.uint != ai.contents.len)
-                    return errors.arrayInstantiationSizeMismatch(io, len.uint, ai.contents.len, c.getPos(ai.pos));
+                    return errors.arrayInstantiationSizeMismatch(io, len.uint, ai.contents.len, m.source_map[ai.pos]);
 
                 return .{
                     .array = .{
@@ -494,14 +512,14 @@ pub const Type = union(enum) {
             },
             .assignment => .void,
             .binary => |binary| {
-                const lhs: Type = try infer(alloc, io, binary.lhs, c);
-                const rhs: Type = try infer(alloc, io, binary.rhs, c);
+                const lhs: Type = try infer(alloc, io, binary.lhs, c, m);
+                const rhs: Type = try infer(alloc, io, binary.rhs, c, m);
                 defer rhs.deinit(alloc);
                 if (!rhs.check(lhs)) return utils.printErr( // i feel like this should be eql instead of check but...
                     io,
                     error.TypeMismatch,
                     "comperr: Mismatched types in binary expression: '{f}' {s} '{f}' ({f}).\n",
-                    .{ lhs, @tagName(binary.op), rhs, c.getPos(binary.pos) },
+                    .{ lhs, @tagName(binary.op), rhs, m.source_map[binary.pos] },
                 );
 
                 return switch (binary.op) {
@@ -519,9 +537,9 @@ pub const Type = union(enum) {
                         .name = vd.variable_name,
                         .inner_name = vd.variable_name,
                         .type = if (vd.type) |*t|
-                            try fromAst(alloc, io, t, c)
+                            try fromAst(alloc, io, t, c, m)
                         else
-                            try infer(alloc, io, &vd.assigned_value, c),
+                            try infer(alloc, io, &vd.assigned_value, c, m),
                         .binding = vd.binding,
                         .is_pub = vd.is_pub,
                         .free_name = false,
@@ -529,9 +547,9 @@ pub const Type = union(enum) {
                         .free_type = true,
                     }),
                     .block_eval => |*e| if (found) |f| {
-                        return errors.doubleReturn(io, c.getPos(f[1]), c.getPos(e.pos()));
+                        return errors.doubleReturn(io, m.source_map[f[1]], m.source_map[e.pos()]);
                     } else {
-                        found = .{ try infer(alloc, io, e, c), e.pos() };
+                        found = .{ try infer(alloc, io, e, c, m), e.pos() };
                     },
                     else => {},
                 };
@@ -539,56 +557,47 @@ pub const Type = union(enum) {
                 return if (found) |f| f[0] else .void;
             },
             .call => |call| {
-                const callee_t = try infer(alloc, io, call.callee, c);
+                const callee_t = try infer(alloc, io, call.callee, c, m);
                 defer callee_t.deinit(alloc);
 
-                if (callee_t == .instantiated_builtin_cast) {
-                    if (call.args.len != 1) return error.ArgumentCount;
-                    return try callee_t.instantiated_builtin_cast.clone(alloc);
-                }
-                if (callee_t == .instantiated_builtin_sizeof) {
-                    if (call.args.len != 0) return error.ArgumentCount;
-                    return .usize;
-                }
-
                 if (callee_t != .function)
-                    return errors.expressionNotCallable(io, callee_t, c.getPos(call.callee.pos()));
+                    return errors.expressionNotCallable(io, callee_t, m.source_map[call.callee.pos()]);
 
                 return try callee_t.function.return_type.clone(alloc);
             },
             .comparison => |comp| {
-                const left_t = try infer(alloc, io, comp.left, c);
+                const left_t = try infer(alloc, io, comp.left, c, m);
                 defer left_t.deinit(alloc);
                 for (comp.comparisons) |i| {
-                    const right_t = try infer(alloc, io, i.right, c);
+                    const right_t = try infer(alloc, io, i.right, c, m);
                     defer right_t.deinit(alloc);
                     if (!right_t.eql(left_t))
-                        return errors.typeMismatch(io, left_t, right_t, c.getPos(i.right.pos()));
+                        return errors.typeMismatch(io, left_t, right_t, m.source_map[i.right.pos()]);
                 }
 
                 return .bool;
             },
             .dereference => |deref| {
-                const inner_t = try infer(alloc, io, deref.parent, c);
+                const inner_t = try infer(alloc, io, deref.parent, c, m);
                 defer inner_t.deinit(alloc);
-                if (inner_t != .reference) return errors.cannotDereference(io, inner_t, c.getPos(deref.pos));
+                if (inner_t != .reference) return errors.cannotDereference(io, inner_t, m.source_map[deref.pos]);
                 return try inner_t.reference.inner.clone(alloc);
             },
             .index => |index| {
-                const inner_t = try infer(alloc, io, index.lhs, c);
+                const inner_t = try infer(alloc, io, index.lhs, c, m);
                 defer inner_t.deinit(alloc);
                 if (inner_t != .slice and inner_t != .array)
-                    return errors.cannotDereference(io, inner_t, c.getPos(index.pos));
+                    return errors.cannotDereference(io, inner_t, m.source_map[index.pos]);
                 return switch (inner_t) {
                     inline .slice, .array => |t| try t.inner.clone(alloc),
                     else => unreachable,
                 };
             },
             .slice => |slice| {
-                const lhs_t = try infer(alloc, io, slice.lhs, c);
+                const lhs_t = try infer(alloc, io, slice.lhs, c, m);
                 defer lhs_t.deinit(alloc);
                 if (lhs_t != .slice and lhs_t != .array)
-                    return errors.cannotSlice(io, lhs_t, c.getPos(slice.pos));
+                    return errors.cannotSlice(io, lhs_t, m.source_map[slice.pos]);
                 return .{
                     .slice = .{
                         .inner = switch (lhs_t) {
@@ -599,7 +608,7 @@ pub const Type = union(enum) {
                             error.UnknownSymbol => return errors.unknownSymbol(
                                 io,
                                 slice.lhs.ident.payload,
-                                c.getPos(slice.lhs.ident.pos),
+                                m.source_map[slice.lhs.ident.pos],
                             ),
                             else => return err,
                         },
@@ -607,7 +616,7 @@ pub const Type = union(enum) {
                 };
             },
             .member => |member| {
-                var t = try infer(alloc, io, member.parent, c);
+                var t = try infer(alloc, io, member.parent, c, m);
                 while (t == .reference) {
                     const next_t = try t.reference.inner.clone(alloc);
                     t.deinit(alloc);
@@ -618,19 +627,19 @@ pub const Type = union(enum) {
                 return switch (t) {
                     .@"struct" => |ct| {
                         const member_t = ct.getMemberType(member.member_name) orelse
-                            return errors.unknownMember(io, t, member.member_name, c.getPos(member.pos));
+                            return errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]);
                         return try member_t.clone(alloc);
                     },
                     .@"union" => |ct| {
                         const member_t = ct.getMemberType(member.member_name) orelse
-                            return errors.unknownMember(io, t, member.member_name, c.getPos(member.pos));
+                            return errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]);
                         return try member_t.clone(alloc);
                     },
                     .@"enum" => .usize,
-                    .module => |m| if (m.getSymbol(member.member_name)) |symbol|
+                    .module => |mod| if (mod.getSymbol(member.member_name)) |symbol|
                         try symbol.type.clone(alloc)
                     else
-                        errors.unknownMember(io, t, member.member_name, c.getPos(member.pos)),
+                        errors.unknownMember(io, t, member.member_name, m.source_map[member.pos]),
                     .slice => |slc| if (std.mem.eql(u8, member.member_name, "ptr")) .{
                         .reference = .{
                             .inner = try slc.inner.clonePtr(alloc),
@@ -639,23 +648,23 @@ pub const Type = union(enum) {
                     } else if (std.mem.eql(u8, member.member_name, "len"))
                         .usize
                     else
-                        errors.badMemberAccessSlice(io, t, member.member_name, c.getPos(member.pos)),
-                    else => |parent_t| errors.badMemberAccess(io, parent_t, member.member_name, c.getPos(member.pos)),
+                        errors.badMemberAccessSlice(io, t, member.member_name, m.source_map[member.pos]),
+                    else => |parent_t| errors.badMemberAccess(io, parent_t, member.member_name, m.source_map[member.pos]),
                 };
             },
             .prefix => |prefix| {
-                const rhs_t = try infer(alloc, io, prefix.rhs, c);
+                const rhs_t = try infer(alloc, io, prefix.rhs, c, m);
                 if (!rhs_t.isNumeric() and rhs_t != .bool or
                     rhs_t.isNumeric() and prefix.op == .@"!" or
                     rhs_t == .bool and prefix.op == .@"-")
-                    return errors.illegalPrefixOp(io, rhs_t, prefix.op, c.getPos(prefix.pos));
+                    return errors.illegalPrefixOp(io, rhs_t, prefix.op, m.source_map[prefix.pos]);
                 return rhs_t;
             },
             .reference => |ref| {
                 const rhs_t = try alloc.create(Type);
-                rhs_t.* = try infer(alloc, io, ref.inner, c);
+                rhs_t.* = try infer(alloc, io, ref.inner, c, m);
                 if (ref.is_mut and !try c.module.getExpressionMutability(alloc, io, ref.inner, c))
-                    return errors.mutRefOfConst(io, c.getPos(ref.pos));
+                    return errors.mutRefOfConst(io, m.source_map[ref.pos]);
                 return .{
                     .reference = .{
                         .inner = rhs_t,
@@ -664,32 +673,32 @@ pub const Type = union(enum) {
                 };
             },
             .struct_instantiation => |si| {
-                const st = try infer(alloc, io, si.type_expr, c);
+                const st = try infer(alloc, io, si.type_expr, c, m);
                 defer st.deinit(alloc);
-                if (st != .type) return errors.exprIsNotStruct(io, st, c.getPos(si.pos));
+                if (st != .type) return errors.exprIsNotStruct(io, st, m.source_map[si.pos]);
 
                 const symbol = c.module.getSymbolFromExpression(alloc, io, si.type_expr, c) orelse
-                    return errors.exprIsNotStruct(io, st, c.getPos(si.pos));
+                    return errors.exprIsNotStruct(io, st, m.source_map[si.pos]);
 
                 return try symbol.value.?.type.clone(alloc);
             },
             .type => .type,
             .generic => |generic| {
-                const lhs_t = try infer(alloc, io, generic.lhs, c);
+                const lhs_t = try infer(alloc, io, generic.lhs, c, m);
                 defer lhs_t.deinit(alloc);
 
-                const t = try lhs_t.instantiate(alloc, io, generic.arguments, c, generic.pos);
+                const t = try lhs_t.instantiate(alloc, io, generic.arguments, c, m, generic.pos);
                 if (lhs_t == .template and
-                    lhs_t.template != .function_definition and
-                    lhs_t.template != .builtin_cast and
-                    lhs_t.template != .builtin_sizeof)
+                    lhs_t.template.kind != .function_definition and
+                    lhs_t.template.kind != .builtin_cast and
+                    lhs_t.template.kind != .builtin_sizeof)
                 {
                     t.deinit(alloc);
                     return .type;
                 }
                 return t;
             },
-            inline else => |_, t| std.debug.panic("unreachable with {s}\n", .{@tagName(t)}),
+            inline else => |_, tag| std.debug.panic("unreachable with {s}\n", .{@tagName(tag)}),
         };
     }
 
@@ -775,7 +784,6 @@ pub const Type = union(enum) {
                 eu.success.deinitPtr(alloc);
             },
             .function => |f| f.deinit(alloc),
-            .instantiated_builtin_cast, .instantiated_builtin_sizeof => |t| t.deinitPtr(alloc),
             inline .reference, .slice, .array => |t| t.inner.deinitPtr(alloc),
             inline .@"struct", .@"enum", .@"union" => |ct| {
                 alloc.free(ct.name);
@@ -783,7 +791,7 @@ pub const Type = union(enum) {
                 utils.deinitSlice(Symbol, ct.symbols, alloc);
                 if (ct.tag_type) |tt| tt.deinitPtr(alloc);
             },
-            .template => |template| switch (template) {
+            .template => |template| switch (template.kind) {
                 .function_definition => |fd| fd.deinit(alloc),
                 .struct_declaration => |sd| sd.deinit(alloc),
                 .union_declaration => |ud| ud.deinit(alloc),
@@ -808,8 +816,6 @@ pub const Type = union(enum) {
                     try writer.writeAll(if (i == f.parameters.len - 1) ")" else ", ");
                 }
             },
-            .instantiated_builtin_cast => |t| try writer.print("cast<{f}>", .{t.*}),
-            .instantiated_builtin_sizeof => |t| try writer.print("sizeof<{f}>", .{t.*}),
             inline .@"struct", .@"enum", .@"union" => |ct| try writer.writeAll(ct.name),
             .module => |m| try writer.writeAll(m.name),
             inline else => |_, t| try writer.writeAll(@tagName(t)),
@@ -839,7 +845,6 @@ pub const Type = union(enum) {
                 h.update(std.mem.asBytes(&f.return_type.hash()));
                 for (f.parameters) |param_t| h.update(std.mem.asBytes(&param_t.hash()));
             },
-            .instantiated_builtin_cast, .instantiated_builtin_sizeof => |t| h.update(std.mem.asBytes(&t.hash())),
             inline .@"struct", .@"enum", .@"union" => |ct, tag| {
                 h.update(std.mem.asBytes(&tag));
                 for (ct.members) |member| {
@@ -852,7 +857,7 @@ pub const Type = union(enum) {
                     }
                 }
             },
-            .template => |t| switch (t) {
+            .template => |t| switch (t.kind) {
                 inline .function_definition, .struct_declaration, .union_declaration => |d| h.update(d.name),
                 .builtin_cast => h.update("cast"),
                 .builtin_sizeof => h.update("sizeof"),
@@ -864,6 +869,7 @@ pub const Type = union(enum) {
     }
 
     pub fn check(received: Type, expected: Type) bool {
+        if (expected == .any) return true;
         if (received.eql(expected)) return true;
 
         const fallback = switch (expected) {
@@ -918,8 +924,6 @@ pub const Type = union(enum) {
                 }
                 break :b true;
             },
-            .instantiated_builtin_cast => lhs.instantiated_builtin_cast.eql(rhs.instantiated_builtin_cast.*),
-            .instantiated_builtin_sizeof => lhs.instantiated_builtin_sizeof.eql(rhs.instantiated_builtin_sizeof.*),
             inline .@"struct", .@"enum", .@"union" => |ct, t| {
                 const a = ct;
                 const b = @field(rhs, @tagName(t));
@@ -939,11 +943,11 @@ pub const Type = union(enum) {
             },
             .template => |t| {
                 const rt = rhs.template;
-                if (std.meta.activeTag(t) != std.meta.activeTag(rt)) return false;
-                return switch (t) {
-                    .function_definition => |fd| std.mem.eql(u8, fd.name, rt.function_definition.name),
-                    .struct_declaration => |sd| std.mem.eql(u8, sd.name, rt.struct_declaration.name),
-                    .union_declaration => |ud| std.mem.eql(u8, ud.name, rt.union_declaration.name),
+                if (std.meta.activeTag(t.kind) != std.meta.activeTag(rt.kind)) return false;
+                return switch (t.kind) {
+                    .function_definition => |fd| std.mem.eql(u8, fd.name, rt.kind.function_definition.name),
+                    .struct_declaration => |sd| std.mem.eql(u8, sd.name, rt.kind.struct_declaration.name),
+                    .union_declaration => |ud| std.mem.eql(u8, ud.name, rt.kind.union_declaration.name),
                     .builtin_cast, .builtin_sizeof => true,
                 };
             },
@@ -1000,8 +1004,6 @@ pub const Type = union(enum) {
                     },
                 };
             },
-            .instantiated_builtin_cast => |t| .{ .instantiated_builtin_cast = try t.clonePtr(alloc) },
-            .instantiated_builtin_sizeof => |t| .{ .instantiated_builtin_sizeof = try t.clonePtr(alloc) },
             inline .@"struct", .@"enum", .@"union" => |ct, tag| {
                 const name = try alloc.dupe(u8, ct.name);
                 errdefer alloc.free(name);
@@ -1023,12 +1025,15 @@ pub const Type = union(enum) {
                 });
             },
             .template => |template| return .{
-                .template = switch (template) {
-                    .function_definition => |fd| .{ .function_definition = try fd.clone(alloc) },
-                    .struct_declaration => |sd| .{ .struct_declaration = try sd.clone(alloc) },
-                    .union_declaration => |ud| .{ .union_declaration = try ud.clone(alloc) },
-                    .builtin_cast => .builtin_cast,
-                    .builtin_sizeof => .builtin_sizeof,
+                .template = .{
+                    .module = template.module,
+                    .kind = switch (template.kind) {
+                        .function_definition => |fd| .{ .function_definition = try fd.clone(alloc) },
+                        .struct_declaration => |sd| .{ .struct_declaration = try sd.clone(alloc) },
+                        .union_declaration => |ud| .{ .union_declaration = try ud.clone(alloc) },
+                        .builtin_cast => .builtin_cast,
+                        .builtin_sizeof => .builtin_sizeof,
+                    },
                 },
             },
             else => self,

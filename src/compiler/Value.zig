@@ -23,18 +23,19 @@ pub const Value = union(enum) {
         io: std.Io,
         expr: *const ast.Expression,
         c: *Compiler,
+        m: *const compiler.Module,
     ) Error!Value {
         return switch (expr.*) {
             .int => |int| .{ .uint = int.payload },
             .ident => |ident| {
                 const symbol = c.module.getSymbol(ident.payload) orelse
-                    return errors.unknownSymbol(io, ident.payload, c.getPos(ident.pos));
+                    return errors.unknownSymbol(io, ident.payload, m.source_map[ident.pos]);
                 if (symbol.type == .type)
                     return .{ .type = try symbol.value.?.type.clone(alloc) };
                 if (symbol.value) |v| return try v.clone(alloc);
                 return error.UnknownSymbol; // Should probably have a better error for this
             },
-            .type => |t| .{ .type = try Type.fromAst(alloc, io, &t.payload, c) },
+            .type => |t| .{ .type = try Type.fromAst(alloc, io, &t.payload, c, m) },
             else => @panic("unimplemented"),
         };
     }
